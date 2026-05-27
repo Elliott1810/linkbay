@@ -4,7 +4,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useTheme, useAuth } from "@/App";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { backgroundToCss } from "./BuilderPage";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { backgroundToCss, parseBackground, PATTERN_OPTIONS, COLOR_OPTIONS } from "./BuilderPage";
 
 // --- Icons ---
 const icons: Record<string, JSX.Element> = {
@@ -81,6 +82,7 @@ function OnboardingChecklist({
   onNavigate,
   sharedLink,
   onShared,
+  onDismiss,
   hasLeads,
   pageUrl,
 }: {
@@ -88,6 +90,7 @@ function OnboardingChecklist({
   onNavigate: (tab: string) => void;
   sharedLink: boolean;
   onShared: () => void;
+  onDismiss?: () => void;
   hasLeads: boolean;
   pageUrl: string;
 }) {
@@ -118,7 +121,19 @@ function OnboardingChecklist({
       <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem", marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
           <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>Getting started</div>
-          <div style={{ fontSize: 11, color: "var(--color-text-faint)", fontWeight: 600 }}>{completedCount}/{totalItems} done</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+            <div style={{ fontSize: 11, color: "var(--color-text-faint)", fontWeight: 600 }}>{completedCount}/{totalItems} done</div>
+            {onDismiss && (
+              <button
+                onClick={onDismiss}
+                aria-label="Dismiss onboarding"
+                data-testid="button-dismiss-onboarding"
+                style={{ background: "transparent", border: "none", color: "var(--color-text-faint)", cursor: "pointer", fontSize: 14, padding: "0 0.25rem", lineHeight: 1 }}
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ height: 4, background: "var(--color-surface-offset)", borderRadius: 999, marginBottom: "1rem", overflow: "hidden" }}>
           <div style={{ height: "100%", width: `${pct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s ease" }} />
@@ -223,6 +238,8 @@ function OverviewPanel({
   onNavigate,
   sharedLink,
   onShared,
+  onDismiss,
+  dismissed,
   activePageId,
   setActivePageId,
 }: {
@@ -230,6 +247,8 @@ function OverviewPanel({
   onNavigate: (tab: string) => void;
   sharedLink: boolean;
   onShared: () => void;
+  onDismiss?: () => void;
+  dismissed?: boolean;
   activePageId: number | null;
   setActivePageId: (id: number) => void;
 }) {
@@ -337,14 +356,15 @@ function OverviewPanel({
       </div>
 
       {/* Onboarding checklist */}
-      <OnboardingChecklist
+      {!dismissed && <OnboardingChecklist
         pages={pages}
         onNavigate={onNavigate}
         sharedLink={sharedLink}
         onShared={onShared}
+        onDismiss={onDismiss}
         hasLeads={(leadsForPage?.length ?? 0) > 0}
         pageUrl={pageUrl}
-      />
+      />}
 
       {/* Page status + date range selector */}
       <div style={{ display: "flex", gap: "0.625rem", marginBottom: "1.5rem", alignItems: "center", flexWrap: "wrap" }}>
@@ -622,33 +642,78 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ width: 24, height: 24, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0 }} />
         </div>
       </div>
-      <div>
-        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Page background</label>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(56px, 1fr))", gap: "0.375rem" }}>
-          {DASHBOARD_BG_OPTIONS.map(bg => (
-            <button
-              key={bg.value}
-              type="button"
-              onClick={() => setBackground(bg.value)}
-              title={bg.label}
-              style={{
-                height: 40,
-                borderRadius: "var(--radius-sm)",
-                border: `2px solid ${background === bg.value ? "var(--color-text)" : "var(--color-border)"}`,
-                cursor: "pointer",
-                background: bg.preview,
-                display: "flex",
-                alignItems: "flex-end",
-                justifyContent: "center",
-                padding: "2px",
-                overflow: "hidden",
-              }}
-            >
-              <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.45)", color: "#fff", padding: "1px 4px", borderRadius: 2, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{bg.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      {(() => {
+        const current = parseBackground(background);
+        const setBg = (next: Partial<{ pattern: string; color: string }>) => {
+          const merged = { ...current, ...next };
+          if (merged.pattern === "none" && merged.color === "none") {
+            setBackground("none");
+          } else {
+            setBackground(JSON.stringify(merged));
+          }
+        };
+        return (
+          <>
+            <div>
+              <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background pattern</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
+                {PATTERN_OPTIONS.map(p => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setBg({ pattern: p.value })}
+                    title={p.label}
+                    style={{
+                      height: 44,
+                      borderRadius: "var(--radius-sm)",
+                      border: `2px solid ${current.pattern === p.value ? "var(--color-text)" : "var(--color-border)"}`,
+                      cursor: "pointer",
+                      overflow: "hidden",
+                      ...backgroundToCss(JSON.stringify({ pattern: p.value, color: "none" })),
+                      display: "flex",
+                      alignItems: "flex-end",
+                      justifyContent: "center",
+                      padding: "2px",
+                    }}
+                    data-testid={`button-dash-pattern-${p.value}`}
+                  >
+                    <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.45)", color: "#fff", padding: "1px 4px", borderRadius: 2, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{p.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginTop: "0.75rem" }}>
+              <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background colour</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
+                {COLOR_OPTIONS.map(co => (
+                  <button
+                    key={co.value}
+                    type="button"
+                    onClick={() => setBg({ color: co.value })}
+                    title={co.label}
+                    style={{
+                      height: 44,
+                      borderRadius: "var(--radius-sm)",
+                      border: `2px solid ${current.color === co.value ? "var(--color-text)" : "var(--color-border)"}`,
+                      cursor: "pointer",
+                      background: co.preview,
+                      display: "flex",
+                      alignItems: "flex-end",
+                      justifyContent: "center",
+                      padding: "2px",
+                      overflow: "hidden",
+                    }}
+                    data-testid={`button-dash-color-${co.value}`}
+                  >
+                    <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.45)", color: "#fff", padding: "1px 4px", borderRadius: 2, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{co.label}</span>
+                  </button>
+                ))}
+              </div>
+              <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 6 }}>Mix a pattern with a colour for unique backgrounds.</p>
+            </div>
+          </>
+        );
+      })()}
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Profile picture shape</label>
         <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -975,6 +1040,8 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
   const [newLink, setNewLink] = useState({ label: "", url: "", icon: "🔗", style: "default" as string });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<any>({});
+  // Mobile editor tab state (mobile-only). On desktop both panels are shown together.
+  const [editorTab, setEditorTab] = useState<"blocks" | "add">("blocks");
 
   const page = pages.find((p: any) => p.id === selectedPageId) || pages[0];
 
@@ -1226,21 +1293,47 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
           </div>
         </div>
 
-        {/* Add new block */}
-        <AddBlockForm
-          onAdd={(block) => saveBlocksMutation.mutate([...(pageBlocks || []), block])}
-          saving={saveBlocksMutation.isPending}
-        />
+        {/* Mobile tab bar for blocks vs add-block (hidden on desktop) */}
+        <div className="editor-mobile-tabs" style={{ display: "flex", borderBottom: "1px solid var(--color-divider)", margin: "1.25rem 0 1rem" }}>
+          <button
+            type="button"
+            onClick={() => setEditorTab("blocks")}
+            className={`editor-tab-btn${editorTab === "blocks" ? " active" : ""}`}
+            style={{ flex: 1, padding: "0.5rem 0", background: "none", border: "none", cursor: "pointer", fontSize: "var(--text-sm)", fontWeight: 600, color: editorTab === "blocks" ? "var(--color-primary)" : "var(--color-text-faint)", borderBottom: editorTab === "blocks" ? "2px solid var(--color-primary)" : "2px solid transparent" }}
+            data-testid="button-editor-tab-blocks"
+          >
+            My Blocks ({pageBlocks.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditorTab("add")}
+            className={`editor-tab-btn${editorTab === "add" ? " active" : ""}`}
+            style={{ flex: 1, padding: "0.5rem 0", background: "none", border: "none", cursor: "pointer", fontSize: "var(--text-sm)", fontWeight: 600, color: editorTab === "add" ? "var(--color-primary)" : "var(--color-text-faint)", borderBottom: editorTab === "add" ? "2px solid var(--color-primary)" : "2px solid transparent" }}
+            data-testid="button-editor-tab-add"
+          >
+            + Add Block
+          </button>
+        </div>
 
-        {/* Blocks editor */}
-        {pageBlocks.length > 0 && (
-          <BlockEditor
-            pageId={selectedPageId!}
-            blocks={pageBlocks}
-            onSave={(blocks) => saveBlocksMutation.mutate(blocks)}
+        {/* Add new block */}
+        <div className={editorTab === "add" ? "editor-pane editor-pane-active" : "editor-pane editor-pane-hidden-mobile"}>
+          <AddBlockForm
+            onAdd={(block) => saveBlocksMutation.mutate([...(pageBlocks || []), block])}
             saving={saveBlocksMutation.isPending}
           />
-        )}
+        </div>
+
+        {/* Blocks editor */}
+        <div className={editorTab === "blocks" ? "editor-pane editor-pane-active" : "editor-pane editor-pane-hidden-mobile"}>
+          {pageBlocks.length > 0 && (
+            <BlockEditor
+              pageId={selectedPageId!}
+              blocks={pageBlocks}
+              onSave={(blocks) => saveBlocksMutation.mutate(blocks)}
+              saving={saveBlocksMutation.isPending}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1251,8 +1344,177 @@ type CustomFieldDef = { name: string; type: "text" | "dropdown" | "checkbox" | "
 
 type BlockKind = PageBlock["type"];
 
+// ─── Smart Block Recommender (decision-tree wizard) ─────────────────────────
+type WizardQuestion = { prompt: string; options: string[] };
+
+function getNextQuestion(answers: string[]): WizardQuestion | null {
+  if (answers.length === 0) {
+    return {
+      prompt: "What best describes you?",
+      options: ["Creator / Influencer", "Business / Brand", "Freelancer / Consultant", "Job Seeker"],
+    };
+  }
+  if (answers.length === 1) {
+    const a0 = answers[0];
+    if (a0 === "Creator / Influencer") return { prompt: "What's your main goal?", options: ["Grow my following", "Monetise my content", "Build a community"] };
+    if (a0 === "Business / Brand") return { prompt: "What do you want visitors to do?", options: ["Contact / Enquire", "Buy something", "Learn about us"] };
+    if (a0 === "Freelancer / Consultant") return { prompt: "What's your priority?", options: ["Get more clients", "Share my work", "Both"] };
+    if (a0 === "Job Seeker") return { prompt: "What do you want to show?", options: ["My CV / Portfolio", "References / Testimonials"] };
+  }
+  if (answers.length === 2) {
+    const [a0, a1] = answers;
+    if (a0 === "Creator / Influencer" && a1 === "Grow my following") {
+      return { prompt: "Which platforms?", options: ["Instagram / TikTok", "YouTube", "Twitter / X", "Multiple"] };
+    }
+    if (a0 === "Business / Brand" && a1 === "Contact / Enquire") {
+      return { prompt: "How urgently?", options: ["ASAP (phone/form)", "At their leisure"] };
+    }
+    if (a0 === "Business / Brand" && a1 === "Buy something") {
+      return { prompt: "Do you have a product page?", options: ["Yes, link me", "No, just describe"] };
+    }
+  }
+  return null;
+}
+
+function getRecommendations(answers: string[]): BlockKind[] {
+  const [a0, a1, a2] = answers;
+  // Creator paths
+  if (a0 === "Creator / Influencer") {
+    if (a1 === "Grow my following") {
+      if (a2 === "Instagram / TikTok") return ["social-links", "link" as any, "poll", "countdown", "text"] as BlockKind[];
+      if (a2 === "YouTube") return ["video", "link" as any, "social-links", "countdown", "poll"] as BlockKind[];
+      if (a2 === "Twitter / X" || a2 === "Multiple") return ["social-links", "link" as any, "poll", "countdown", "text"] as BlockKind[];
+    }
+    if (a1 === "Monetise my content") return ["button", "lead-form", "testimonial", "link" as any, "text"] as BlockKind[];
+    if (a1 === "Build a community") return ["poll", "lead-form", "text", "social-links", "countdown"] as BlockKind[];
+  }
+  // Business paths
+  if (a0 === "Business / Brand") {
+    if (a1 === "Contact / Enquire") {
+      if (a2 === "ASAP (phone/form)") return ["lead-form", "button", "text", "social-links", "testimonial"] as BlockKind[];
+      if (a2 === "At their leisure") return ["text", "faq", "lead-form", "social-links", "button"] as BlockKind[];
+    }
+    if (a1 === "Buy something") {
+      if (a2 === "Yes, link me") return ["button", "testimonial", "countdown", "lead-form", "text"] as BlockKind[];
+      if (a2 === "No, just describe") return ["text", "testimonial", "lead-form", "button", "faq"] as BlockKind[];
+    }
+    if (a1 === "Learn about us") return ["text", "faq", "testimonial", "social-links", "link" as any] as BlockKind[];
+  }
+  // Freelancer
+  if (a0 === "Freelancer / Consultant") {
+    if (a1 === "Get more clients") return ["lead-form", "testimonial", "button", "text", "link" as any] as BlockKind[];
+    if (a1 === "Share my work") return ["link" as any, "image", "testimonial", "text", "social-links"] as BlockKind[];
+    if (a1 === "Both") return ["lead-form", "testimonial", "button", "link" as any, "text"] as BlockKind[];
+  }
+  // Job seeker
+  if (a0 === "Job Seeker") {
+    if (a1 === "My CV / Portfolio") return ["link" as any, "text", "button", "image", "social-links"] as BlockKind[];
+    if (a1 === "References / Testimonials") return ["testimonial", "text", "link" as any, "lead-form", "social-links"] as BlockKind[];
+  }
+  return ["text", "link" as any, "button", "social-links", "lead-form"] as BlockKind[];
+}
+
+const BLOCK_META: Record<string, { icon: string; name: string; desc: string }> = {
+  text: { icon: "📝", name: "Text", desc: "Headlines, intros, and body copy" },
+  poll: { icon: "🗳️", name: "Poll", desc: "Ask a question and gather opinions" },
+  "lead-form": { icon: "📧", name: "Lead Form", desc: "Capture emails and enquiries" },
+  image: { icon: "🖼️", name: "Image", desc: "Photos, illustrations, or screenshots" },
+  video: { icon: "🎬", name: "Video", desc: "Embed YouTube, Vimeo, or Loom" },
+  "social-links": { icon: "🌐", name: "Socials", desc: "Twitter, Instagram, LinkedIn, etc." },
+  countdown: { icon: "⏰", name: "Countdown", desc: "Build anticipation with a timer" },
+  divider: { icon: "➖", name: "Divider", desc: "Section break" },
+  button: { icon: "🔘", name: "Button", desc: "Strong call-to-action link" },
+  testimonial: { icon: "💬", name: "Testimonial", desc: "Customer quotes or reviews" },
+  faq: { icon: "❓", name: "FAQ", desc: "Common questions and answers" },
+  link: { icon: "🔗", name: "Link", desc: "A single link" },
+};
+
+// Map wizard recommendations (which may include "link") onto valid block kinds we render today.
+// We treat "link" as a button block since the AddBlockForm doesn't expose a standalone link kind here.
+function normaliseRecommendation(kind: string): BlockKind {
+  if (kind === "link") return "button" as BlockKind;
+  return kind as BlockKind;
+}
+
+function SmartBlockWizard({ onPick, onSkip }: { onPick: (kind: BlockKind) => void; onSkip: () => void }) {
+  const [wizardAnswers, setWizardAnswers] = useState<string[]>([]);
+  const [recommendations, setRecommendations] = useState<string[] | null>(null);
+
+  const question = recommendations === null ? getNextQuestion(wizardAnswers) : null;
+
+  const answer = (opt: string) => {
+    const nextAnswers = [...wizardAnswers, opt];
+    setWizardAnswers(nextAnswers);
+    const nextQ = getNextQuestion(nextAnswers);
+    if (!nextQ) {
+      setRecommendations(getRecommendations(nextAnswers));
+    }
+  };
+
+  const restart = () => {
+    setWizardAnswers([]);
+    setRecommendations(null);
+  };
+
+  return (
+    <div style={{ background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", borderRadius: "var(--radius-lg)", padding: "1rem", marginBottom: "1rem" }} data-testid="smart-block-wizard">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem", gap: "0.5rem" }}>
+        <div style={{ fontSize: "var(--text-sm)", fontWeight: 800, color: "var(--color-primary)" }}>🤖 Smart Block Recommender</div>
+        <button type="button" onClick={onSkip} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 11, fontWeight: 600 }} data-testid="button-wizard-skip">
+          I'll choose myself →
+        </button>
+      </div>
+
+      {recommendations === null && question && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <p style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{question.prompt}</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
+            {question.options.map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => answer(opt)}
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: 12, fontWeight: 600 }}
+                data-testid={`button-wizard-answer-${opt.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recommendations && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <p style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>Based on your answers, try these blocks:</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "0.5rem" }}>
+            {recommendations.map((kind, i) => {
+              const meta = BLOCK_META[kind] ?? BLOCK_META.text;
+              return (
+                <button
+                  key={`${kind}-${i}`}
+                  type="button"
+                  onClick={() => onPick(normaliseRecommendation(kind))}
+                  style={{ textAlign: "left", padding: "0.625rem 0.75rem", borderRadius: "var(--radius-md)", border: "1.5px solid var(--color-border)", background: "var(--color-surface)", cursor: "pointer", display: "flex", flexDirection: "column", gap: 4 }}
+                  data-testid={`button-wizard-rec-${kind}`}
+                >
+                  <span style={{ fontSize: 16 }}>{meta.icon} <span style={{ fontSize: 13, fontWeight: 700 }}>{meta.name}</span></span>
+                  <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{meta.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" onClick={restart} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-primary)", fontSize: 11, fontWeight: 600, alignSelf: "flex-start", marginTop: "0.25rem" }} data-testid="button-wizard-restart">↻ Start over</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AddBlockForm({ onAdd, saving }: { onAdd: (b: PageBlock) => void; saving: boolean }) {
   const [blockType, setBlockType] = useState<BlockKind>("text");
+  const [wizardSkipped, setWizardSkipped] = useState(false);
   // Text
   const [textTitle, setTextTitle] = useState("");
   const [textContent, setTextContent] = useState("");
@@ -1352,6 +1614,14 @@ function AddBlockForm({ onAdd, saving }: { onAdd: (b: PageBlock) => void; saving
   return (
     <div style={{ background: "var(--color-surface-2)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem", marginTop: "1.5rem" }}>
       <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>+ Add a content block</div>
+
+      {!wizardSkipped && (
+        <SmartBlockWizard
+          onPick={(kind) => { setBlockType(kind); setWizardSkipped(true); setError(""); }}
+          onSkip={() => setWizardSkipped(true)}
+        />
+      )}
+
       <div style={{ display: "flex", gap: "0.375rem", marginBottom: "0.875rem", flexWrap: "wrap" }}>
         {([
           { id: "text", label: "📝 Text" },
@@ -2147,11 +2417,37 @@ function LeadsPanel({ pages }: { pages: any[] }) {
 }
 
 // --- Contacts Panel ---
+// --- Follow-up helpers ---
+function getFollowUpStatus(dateStr: string): { label: string; color: string } {
+  const diff = new Date(dateStr).getTime() - Date.now();
+  if (diff < 0) return { label: "OVERDUE", color: "red" };
+  if (diff < 86400000) return { label: "Due soon", color: "amber" };
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor((diff % 86400000) / 3600000);
+  return { label: `Follow-up: ${d}d ${h}h`, color: "gray" };
+}
+
+function FollowUpBadge({ dateStr }: { dateStr: string }) {
+  const { label, color } = getFollowUpStatus(dateStr);
+  const palette: Record<string, { bg: string; fg: string; border: string }> = {
+    red: { bg: "#fee2e2", fg: "#991b1b", border: "#fecaca" },
+    amber: { bg: "#fef3c7", fg: "#92400e", border: "#fde68a" },
+    gray: { bg: "#f1f5f9", fg: "#475569", border: "#e2e8f0" },
+  };
+  const p = palette[color] || palette.gray;
+  return (
+    <span style={{ display: "inline-block", padding: "2px 6px", borderRadius: 4, background: p.bg, color: p.fg, border: `1px solid ${p.border}`, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }} data-testid="badge-follow-up">
+      {label}
+    </span>
+  );
+}
+
 function ContactsPanel() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [search, setSearch] = useState("");
+  const [notificationStatus, setNotificationStatus] = useState<NotificationPermission | "unsupported">(typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported");
 
   const { data: contacts, isLoading } = useQuery<any[]>({
     queryKey: ["/api/contacts"],
@@ -2250,6 +2546,36 @@ function ContactsPanel() {
     return (c.name || "").toLowerCase().includes(q) || (c.email || "").toLowerCase().includes(q) || (c.company || "").toLowerCase().includes(q);
   });
 
+  const overdueContacts = (contacts || []).filter((c: any) =>
+    c.followUpDate && !c.followUpDone &&
+    new Date(c.followUpDate).getTime() - Date.now() < 86400000
+  );
+
+  // Fire browser notifications for follow-ups due within 1 hour (only when already granted)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    const dueContacts = (contacts || []).filter((c: any) =>
+      c.followUpDate && !c.followUpDone &&
+      new Date(c.followUpDate).getTime() - Date.now() < 3600000
+    );
+    dueContacts.forEach((c: any) => {
+      try {
+        new Notification("Follow-up due", {
+          body: `${c.name} — ${c.followUpNote || "No details"}`,
+        });
+      } catch {}
+    });
+  }, [contacts]);
+
+  const enableNotifications = async () => {
+    if (!("Notification" in window)) return;
+    try {
+      const result = await Notification.requestPermission();
+      setNotificationStatus(result);
+    } catch {}
+  };
+
   const exportCsv = () => {
     const rows = [["Name", "Email", "Company", "Phone", "Source", "Created"]];
     (contacts || []).forEach((c: any) => {
@@ -2271,11 +2597,23 @@ function ContactsPanel() {
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>Contacts</h1>
           <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginTop: "0.25rem" }}>{(contacts || []).length} total</p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          {notificationStatus !== "granted" && notificationStatus !== "unsupported" && (
+            <button onClick={enableNotifications} className="btn btn-secondary btn-sm" data-testid="button-enable-notifications">🔔 Enable notifications</button>
+          )}
           <button onClick={exportCsv} className="btn btn-secondary btn-sm" data-testid="button-export-contacts">Export CSV</button>
           <button onClick={() => setAddOpen(true)} className="btn btn-primary btn-sm" data-testid="button-add-contact">+ Add contact</button>
         </div>
       </div>
+
+      {overdueContacts.length > 0 && (
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "var(--radius-md)", padding: "0.75rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }} data-testid="banner-follow-up-overdue">
+          <span>⚠️</span>
+          <span style={{ fontSize: "var(--text-sm)", color: "#991b1b" }}>
+            {overdueContacts.length} follow-up{overdueContacts.length > 1 ? "s" : ""} overdue or due soon
+          </span>
+        </div>
+      )}
 
       <div className="card" style={{ padding: "0.75rem", marginBottom: "1rem" }}>
         <input className="input" placeholder="Search by name, email, or company…" value={search} onChange={e => setSearch(e.target.value)} data-testid="input-contact-search" />
@@ -2306,7 +2644,12 @@ function ContactsPanel() {
             <tbody>
               {filtered.map((c: any) => (
                 <tr key={c.id} style={{ borderBottom: "1px solid var(--color-divider)", cursor: "pointer" }} onClick={() => setSelectedId(c.id)} data-testid={`row-contact-${c.id}`}>
-                  <td style={{ padding: "0.75rem", fontWeight: 600 }}>{c.name}</td>
+                  <td style={{ padding: "0.75rem", fontWeight: 600 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span>{c.name}</span>
+                      {c.followUpDate && !c.followUpDone && <FollowUpBadge dateStr={c.followUpDate} />}
+                    </div>
+                  </td>
                   <td style={{ padding: "0.75rem", color: "var(--color-text-muted)" }}>{c.email}</td>
                   <td style={{ padding: "0.75rem", color: "var(--color-text-muted)" }}>{c.company || "—"}</td>
                   <td style={{ padding: "0.75rem" }}><span className="badge" style={{ background: "var(--color-surface-offset)", fontSize: 10 }}>{c.source || "manual"}</span></td>
@@ -2380,6 +2723,8 @@ function ContactsPanel() {
               <form onSubmit={e => {
                 e.preventDefault();
                 const fd = new FormData(e.target as HTMLFormElement);
+                const followUpDateRaw = String(fd.get("followUpDate") || "").trim();
+                const followUpNoteRaw = String(fd.get("followUpNote") || "").trim();
                 updateMutation.mutate({
                   id: detail.contact.id,
                   data: {
@@ -2389,6 +2734,8 @@ function ContactsPanel() {
                     phone: fd.get("phone") || undefined,
                     source: fd.get("source") || undefined,
                     notes: fd.get("notes") || undefined,
+                    followUpDate: followUpDateRaw ? new Date(followUpDateRaw).toISOString() : null,
+                    followUpNote: followUpNoteRaw || null,
                   },
                 });
               }} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -2405,6 +2752,43 @@ function ContactsPanel() {
                   <option value="Other">Other</option>
                 </select>
                 <textarea name="notes" defaultValue={detail.contact.notes || ""} className="input" placeholder="Notes" rows={4} style={{ resize: "none" }} />
+
+                <div style={{ borderTop: "1px solid var(--color-divider)", paddingTop: "1rem" }}>
+                  <h4 style={{ fontWeight: 600, fontSize: "var(--text-sm)", marginBottom: "0.75rem" }}>Follow-up Reminder</h4>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--color-text-muted)", marginBottom: 4 }}>Date &amp; time</label>
+                  <input
+                    name="followUpDate"
+                    type="datetime-local"
+                    className="input"
+                    defaultValue={detail.contact.followUpDate ? new Date(detail.contact.followUpDate).toISOString().slice(0, 16) : ""}
+                    style={{ marginBottom: "0.5rem" }}
+                    data-testid="input-follow-up-date"
+                  />
+                  <label style={{ display: "block", fontSize: 11, color: "var(--color-text-muted)", marginBottom: 4 }}>Note</label>
+                  <textarea
+                    name="followUpNote"
+                    className="input"
+                    placeholder="What needs to be done?"
+                    defaultValue={detail.contact.followUpNote || ""}
+                    rows={2}
+                    style={{ resize: "none", marginBottom: "0.5rem" }}
+                    data-testid="input-follow-up-note"
+                  />
+                  {detail.contact.followUpDate && !detail.contact.followUpDone && (
+                    <button
+                      type="button"
+                      onClick={() => updateMutation.mutate({ id: detail.contact.id, data: { followUpDone: true } })}
+                      className="btn btn-secondary btn-sm"
+                      data-testid="button-mark-follow-up-done"
+                    >
+                      ✓ Mark Done
+                    </button>
+                  )}
+                  {detail.contact.followUpDone && (
+                    <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>Marked done</span>
+                  )}
+                </div>
+
                 <button type="submit" disabled={updateMutation.isPending} className="btn btn-primary btn-sm" style={{ alignSelf: "flex-end" }}>{updateMutation.isPending ? "Saving…" : "Save"}</button>
               </form>
             ) : (
@@ -2502,6 +2886,7 @@ function NewPageWizardModal({ open, onClose, onCreated }: { open: boolean; onClo
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       const id = data?.page?.id || data?.id;
       if (id) onCreated(id);
       setStep(1); setUsername(""); setTitle(""); setAccent("#e06b1a"); setBg("none");
@@ -2821,13 +3206,29 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
 // --- Main Dashboard ---
 export default function DashboardPage() {
   const [activeNav, setActiveNav] = useState("overview");
-  const [sharedLink, setSharedLink] = useState(false);
   const [activePageId, setActivePageId] = useState<number | null>(null);
   const [newPageWizardOpen, setNewPageWizardOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { theme, setTheme } = useTheme();
-  const { user, pages, isLoading, logout } = useAuth();
+  const { user, pages, isLoading, logout, refetch } = useAuth();
   const [, navigate] = useLocation();
+
+  // Goal 7: onboarding state driven by API
+  const sharedLink = !!(user as any)?.onboardingSharedLink;
+  const onboardingDismissed = !!(user as any)?.onboardingDismissed;
+  const markShared = async () => {
+    try {
+      await apiRequest("POST", "/api/account/onboarding/shared", {});
+      await refetch?.();
+    } catch {}
+  };
+  const dismissOnboarding = async () => {
+    try {
+      await apiRequest("POST", "/api/account/onboarding/dismiss", {});
+      await refetch?.();
+    } catch {}
+  };
 
   useEffect(() => {
     if (pages.length && activePageId == null) setActivePageId(pages[0].id);
@@ -2882,7 +3283,7 @@ export default function DashboardPage() {
 
   const renderPanel = () => {
     switch (activeNav) {
-      case "overview": return <OverviewPanel pages={pages} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={() => setSharedLink(true)} activePageId={activePageId} setActivePageId={setActivePageId} />;
+      case "overview": return <OverviewPanel pages={pages} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
       case "editor": return <EditorPanel pages={pages} activePageId={activePageId} />;
       case "analytics": return <AnalyticsPanel pages={pages} activePageId={activePageId} setActivePageId={setActivePageId} />;
       case "leads": return <LeadsPanel pages={pages} />;
@@ -2912,43 +3313,54 @@ export default function DashboardPage() {
           </div>
         </div>
       );
-      default: return <OverviewPanel pages={pages} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={() => setSharedLink(true)} activePageId={activePageId} setActivePageId={setActivePageId} />;
+      default: return <OverviewPanel pages={pages} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
     }
   };
 
   return (
     <div className="dashboard-shell" style={{ display: "flex", height: "100dvh", overflow: "hidden", background: "var(--color-bg)" }}>
       {/* Sidebar */}
-      <nav className="dashboard-sidebar" style={{
-        width: 220, flexShrink: 0,
+      <nav className={`dashboard-sidebar${sidebarCollapsed ? " collapsed" : ""}`} style={{
+        width: sidebarCollapsed ? 64 : 220, flexShrink: 0,
         background: "var(--color-surface)",
         borderRight: "1px solid var(--color-border)",
         display: "flex", flexDirection: "column",
-        height: "100dvh", overflow: "hidden"
+        height: "100dvh", overflow: "hidden",
+        transition: "width 0.18s ease"
       }}>
         {/* Logo */}
-        <div style={{ padding: "1.25rem 1rem 1rem", borderBottom: "1px solid var(--color-divider)" }}>
-          <Link href="/" style={{ textDecoration: "none", color: "var(--color-text)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <svg width="100" height="26" viewBox="0 0 120 32" fill="none">
-              <rect x="0" y="4" width="10" height="24" rx="3" fill="currentColor" opacity="0.9"/>
-              <rect x="13" y="9" width="10" height="19" rx="3" fill="currentColor" opacity="0.7"/>
-              <rect x="26" y="14" width="10" height="14" rx="3" fill="var(--color-primary)"/>
-              <text x="42" y="22" fontFamily="Cabinet Grotesk, sans-serif" fontWeight="800" fontSize="17" fill="currentColor" letterSpacing="-0.5">linkbay</text>
-            </svg>
+        <div style={{ padding: sidebarCollapsed ? "1.25rem 0.5rem 1rem" : "1.25rem 1rem 1rem", borderBottom: "1px solid var(--color-divider)", display: "flex", justifyContent: "center" }}>
+          <Link href="/" style={{ textDecoration: "none", color: "var(--color-text)", display: "flex", alignItems: "center", gap: "0.5rem" }} title="Linkbay">
+            {sidebarCollapsed ? (
+              <svg width="32" height="26" viewBox="0 0 36 32" fill="none" aria-label="Linkbay">
+                <rect x="0" y="4" width="10" height="24" rx="3" fill="currentColor" opacity="0.9"/>
+                <rect x="13" y="9" width="10" height="19" rx="3" fill="currentColor" opacity="0.7"/>
+                <rect x="26" y="14" width="10" height="14" rx="3" fill="var(--color-primary)"/>
+              </svg>
+            ) : (
+              <svg width="100" height="26" viewBox="0 0 120 32" fill="none">
+                <rect x="0" y="4" width="10" height="24" rx="3" fill="currentColor" opacity="0.9"/>
+                <rect x="13" y="9" width="10" height="19" rx="3" fill="currentColor" opacity="0.7"/>
+                <rect x="26" y="14" width="10" height="14" rx="3" fill="var(--color-primary)"/>
+                <text x="42" y="22" fontFamily="Cabinet Grotesk, sans-serif" fontWeight="800" fontSize="17" fill="currentColor" letterSpacing="-0.5">linkbay</text>
+              </svg>
+            )}
           </Link>
         </div>
 
         {/* User */}
-        <div style={{ padding: "0.875rem 1rem", borderBottom: "1px solid var(--color-divider)", display: "flex", alignItems: "center", gap: "0.625rem" }}>
+        <div style={{ padding: sidebarCollapsed ? "0.875rem 0.5rem" : "0.875rem 1rem", borderBottom: "1px solid var(--color-divider)", display: "flex", alignItems: "center", gap: "0.625rem", justifyContent: sidebarCollapsed ? "center" : "flex-start" }} title={sidebarCollapsed ? `${user.name} — ${user.email}` : undefined}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--color-primary)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{userInitials}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</div>
-            <div style={{ fontSize: 10, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>
-          </div>
+          {!sidebarCollapsed && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</div>
+              <div style={{ fontSize: 10, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>
+            </div>
+          )}
         </div>
 
         {/* Page switcher */}
-        {pages.length > 0 && (
+        {pages.length > 0 && !sidebarCollapsed && (
           <div style={{ margin: "0.75rem 1rem 0" }}>
             <label style={{ display: "block", fontSize: 10, color: "var(--color-text-faint)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: "0.25rem" }}>Active page</label>
             <select
@@ -2972,15 +3384,16 @@ export default function DashboardPage() {
               key={item.id}
               onClick={() => setActiveNav(item.id)}
               className={`sidebar-nav-item ${activeNav === item.id ? "active" : ""}`}
-              style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", position: "relative" }}
+              style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", position: "relative", justifyContent: sidebarCollapsed ? "center" : undefined }}
               data-testid={`button-nav-${item.id}`}
+              title={sidebarCollapsed ? item.label : undefined}
             >
               {icons[item.icon]}
-              {item.label}
+              {!sidebarCollapsed && item.label}
               {/* New leads notification dot */}
               {item.id === "leads" && newLeadsCount > 0 && activeNav !== "leads" && (
                 <span style={{
-                  position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                  position: "absolute", right: sidebarCollapsed ? 4 : 8, top: sidebarCollapsed ? 4 : "50%", transform: sidebarCollapsed ? "none" : "translateY(-50%)",
                   width: 18, height: 18, borderRadius: "50%", background: "var(--color-error)",
                   color: "white", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
                 }} data-testid="badge-new-leads">
@@ -2993,10 +3406,11 @@ export default function DashboardPage() {
             <button
               onClick={() => setNewPageWizardOpen(true)}
               className="sidebar-nav-item"
-              style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", color: "var(--color-primary)", fontWeight: 600 }}
+              style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", color: "var(--color-primary)", fontWeight: 600, justifyContent: sidebarCollapsed ? "center" : undefined }}
               data-testid="button-new-page-wizard"
+              title={sidebarCollapsed ? "New page" : undefined}
             >
-              {icons.plus} New page
+              {icons.plus} {!sidebarCollapsed && "New page"}
             </button>
           </div>
         </div>
@@ -3006,31 +3420,46 @@ export default function DashboardPage() {
           <button
             onClick={() => setHelpOpen(true)}
             className="sidebar-nav-item"
-            style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left" }}
+            style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", justifyContent: sidebarCollapsed ? "center" : undefined }}
             aria-label="Help"
             data-testid="button-help"
+            title={sidebarCollapsed ? "Help & guides" : undefined}
           >
             <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: "50%", border: "1.5px solid currentColor", fontSize: 11, fontWeight: 800 }}>?</span>
-            Help &amp; guides
+            {!sidebarCollapsed && "Help & guides"}
           </button>
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className="sidebar-nav-item"
-            style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left" }}
+            style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", justifyContent: sidebarCollapsed ? "center" : undefined }}
             aria-label="Toggle theme"
             data-testid="button-toggle-theme"
+            title={sidebarCollapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
           >
             {theme === "dark" ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
-            {theme === "dark" ? "Light mode" : "Dark mode"}
+            {!sidebarCollapsed && (theme === "dark" ? "Light mode" : "Dark mode")}
+          </button>
+          {/* Collapse / expand toggle (desktop only) */}
+          <button
+            onClick={() => setSidebarCollapsed(v => !v)}
+            className="sidebar-nav-item sidebar-collapse-toggle"
+            style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", justifyContent: sidebarCollapsed ? "center" : undefined }}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            data-testid="button-sidebar-collapse"
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            {!sidebarCollapsed && "Collapse"}
           </button>
           <button
             onClick={async () => { await logout(); navigate("/"); }}
             className="sidebar-nav-item"
-            style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left" }}
+            style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", justifyContent: sidebarCollapsed ? "center" : undefined }}
             data-testid="button-logout"
+            title={sidebarCollapsed ? "Sign out" : undefined}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            Sign out
+            {!sidebarCollapsed && "Sign out"}
           </button>
         </div>
       </nav>

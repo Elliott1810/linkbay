@@ -9,6 +9,9 @@ export const users = sqliteTable("users", {
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
   avatarUrl: text("avatar_url"),
+  lastSignIn: text("last_sign_in"),
+  onboardingDismissed: integer("onboarding_dismissed").default(0),
+  onboardingSharedLink: integer("onboarding_shared_link").default(0),
   createdAt: text("created_at").notNull().default(""),
 });
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, passwordHash: true }).extend({
@@ -58,6 +61,7 @@ export const pages = sqliteTable("pages", {
   theme: text("theme").notNull().default("default"),    // "default" | "midnight" | "ocean" | "forest"
   background: text("background").notNull().default("none"),
   avatarShape: text("avatar_shape").notNull().default("circle"),  // "circle" | "rounded"
+  textColor: text("text_color").default("auto"),        // "auto" | "light" | "dark"
   blocks: text("blocks").notNull().default("[]"),       // JSON array of block objects
   published: integer("published", { mode: "boolean" }).notNull().default(false),
   viewCount: integer("view_count").notNull().default(0),
@@ -151,6 +155,9 @@ export const contacts = sqliteTable("contacts", {
   tags: text("tags"),                            // JSON array
   sourceLeadId: integer("source_lead_id"),
   source: text("source").default("Manual"),
+  followUpDate: text("follow_up_date"),
+  followUpNote: text("follow_up_note"),
+  followUpDone: integer("follow_up_done").default(0),
   createdAt: text("created_at").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(""),
 });

@@ -68,6 +68,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       req.session.userId = user.id;
       req.session.userEmail = user.email;
       req.session.userName = user.name;
+      try { await storage.updateLastSignIn(user.email); } catch {}
       req.session.save((err) => {
         if (err) return res.status(500).json({ error: "Session error" });
         res.json({ success: true, user: { id: user.id, email: user.email, name: user.name } });
@@ -90,7 +91,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!user) return res.status(401).json({ user: null });
     // Also return their pages
     const pages = await storage.getPagesByOwner(user.email);
-    res.json({ user: { id: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl }, pages });
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatarUrl: user.avatarUrl,
+        onboardingDismissed: !!(user as any).onboardingDismissed,
+        onboardingSharedLink: !!(user as any).onboardingSharedLink,
+        lastSignIn: (user as any).lastSignIn ?? null,
+      },
+      pages,
+    });
+  });
+
+  // Onboarding flag endpoints (Goal 7)
+  app.post("/api/account/onboarding/shared", requireAuth as any, async (req, res) => {
+    try {
+      await storage.updateUserOnboarding(req.session.userEmail!, "shared_link", 1);
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Server error" }); }
+  });
+  app.post("/api/account/onboarding/dismiss", requireAuth as any, async (req, res) => {
+    try {
+      await storage.updateUserOnboarding(req.session.userEmail!, "dismissed", 1);
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Server error" }); }
   });
 
   // ─────────────────────────────────────────────────
@@ -184,11 +210,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // POST track a link click (public)
+  // POST track a link click (public) — also records a `link_click` page event for analytics (Goal 15)
   app.post("/api/links/:linkId/click", async (req, res) => {
     try {
       const linkId = parseInt(req.params.linkId);
       await storage.incrementLinkClick(linkId);
+      // Record analytics event
+      try {
+        const link = await storage.getLinkById(linkId);
+        if (link) {
+          const ua = String(req.headers["user-agent"] || "");
+          const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
+          await storage.recordEvent({ pageId: link.pageId, type: "link_click", linkId, device } as any);
+        }
+      } catch {}
+      res.json({ success: true });
+    } catch { res.json({ success: false }); }
+  });
+
+  // POST track a generic block interaction (button / social link) (Goal 15)
+  app.post("/api/pages/:pageId/track-click", async (req, res) => {
+    try {
+      const pageId = parseInt(req.params.pageId);
+      const ua = String(req.headers["user-agent"] || "");
+      const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
+      await storage.recordEvent({ pageId, type: "link_click", device } as any);
       res.json({ success: true });
     } catch { res.json({ success: false }); }
   });
@@ -258,6 +304,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         theme: z.string().max(40).optional(),
         background: z.string().max(400).optional(),
         avatarShape: z.enum(["circle", "rounded"]).optional(),
+        textColor: z.enum(["auto", "light", "dark"]).optional(),
         blocks: z.string().optional(),
         phone: z.string().max(40).optional(),
         contactEmail: z.string().max(200).optional(),
@@ -491,9 +538,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         notes: z.string().max(5000).optional(),
         tags: z.string().optional(),
         source: z.string().max(80).optional(),
+        followUpDate: z.string().nullable().optional(),
+        followUpNote: z.string().max(2000).nullable().optional(),
+        followUpDone: z.union([z.number(), z.boolean()]).optional().transform(v => typeof v === "boolean" ? (v ? 1 : 0) : v),
       });
       const data = allowed.parse(req.body);
-      const contact = await storage.updateContact(id, data);
+      const contact = await storage.updateContact(id, data as any);
       res.json({ success: true, contact });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
@@ -922,7 +972,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const sqlite = require("better-sqlite3")(process.env.DB_PATH || "data.db") as import("better-sqlite3").Database;
 
     const users = sqlite.prepare(`
-      SELECT id, email, name, created_at,
+      SELECT id, email, name, created_at, last_sign_in,
         (SELECT COUNT(*) FROM pages WHERE owner_email = users.email) as page_count
       FROM users ORDER BY created_at DESC
     `).all() as any[];
@@ -943,9 +993,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const totalClicks = (sqlite.prepare("SELECT SUM(click_count) as c FROM page_links").get() as any).c || 0;
     const totalViews = (sqlite.prepare("SELECT SUM(view_count) as c FROM pages WHERE published = 1").get() as any).c || 0;
 
-    const recentSignups = sqlite.prepare(`
-      SELECT email, name, created_at FROM users ORDER BY created_at DESC LIMIT 10
+    // Event-type breakdown (Goal 2)
+    const eventsByType = sqlite.prepare("SELECT type, COUNT(*) as c FROM page_events GROUP BY type").all() as Array<{ type: string; c: number }>;
+    const viewEvents = eventsByType.find(e => e.type === "view")?.c || 0;
+    const linkClickEvents = eventsByType.find(e => e.type === "link_click")?.c || 0;
+    const leadSubmitEvents = eventsByType.find(e => e.type === "lead_submit")?.c || 0;
+
+    // Platform stats (Goal 4)
+    const now = Date.now();
+    const sevenDaysAgo = new Date(now - 7 * 86400000).toISOString();
+    const thirtyDaysAgo = new Date(now - 30 * 86400000).toISOString();
+    const signupsWeek = (sqlite.prepare("SELECT COUNT(*) as c FROM users WHERE created_at >= ?").get(sevenDaysAgo) as any).c;
+    const signupsMonth = (sqlite.prepare("SELECT COUNT(*) as c FROM users WHERE created_at >= ?").get(thirtyDaysAgo) as any).c;
+    const pagesPublished = (sqlite.prepare("SELECT COUNT(*) as c FROM pages WHERE published = 1").get() as any).c;
+    const pagesDraft = (sqlite.prepare("SELECT COUNT(*) as c FROM pages WHERE published = 0").get() as any).c;
+    const mostActivePages = sqlite.prepare(`
+      SELECT username, owner_name, view_count
+      FROM pages
+      ORDER BY view_count DESC LIMIT 5
     `).all() as any[];
+    const topLeadPages = sqlite.prepare(`
+      SELECT p.username, p.owner_name, COUNT(l.id) as lead_count
+      FROM pages p LEFT JOIN leads l ON l.page_id = p.id
+      GROUP BY p.id
+      ORDER BY lead_count DESC LIMIT 5
+    `).all() as any[];
+    const avgLinksRow = sqlite.prepare(`
+      SELECT AVG(c) as avg FROM (SELECT COUNT(*) as c FROM page_links GROUP BY page_id)
+    `).get() as any;
+    const avgLinks = avgLinksRow?.avg ? Number(avgLinksRow.avg).toFixed(1) : "0.0";
+    const devicesBreakdown = sqlite.prepare(`
+      SELECT device, COUNT(*) as c FROM page_events WHERE device IS NOT NULL GROUP BY device
+    `).all() as Array<{ device: string; c: number }>;
+    const totalDeviceEvents = devicesBreakdown.reduce((s, d) => s + d.c, 0) || 1;
+    const devicePct = (name: string) => {
+      const found = devicesBreakdown.find(d => d.device === name)?.c || 0;
+      return Math.round((found / totalDeviceEvents) * 100);
+    };
 
     const recentLeads = sqlite.prepare(`
       SELECT l.id, l.name, l.email, l.message, l.created_at, p.username as page_username
@@ -955,13 +1039,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     sqlite.close();
 
-    // Recent connections — last 20 IPs from the in-memory ring buffer
+    // Recent connections — dedupe by IP, keep most recent (Goal 1)
     const { ipLogBuffer, geolocateIp } = await import("./ipLog");
-    const recentIps = ipLogBuffer.slice(0, 20);
-    const ipsWithGeo = await Promise.all(recentIps.map(async e => ({
+    const seenIps = new Set<string>();
+    const uniqueIps: typeof ipLogBuffer = [];
+    for (const entry of ipLogBuffer) {
+      if (!seenIps.has(entry.ip)) {
+        seenIps.add(entry.ip);
+        uniqueIps.push(entry);
+        if (uniqueIps.length >= 20) break;
+      }
+    }
+    const ipsWithGeo = await Promise.all(uniqueIps.map(async e => ({
       ...e,
       location: await geolocateIp(e.ip),
     })));
+
+    // Parse device + browser from user agent (Goal 1)
+    function parseDevice(ua: string): string {
+      if (!ua) return "—";
+      if (/iPad|Tablet/i.test(ua)) return "Tablet";
+      if (/Mobile|Android|iPhone/i.test(ua)) return "Mobile";
+      return "Desktop";
+    }
+    function parseBrowser(ua: string): string {
+      if (!ua) return "—";
+      if (/Edg\//i.test(ua)) return "Edge";
+      if (/Chrome\//i.test(ua)) return "Chrome";
+      if (/Firefox\//i.test(ua)) return "Firefox";
+      if (/Safari\//i.test(ua)) return "Safari";
+      return "Other";
+    }
+
+    // Active session check (Goal 3): user has IP entry in last 30 min
+    const thirtyMinAgo = now - 30 * 60 * 1000;
+    const activeUserEmails = new Set<string>();
+    for (const entry of ipLogBuffer) {
+      if (entry.userEmail && new Date(entry.timestamp).getTime() >= thirtyMinAgo) {
+        activeUserEmails.add(entry.userEmail);
+      }
+    }
 
     const fmt = (n: number) => n?.toLocaleString() ?? "0";
     const ago = (ts: string) => {
@@ -1022,22 +1139,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     <div class="stat"><div class="val">${fmt(totalViews)}</div><div class="lbl">Total views</div></div>
     <div class="stat"><div class="val">${fmt(totalClicks)}</div><div class="lbl">Total clicks</div></div>
     <div class="stat"><div class="val">${fmt(totalLeads)}</div><div class="lbl">Total leads</div></div>
-    <div class="stat"><div class="val">${fmt(totalEvents)}</div><div class="lbl">Events logged</div></div>
+    <div class="stat"><div class="val">${fmt(totalEvents)}</div><div class="lbl">Total Events (views + clicks + leads)</div></div>
+  </div>
+
+  <div class="section">
+    <h2>Event breakdown</h2>
+    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:13px">
+      <div><strong style="color:#e06b1a">Views:</strong> ${fmt(viewEvents)}</div>
+      <div><strong style="color:#e06b1a">Link Clicks:</strong> ${fmt(linkClickEvents)}</div>
+      <div><strong style="color:#e06b1a">Lead Submits:</strong> ${fmt(leadSubmitEvents)}</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Platform Stats</h2>
+    <div class="stats" style="margin-bottom:1rem">
+      <div class="stat"><div class="val">${fmt(signupsWeek)}</div><div class="lbl">Signups (7d)</div></div>
+      <div class="stat"><div class="val">${fmt(signupsMonth)}</div><div class="lbl">Signups (30d)</div></div>
+      <div class="stat"><div class="val">${fmt(pagesPublished)}</div><div class="lbl">Published</div></div>
+      <div class="stat"><div class="val">${fmt(pagesDraft)}</div><div class="lbl">Draft</div></div>
+      <div class="stat"><div class="val">${avgLinks}</div><div class="lbl">Avg links / page</div></div>
+    </div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;font-size:13px;margin-bottom:1rem">
+      <div><strong>Mobile:</strong> ${devicePct("mobile")}%</div>
+      <div><strong>Desktop:</strong> ${devicePct("desktop")}%</div>
+      <div><strong>Tablet:</strong> ${devicePct("tablet")}%</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+      <div>
+        <h3 style="font-size:12px;text-transform:uppercase;color:#888;margin-bottom:0.5rem">Most active pages</h3>
+        <table>
+          <tbody>${mostActivePages.map(p => `<tr><td><a href="/${escHtml(p.username)}" style="color:#e06b1a;text-decoration:none">/${escHtml(p.username)}</a></td><td class="email">${escHtml(p.owner_name)}</td><td style="text-align:right">${fmt(p.view_count)}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+      <div>
+        <h3 style="font-size:12px;text-transform:uppercase;color:#888;margin-bottom:0.5rem">Top lead-generating pages</h3>
+        <table>
+          <tbody>${topLeadPages.map(p => `<tr><td><a href="/${escHtml(p.username)}" style="color:#e06b1a;text-decoration:none">/${escHtml(p.username)}</a></td><td class="email">${escHtml(p.owner_name)}</td><td style="text-align:right">${fmt(p.lead_count)}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <div class="section">
     <h2>Users (${users.length})</h2>
     <table>
-      <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Pages</th><th>Joined</th><th>Time ago</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Pages</th><th>Joined</th><th>Last Sign In</th><th>Status</th><th></th></tr></thead>
       <tbody>
-        ${users.map((u, i) => `
+        ${users.map((u) => `
           <tr>
             <td style="color:#aaa">${u.id}</td>
             <td><strong>${escHtml(u.name)}</strong></td>
             <td class="email">${escHtml(u.email)}</td>
             <td>${u.page_count}</td>
             <td class="ts">${(u.created_at || "").slice(0,10)}</td>
-            <td class="ts">${ago(u.created_at)}</td>
+            <td class="ts">${u.last_sign_in ? ago(u.last_sign_in) : "—"}</td>
+            <td>${activeUserEmails.has(u.email) ? '<span style="color:#16a34a;font-weight:700">● Online</span>' : '<span style="color:#aaa">—</span>'}</td>
             <td><form method="POST" action="/admin/delete-user?id=${u.id}" onsubmit="return confirm('Delete user and all their pages?')" style="display:inline"><button class="delbtn" type="submit">Delete</button></form></td>
           </tr>`).join("")}
       </tbody>
@@ -1084,9 +1241,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   </div>
 
   <div class="section">
-    <h2>Recent connections (last 20)</h2>
+    <h2>Recent connections (last 20 unique IPs)</h2>
     <table>
-      <thead><tr><th>IP</th><th>Location</th><th>Path</th><th>User</th><th>Device</th><th>When</th></tr></thead>
+      <thead><tr><th>IP</th><th>Location</th><th>Last Path</th><th>User</th><th>Device</th><th>Browser</th><th>When</th></tr></thead>
       <tbody>
         ${ipsWithGeo.map(e => `
           <tr>
@@ -1094,9 +1251,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             <td class="ts">${escHtml(e.location)}</td>
             <td class="email">${escHtml(e.path)}</td>
             <td class="email">${escHtml(e.userEmail || "—")}</td>
-            <td class="ts" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml((e.userAgent || "").slice(0,80))}</td>
+            <td class="ts">${escHtml(parseDevice(e.userAgent))}</td>
+            <td class="ts">${escHtml(parseBrowser(e.userAgent))}</td>
             <td class="ts">${ago(e.timestamp)}</td>
-          </tr>`).join("") || '<tr><td colspan="6" class="ts" style="text-align:center;padding:1rem">No connections logged yet</td></tr>'}
+          </tr>`).join("") || '<tr><td colspan="7" class="ts" style="text-align:center;padding:1rem">No connections logged yet</td></tr>'}
       </tbody>
     </table>
   </div>

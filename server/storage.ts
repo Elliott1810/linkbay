@@ -122,6 +122,13 @@ try { sqlite.exec("ALTER TABLE leads ADD COLUMN is_linkbay_user INTEGER DEFAULT 
 try { sqlite.exec("ALTER TABLE pages ADD COLUMN avatar_shape TEXT NOT NULL DEFAULT 'circle'"); } catch {}
 try { sqlite.exec("ALTER TABLE page_events ADD COLUMN country TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE contacts ADD COLUMN source TEXT DEFAULT 'Manual'"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN last_sign_in TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN onboarding_dismissed INTEGER DEFAULT 0"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN onboarding_shared_link INTEGER DEFAULT 0"); } catch {}
+try { sqlite.exec("ALTER TABLE pages ADD COLUMN text_color TEXT DEFAULT 'auto'"); } catch {}
+try { sqlite.exec("ALTER TABLE contacts ADD COLUMN follow_up_date TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE contacts ADD COLUMN follow_up_note TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE contacts ADD COLUMN follow_up_done INTEGER DEFAULT 0"); } catch {}
 
 // Contacts table (idempotent)
 sqlite.exec(`
@@ -223,6 +230,8 @@ export interface IStorage {
   getUserById(id: number): Promise<User | undefined>;
   updateUser(id: number, data: Partial<{ name: string; passwordHash: string }>): Promise<User>;
   updateUserAvatar(userId: number, avatarUrl: string | null): Promise<User>;
+  updateLastSignIn(email: string): Promise<void>;
+  updateUserOnboarding(email: string, field: "shared_link" | "dismissed", value: number): Promise<void>;
   deleteUserCascade(userId: number, userEmail: string): Promise<void>;
   // Waitlist
   addWaitlist(data: InsertWaitlist): Promise<Waitlist>;
@@ -293,6 +302,13 @@ export class DatabaseStorage implements IStorage {
   }
   async updateUserAvatar(userId: number, avatarUrl: string | null): Promise<User> {
     return db.update(schema.users).set({ avatarUrl }).where(eq(schema.users.id, userId)).returning().get();
+  }
+  async updateLastSignIn(email: string): Promise<void> {
+    sqlite.prepare("UPDATE users SET last_sign_in = ? WHERE email = ?").run(new Date().toISOString(), email);
+  }
+  async updateUserOnboarding(email: string, field: "shared_link" | "dismissed", value: number): Promise<void> {
+    const col = field === "shared_link" ? "onboarding_shared_link" : "onboarding_dismissed";
+    sqlite.prepare(`UPDATE users SET ${col} = ? WHERE email = ?`).run(value, email);
   }
   async deleteUserCascade(userId: number, userEmail: string): Promise<void> {
     // Get all pages owned by this user

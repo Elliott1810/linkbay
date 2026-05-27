@@ -184,6 +184,26 @@ export function parseBackground(bg: string | null | undefined): { pattern: strin
   return { pattern: "none", color: bg };
 }
 
+// Returns whether the background is visually dark or light — used by Goal 6 to auto-pick text colour
+export function getBackgroundLuminance(bg: string | null | undefined): "dark" | "light" {
+  if (!bg) return "light";
+  const { color } = parseBackground(bg);
+  const darkColors = new Set(["charcoal", "midnight", "midnight-blue", "deep-purple", "forest", "ocean", "aurora", "sunset"]);
+  if (darkColors.has(color)) return "dark";
+  if (color && color.startsWith("#")) {
+    const hex = color.replace("#", "");
+    const full = hex.length === 3 ? hex.split("").map(c => c + c).join("") : hex;
+    if (full.length === 6) {
+      const r = parseInt(full.slice(0, 2), 16);
+      const g = parseInt(full.slice(2, 4), 16);
+      const b = parseInt(full.slice(4, 6), 16);
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance < 0.5 ? "dark" : "light";
+    }
+  }
+  return "light";
+}
+
 // Convert a background value to CSS for the profile page — supports JSON {pattern, color} + legacy string
 export function backgroundToCss(bg: string | null | undefined): React.CSSProperties {
   if (!bg || bg === "none") return {};

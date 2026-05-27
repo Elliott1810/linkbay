@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/App";
-import { backgroundToCss } from "./BuilderPage";
+import { backgroundToCss, getBackgroundLuminance } from "./BuilderPage";
 
 // ─── Types ───────────────────────────────────────────────────
 interface Block {
@@ -18,41 +18,58 @@ interface Block {
   position?: number;
   // text
   content?: string;
+  body?: string;
   // poll
   question?: string;
   options?: string[];
   // lead-form
   title?: string;
   buttonText?: string;
-  customFields?: { name: string; type: "text" | "dropdown" | "checkbox" | "number"; required: boolean; options?: string[] }[];
+  customFields?: { name: string; type: "text" | "dropdown" | "checkbox" | "number"; required: boolean; options?: string[]; description?: string }[];
   // media
   src?: string;
   alt?: string;
+  altText?: string;
   caption?: string;
   // social-links
   socials?: { platform: string; url: string }[];
+  platforms?: { platform: string; handle?: string; url: string }[];
   // countdown
   targetDate?: string;
+  showSeconds?: boolean;
+  // divider
+  thickness?: "thin" | "medium" | "thick";
+  dividerStyle?: "line" | "dots" | "spacer";
+  // button
+  color?: "accent" | "white" | "dark";
+  size?: "normal" | "large";
   // testimonial
   author?: string;
   authorRole?: string;
+  authorName?: string;
+  authorTitle?: string;
+  avatarUrl?: string;
   quote?: string;
   // faq
   faqs?: { q: string; a: string }[];
+  items?: { question: string; answer: string }[];
 }
 
 // ─── Extra block renderers ───────────────────────────────────
 function ImageBlock({ block }: { block: Block }) {
+  const src = block.src || block.url || "";
+  const alt = block.altText || block.alt || "";
+  if (!src) return null;
   return (
     <figure style={{ margin: 0, borderRadius: "var(--radius-lg)", overflow: "hidden", background: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
-      <img src={block.src} alt={block.alt || ""} style={{ width: "100%", display: "block", height: "auto" }} />
+      <img src={src} alt={alt} style={{ width: "100%", display: "block", height: "auto" }} />
       {block.caption && <figcaption style={{ padding: "0.5rem 0.75rem", fontSize: 12, color: "var(--color-text-muted)", textAlign: "center" }}>{block.caption}</figcaption>}
     </figure>
   );
 }
 
 function VideoBlock({ block }: { block: Block }) {
-  const src = block.src || "";
+  const src = block.src || block.url || "";
   let embedUrl = src;
   const yt = src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
   if (yt) embedUrl = `https://www.youtube.com/embed/${yt[1]}`;
@@ -69,16 +86,20 @@ function VideoBlock({ block }: { block: Block }) {
 }
 
 const SOCIAL_EMOJI: Record<string, string> = {
-  twitter: "🐦", instagram: "📷", linkedin: "💼", github: "🐱", tiktok: "🎥", youtube: "📺", facebook: "👥", website: "🌐",
+  twitter: "🐦", x: "𝕏", instagram: "📷", linkedin: "💼", github: "🐱", tiktok: "🎥", youtube: "📺", facebook: "👥", website: "🌐", pinterest: "📌", snapchat: "👻",
 };
 
-function SocialLinksBlock({ block, accent }: { block: Block; accent: string }) {
+function SocialLinksBlock({ block, accent, pageId }: { block: Block; accent: string; pageId: number }) {
+  // Support both legacy `socials` and new `platforms` shape
+  const items = (block.platforms || block.socials || []) as Array<{ platform: string; handle?: string; url: string }>;
+  const track = () => { apiRequest("POST", `/api/pages/${pageId}/track-click`).catch(() => {}); };
   return (
     <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", flexWrap: "wrap", padding: "0.75rem", background: "var(--color-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
-      {(block.socials || []).map((s, i) => (
-        <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.875rem", background: `${accent}14`, color: accent, textDecoration: "none", borderRadius: 999, fontSize: 13, fontWeight: 600, border: `1px solid ${accent}30` }}>
-          <span>{SOCIAL_EMOJI[s.platform] || "🔗"}</span>
-          <span style={{ textTransform: "capitalize" }}>{s.platform}</span>
+      {items.map((s, i) => (
+        <a key={i} href={s.url} onClick={track} target="_blank" rel="noopener noreferrer"
+           aria-label={s.platform}
+           style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, background: `${accent}14`, color: accent, textDecoration: "none", borderRadius: 999, fontSize: 18, fontWeight: 600, border: `1px solid ${accent}30` }}>
+          <span>{SOCIAL_EMOJI[s.platform.toLowerCase()] || "🔗"}</span>
         </a>
       ))}
     </div>
@@ -98,14 +119,18 @@ function CountdownBlock({ block, accent }: { block: Block; accent: string }) {
   const minutes = Math.floor((diff % 3600000) / 60000);
   const seconds = Math.floor((diff % 60000) / 1000);
   const ended = diff === 0 && target > 0;
+  const label = block.label || block.title;
+  const showSeconds = block.showSeconds !== false;
+  const units = [{ v: days, l: "days" }, { v: hours, l: "hrs" }, { v: minutes, l: "min" }];
+  if (showSeconds) units.push({ v: seconds, l: "sec" });
   return (
     <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", textAlign: "center" }}>
-      {block.title && <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>{block.title}</div>}
+      {label && <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>{label}</div>}
       {ended ? (
         <div style={{ fontSize: "var(--text-base)", color: accent, fontWeight: 700 }}>✨ The wait is over!</div>
       ) : (
         <div style={{ display: "flex", justifyContent: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-          {[{ v: days, l: "days" }, { v: hours, l: "hrs" }, { v: minutes, l: "min" }, { v: seconds, l: "sec" }].map(u => (
+          {units.map(u => (
             <div key={u.l} style={{ padding: "0.5rem 0.75rem", background: `${accent}14`, color: accent, borderRadius: 8, minWidth: 60 }}>
               <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1 }}>{String(u.v).padStart(2, "0")}</div>
               <div style={{ fontSize: 10, marginTop: 2, opacity: 0.8 }}>{u.l}</div>
@@ -117,23 +142,44 @@ function CountdownBlock({ block, accent }: { block: Block; accent: string }) {
   );
 }
 
-function DividerBlock() {
-  return <hr style={{ border: "none", borderTop: "1.5px solid var(--color-divider)", margin: "0.25rem 0" }} />;
+function DividerBlock({ block }: { block: Block }) {
+  const thickness = block.thickness === "thin" ? 1 : block.thickness === "thick" ? 4 : 2;
+  const style = block.dividerStyle || "line";
+  if (style === "spacer") {
+    return <div style={{ height: thickness * 8 }} />;
+  }
+  const borderStyle = style === "dots" ? "dotted" : "solid";
+  return <hr style={{ border: "none", borderTop: `${thickness}px ${borderStyle} var(--color-divider)`, margin: "0.25rem 0" }} />;
 }
 
-function ButtonBlock({ block, accent }: { block: Block; accent: string }) {
+function ButtonBlock({ block, accent, pageId }: { block: Block; accent: string; pageId: number }) {
+  const label = block.label || block.title || "Button";
+  const color = block.color || "accent";
+  const size = block.size || "normal";
+  const bg = color === "white" ? "#fff" : color === "dark" ? "#1a1917" : accent;
+  const fg = color === "white" ? "#1a1917" : "#fff";
+  const border = color === "white" ? "1px solid var(--color-border)" : "none";
+  const pad = size === "large" ? "1.125rem 1.5rem" : "0.875rem 1.25rem";
+  const fontSize = size === "large" ? "var(--text-base)" : "var(--text-sm)";
+  const track = () => { apiRequest("POST", `/api/pages/${pageId}/track-click`).catch(() => {}); };
   return (
-    <a href={block.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: "0.875rem 1.25rem", background: accent, color: "#fff", textDecoration: "none", borderRadius: "var(--radius-lg)", fontWeight: 700, fontSize: "var(--text-sm)" }}>{block.title}</a>
+    <a href={block.url} onClick={track} target="_blank" rel="noopener noreferrer"
+       style={{ display: "block", textAlign: "center", padding: pad, background: bg, color: fg, textDecoration: "none", borderRadius: "var(--radius-lg)", fontWeight: 700, fontSize, border }}>
+      {label}
+    </a>
   );
 }
 
 function TestimonialBlock({ block, accent }: { block: Block; accent: string }) {
+  const name = block.authorName || block.author;
+  const role = block.authorTitle || block.authorRole;
   return (
     <blockquote style={{ margin: 0, padding: "1.25rem", background: "var(--color-surface)", borderLeft: `3px solid ${accent}`, borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
       <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.65, fontStyle: "italic", color: "var(--color-text)", margin: 0 }}>“{block.quote}”</p>
-      {(block.author || block.authorRole) && (
-        <footer style={{ marginTop: "0.75rem", fontSize: 12, color: "var(--color-text-muted)" }}>
-          — <strong>{block.author}</strong>{block.authorRole && <span>, {block.authorRole}</span>}
+      {(name || role) && (
+        <footer style={{ marginTop: "0.75rem", fontSize: 12, color: "var(--color-text-muted)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {block.avatarUrl && <img src={block.avatarUrl} alt="" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />}
+          <span>— <strong>{name}</strong>{role && <span>, {role}</span>}</span>
         </footer>
       )}
     </blockquote>
@@ -141,10 +187,15 @@ function TestimonialBlock({ block, accent }: { block: Block; accent: string }) {
 }
 
 function FaqBlock({ block }: { block: Block }) {
+  // Support both legacy `faqs:{q,a}` and new `items:{question,answer}`
+  const items: Array<{ q: string; a: string }> = block.items
+    ? block.items.map(i => ({ q: i.question, a: i.answer }))
+    : (block.faqs || []);
+  if (items.length === 0) return null;
   return (
     <div style={{ padding: "1rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)" }}>
-      {(block.faqs || []).map((f, i) => (
-        <details key={i} style={{ marginBottom: i === (block.faqs!.length - 1) ? 0 : "0.5rem", borderBottom: i === (block.faqs!.length - 1) ? "none" : "1px solid var(--color-divider)", paddingBottom: "0.5rem" }}>
+      {items.map((f, i) => (
+        <details key={i} style={{ marginBottom: i === (items.length - 1) ? 0 : "0.5rem", borderBottom: i === (items.length - 1) ? "none" : "1px solid var(--color-divider)", paddingBottom: "0.5rem" }}>
           <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "var(--text-sm)", padding: "0.25rem 0" }}>{f.q}</summary>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: "0.375rem", lineHeight: 1.6 }}>{f.a}</p>
         </details>
@@ -282,10 +333,11 @@ function LeadForm({ pageId, accentColor, block }: { pageId: number; accentColor:
               </label>
             );
           }
+          const ph = (f.description || f.name) + (f.required ? " *" : "");
           if (f.type === "number") {
-            return <input key={idx} className="input" type="number" placeholder={f.name + (f.required ? " *" : "")} value={val} onChange={e => setVal(e.target.value)} required={f.required} />;
+            return <input key={idx} className="input" type="number" placeholder={ph} value={val} onChange={e => setVal(e.target.value)} required={f.required} aria-label={f.name} />;
           }
-          return <input key={idx} className="input" type="text" placeholder={f.name + (f.required ? " *" : "")} value={val} onChange={e => setVal(e.target.value)} required={f.required} />;
+          return <input key={idx} className="input" type="text" placeholder={ph} value={val} onChange={e => setVal(e.target.value)} required={f.required} aria-label={f.name} />;
         })}
         <button
           type="submit"
@@ -392,10 +444,12 @@ function PollBlock({ block, pageId, accentColor }: { block: Block; pageId: numbe
 
 // ─── Text block ───────────────────────────────────────────────
 function TextBlock({ block }: { block: Block }) {
+  const body = block.body || block.content || "";
   return (
     <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)" }}>
+      {block.title && <h3 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>{block.title}</h3>}
       <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: "var(--color-text)", whiteSpace: "pre-wrap" }}>
-        {block.content}
+        {body}
       </p>
     </div>
   );
@@ -501,6 +555,7 @@ function PageNotFound({ username }: { username: string }) {
 // ─── Main profile page ────────────────────────────────────────
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
+  const { user } = useAuth();
 
   const { data, isLoading, isError } = useQuery<PageData>({
     queryKey: ["/api/pages/public", username],
@@ -527,9 +582,13 @@ export default function ProfilePage() {
   try { blocks = JSON.parse(page.blocks || "[]"); } catch {}
 
   const bgStyle = backgroundToCss(page.background || "none");
+  // Goal 6: auto text color based on background luminance, or explicit textColor override
+  const luminance = getBackgroundLuminance(page.background || "none");
+  const autoText = (page as any).textColor || (luminance === "dark" ? "#f5f5f7" : "#0a0a0b");
+  const autoTextMuted = (page as any).textColor || (luminance === "dark" ? "rgba(245,245,247,0.72)" : "rgba(10,10,11,0.62)");
 
   return (
-    <div style={{ minHeight: "100dvh", background: "var(--color-bg)", ...bgStyle }}>
+    <div style={{ minHeight: "100dvh", background: "var(--color-bg)", color: autoText, ...bgStyle, "--color-text": autoText, "--color-text-muted": autoTextMuted } as any}>
       {/* Minimal top bar */}
       <div style={{
         position: "sticky", top: 0, zIndex: 100,
@@ -542,8 +601,8 @@ export default function ProfilePage() {
         <Link href="/" style={{ textDecoration: "none", color: "var(--color-text-faint)", fontSize: "var(--text-sm)", fontWeight: 500 }}>
           ← linkbay.ai
         </Link>
-        <Link href="/builder" className="btn btn-primary btn-sm" data-testid="button-build-own-page">
-          Build your page
+        <Link href={user ? "/dashboard" : "/builder"} className="btn btn-primary btn-sm" data-testid="button-build-own-page">
+          {user ? "Dashboard" : "Build your page"}
         </Link>
       </div>
 
@@ -670,10 +729,10 @@ export default function ProfilePage() {
                 case "lead-form": return <LeadForm key={block.id} pageId={page.id} accentColor={accent} block={block} />;
                 case "image": return <ImageBlock key={block.id} block={block} />;
                 case "video": return <VideoBlock key={block.id} block={block} />;
-                case "social-links": return <SocialLinksBlock key={block.id} block={block} accent={accent} />;
+                case "social-links": return <SocialLinksBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
                 case "countdown": return <CountdownBlock key={block.id} block={block} accent={accent} />;
-                case "divider": return <DividerBlock key={block.id} />;
-                case "button": return <ButtonBlock key={block.id} block={block} accent={accent} />;
+                case "divider": return <DividerBlock key={block.id} block={block} />;
+                case "button": return <ButtonBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
                 case "testimonial": return <TestimonialBlock key={block.id} block={block} accent={accent} />;
                 case "faq": return <FaqBlock key={block.id} block={block} />;
                 default: return null;
@@ -681,11 +740,6 @@ export default function ProfilePage() {
             })}
           </div>
         )}
-
-        {/* Lead form */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <LeadForm pageId={page.id} accentColor={accent} />
-        </div>
 
         {/* Floating copy URL button */}
         <button

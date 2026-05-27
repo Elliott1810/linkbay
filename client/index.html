@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Linkbay — Turn One Link Into a Branded Mini-Site</title>
+    <meta name="description" content="Linkbay is the AI-powered mini-site builder for creators, consultants, recruiters, and founders. Capture leads, track analytics, and grow — from a single link." />
+    <meta name="keywords" content="link in bio, linktree alternative, AI link page, mini-site builder, personal landing page, lead capture, creator tools" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Linkbay — Turn One Link Into a Branded Mini-Site" />
+    <meta property="og:description" content="AI-powered mini-site builder. Capture leads, track clicks, convert visitors." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://linkbay.ai" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Linkbay — AI-Powered Mini-Site Builder" />
+    <meta name="twitter:description" content="Turn one link into a branded mini-site that captures leads and tracks clicks." />
+
+    <!-- Favicon inline SVG via data URI -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23e06b1a'/%3E%3Cpath d='M9 8h6v16H9V8zm8 5h6v11h-6V13z' fill='white'/%3E%3C/svg%3E" />
+
+    <!-- Fonts: Cabinet Grotesk (display) + General Sans (body) from Fontshare -->
+    <link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&f[]=general-sans@400,500,600&display=swap" rel="stylesheet" />
+
+    <!-- Theme init script — prevents flash -->
+    <script>
+      (function() {
+        var d = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', d);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

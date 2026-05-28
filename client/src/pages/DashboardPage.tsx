@@ -174,6 +174,7 @@ function OnboardingChecklist({
       {shareModalOpen && (
         <div
           onClick={() => setShareModalOpen(false)}
+          className="modal-overlay"
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
           data-testid="modal-share"
         >
@@ -353,6 +354,8 @@ function OverviewPanel({
   const totalViews = stats?.totalViews ?? 0;
   const totalClicks = stats?.totalClicks ?? 0;
   const totalLeads = stats?.totalLeads ?? 0;
+  const todayViews = stats?.todayViews ?? 0;
+  const todayLeads = stats?.todayLeads ?? 0;
   const clickRate = totalViews > 0 ? Math.round((totalClicks / totalViews) * 100) : 0;
 
   const statsData = [
@@ -450,6 +453,30 @@ function OverviewPanel({
         </div>
       </div>
 
+      {/* Today's activity strip */}
+      {!statsLoading && (todayViews > 0 || todayLeads > 0) && (
+        <div style={{
+          display: "flex", gap: "1rem", alignItems: "center",
+          padding: "0.625rem 1rem", marginBottom: "1rem",
+          background: "linear-gradient(90deg, var(--color-primary-highlight) 0%, transparent 100%)",
+          border: "1px solid rgba(224,107,26,0.2)", borderRadius: "var(--radius-md)",
+          fontSize: "var(--text-xs)", color: "var(--color-text-muted)"
+        }}>
+          <span style={{ fontWeight: 700, color: "var(--color-primary)", letterSpacing: "-0.01em" }}>Today</span>
+          {todayViews > 0 && (
+            <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+              <span style={{ fontWeight: 700, color: "var(--color-text)" }}>{todayViews}</span> view{todayViews !== 1 ? "s" : ""}
+            </span>
+          )}
+          {todayLeads > 0 && (
+            <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+              <span style={{ fontWeight: 700, color: "var(--color-success)" }}>+{todayLeads}</span> new lead{todayLeads !== 1 ? "s" : ""} 🎉
+            </span>
+          )}
+          <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.6 }}>since midnight</span>
+        </div>
+      )}
+
       {/* Stats grid */}
       {statsLoading ? (
         <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
@@ -524,6 +551,38 @@ function OverviewPanel({
 
         {/* Right column: Quick actions + Share section */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {/* Page health score */}
+          {(() => {
+            const checks = [
+              { label: "Profile photo", done: !!page?.avatarUrl },
+              { label: "Bio added", done: !!page?.bio },
+              { label: "Links added", done: (() => { try { const b = typeof page?.blocks === "string" ? JSON.parse(page.blocks) : (page?.blocks ?? []); return Array.isArray(b) && b.some((bl: any) => bl.type === "link"); } catch { return false; } })() },
+              { label: "Page published", done: !!page?.published },
+              { label: "Contact email", done: !!page?.contactEmail },
+              { label: "Location set", done: !!page?.location },
+            ];
+            const done = checks.filter(c => c.done).length;
+            const pct = Math.round((done / checks.length) * 100);
+            const color = pct >= 80 ? "var(--color-success)" : pct >= 50 ? "#f59e0b" : "var(--color-primary)";
+            if (pct === 100) return null;
+            return (
+              <div className="card" style={{ padding: "1.25rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.625rem" }}>
+                  <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>Page health</div>
+                  <span style={{ fontSize: 13, fontWeight: 800, color }}>{pct}%</span>
+                </div>
+                <div style={{ height: 4, background: "var(--color-border)", borderRadius: 999, marginBottom: "0.875rem", overflow: "hidden" }}>
+                  <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 999, transition: "width 0.6s ease" }} />
+                </div>
+                {checks.filter(c => !c.done).slice(0, 3).map(c => (
+                  <div key={c.label} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>
+                    <span style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid var(--color-border)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} />
+                    {c.label}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
           <div className="card" style={{ padding: "1.25rem" }}>
             <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>Quick actions</div>
             {[
@@ -606,30 +665,31 @@ function OverviewPanel({
 
 // --- Page settings sub-form ---
 const DASHBOARD_BG_OPTIONS = [
+  // Neutrals
   { label: "None", value: "none", preview: "#f7f6f4" },
-  { label: "Warm White", value: "warm-white", preview: "#fef9f4" },
+  { label: "Cream", value: "warm-white", preview: "#fef9f4" },
+  { label: "Parchment", value: "warm-sand", preview: "#f5e6c8" },
   { label: "Slate", value: "slate", preview: "#f1f5f9" },
+  { label: "Stone", value: "stone", preview: "#e7e5e4" },
+  { label: "Blush", value: "blush", preview: "#fce7f3" },
+  // Dark
   { label: "Charcoal", value: "charcoal", preview: "#1e293b" },
   { label: "Midnight", value: "midnight", preview: "#0f172a" },
-  { label: "Dots", value: "dots", preview: "radial-gradient(circle, #c0bdb9 1px, transparent 1px), #f7f6f4" },
-  { label: "Grid", value: "grid-bg", preview: "linear-gradient(#e0dedd 1px, transparent 1px), linear-gradient(90deg, #e0dedd 1px, transparent 1px), #f7f6f4" },
-  { label: "Diagonal", value: "diagonal", preview: "repeating-linear-gradient(-45deg, #e0dedd 0px, #e0dedd 1px, transparent 1px, transparent 8px), #f7f6f4" },
+  { label: "Deep Navy", value: "midnight-blue", preview: "#1e3a5f" },
+  { label: "Espresso", value: "espresso", preview: "#2c1a0e" },
+  { label: "Aubergine", value: "deep-purple", preview: "#2d1b69" },
+  // Warm
   { label: "Amber", value: "warm-amber", preview: "linear-gradient(135deg, #fef3c7, #fde68a)" },
-  { label: "Blue", value: "cool-blue", preview: "linear-gradient(135deg, #dbeafe, #bfdbfe)" },
-  { label: "Sage", value: "sage", preview: "linear-gradient(135deg, #d1fae5, #a7f3d0)" },
-  { label: "Rose", value: "rose", preview: "linear-gradient(135deg, #ffe4e6, #fecdd3)" },
-  { label: "Topography", value: "topography", preview: "radial-gradient(circle, #d6d3d1 1px, transparent 1.5px), #faf5ef" },
-  { label: "Bubbles", value: "bubble", preview: "radial-gradient(circle at 30% 30%, #fde68a, transparent 50%), radial-gradient(circle at 70% 60%, #bfdbfe, transparent 50%), #fef9f4" },
-  { label: "Circuit", value: "circuit", preview: "linear-gradient(90deg, #cbd5e1 1px, transparent 1px), linear-gradient(#cbd5e1 1px, transparent 1px), #f8fafc" },
-  { label: "Moroccan", value: "moroccan", preview: "linear-gradient(45deg, #fce7f3 25%, transparent 25%), linear-gradient(-45deg, #fce7f3 25%, transparent 25%), #fef9f4" },
-  { label: "Glass", value: "glass", preview: "linear-gradient(135deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2)), #e0f2fe" },
+  { label: "Peach", value: "rose", preview: "linear-gradient(135deg, #ffe4e6, #fecdd3)" },
+  { label: "Copper", value: "copper", preview: "linear-gradient(135deg, #fed7aa, #fb923c)" },
   { label: "Sunset", value: "sunset", preview: "linear-gradient(135deg, #f97316, #ec4899)" },
+  // Cool
+  { label: "Sky", value: "cool-blue", preview: "linear-gradient(135deg, #dbeafe, #bfdbfe)" },
   { label: "Ocean", value: "ocean", preview: "linear-gradient(135deg, #0891b2, #1e40af)" },
+  { label: "Sage", value: "sage", preview: "linear-gradient(135deg, #d1fae5, #a7f3d0)" },
   { label: "Forest", value: "forest", preview: "linear-gradient(135deg, #15803d, #166534)" },
   { label: "Aurora", value: "aurora", preview: "linear-gradient(135deg, #8b5cf6, #ec4899, #14b8a6)" },
-  { label: "Midnight Blue", value: "midnight-blue", preview: "linear-gradient(135deg, #1e3a8a, #312e81)" },
-  { label: "Warm Sand", value: "warm-sand", preview: "linear-gradient(135deg, #fef3c7, #fde68a, #fcd34d)" },
-  { label: "Deep Purple", value: "deep-purple", preview: "linear-gradient(135deg, #6b21a8, #4c1d95)" },
+  { label: "Frosted", value: "glass", preview: "linear-gradient(135deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2)), #e0f2fe" },
 ];
 
 const THEME_PRESETS: { id: string; name: string; accentColor: string; background: string }[] = [
@@ -2448,6 +2508,7 @@ function LeadDetailModal({ lead, onClose, onStatusChange, onNotesSave, onConvert
 
   return (
     <div
+      className="modal-overlay"
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
       onClick={onClose}
     >
@@ -2570,6 +2631,10 @@ function LeadsPanel({ pages }: { pages: any[] }) {
   const [selectedPageId, setSelectedPageId] = useState<number | null>(pages[0]?.id ?? null);
   const [selectedLead, setSelectedLead] = useState<any | null>(null);
   const [expandedMessage, setExpandedMessage] = useState<number | null>(null);
+  const [addLeadOpen, setAddLeadOpen] = useState(false);
+  // Filter state
+  const [filterCategory, setFilterCategory] = useState("name");
+  const [filterText, setFilterText] = useState("");
 
   const { data: leads, isLoading } = useQuery({
     queryKey: ["/api/pages", selectedPageId, "leads"],
@@ -2632,6 +2697,18 @@ function LeadsPanel({ pages }: { pages: any[] }) {
     },
   });
 
+  const createLeadMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", `/api/pages/${selectedPageId}/leads`, data);
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed to create lead"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pages", selectedPageId, "leads"] });
+      setAddLeadOpen(false);
+    },
+  });
+
   if (pages.length === 0) return <NoPageState />;
 
   const statusColor: Record<string, string> = {
@@ -2651,6 +2728,40 @@ function LeadsPanel({ pages }: { pages: any[] }) {
     new: 0, contacted: 0, qualified: 0, proposal: 0, won: 0, lost: 0, archived: 0,
   };
   (leads || []).forEach((l: any) => { if (statusCounts[l.status] != null) statusCounts[l.status]++; });
+
+  // Derive custom field keys from all leads
+  const customFieldKeys: string[] = [];
+  (leads || []).forEach((l: any) => {
+    try {
+      const cf = typeof l.customFields === "string" ? JSON.parse(l.customFields) : l.customFields;
+      if (cf && typeof cf === "object") {
+        Object.keys(cf).forEach(k => { if (!customFieldKeys.includes(k)) customFieldKeys.push(k); });
+      }
+    } catch { /* */ }
+  });
+
+  const leadFilterCategories = [
+    { value: "name", label: "Name" },
+    { value: "email", label: "Email" },
+    { value: "message", label: "Message" },
+    { value: "source", label: "Source" },
+    { value: "status", label: "Status" },
+    { value: "notes", label: "Notes" },
+    ...customFieldKeys.map(k => ({ value: `custom:${k}`, label: k })),
+  ];
+
+  const filteredLeads = filterText.trim() === "" ? (leads || []) : (leads || []).filter((l: any) => {
+    const q = filterText.trim().toLowerCase();
+    if (filterCategory.startsWith("custom:")) {
+      const key = filterCategory.slice(7);
+      try {
+        const cf = typeof l.customFields === "string" ? JSON.parse(l.customFields) : l.customFields;
+        return cf && String(cf[key] ?? "").toLowerCase().includes(q);
+      } catch { return false; }
+    }
+    const val = String((l as any)[filterCategory] ?? "").toLowerCase();
+    return val.includes(q);
+  });
 
   const exportCSV = () => {
     if (!leads?.length) return;
@@ -2689,25 +2800,77 @@ function LeadsPanel({ pages }: { pages: any[] }) {
         />
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+      {/* Add lead manually modal */}
+      {addLeadOpen && (
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={() => setAddLeadOpen(false)}>
+          <div className="card" style={{ width: "100%", maxWidth: 480, padding: "1.5rem" }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontWeight: 800, marginBottom: "1rem", fontFamily: "Cabinet Grotesk, sans-serif" }}>Add lead manually</h3>
+            <form onSubmit={e => {
+              e.preventDefault();
+              const fd = new FormData(e.target as HTMLFormElement);
+              createLeadMutation.mutate({
+                name: String(fd.get("name") || ""),
+                email: String(fd.get("email") || ""),
+                message: String(fd.get("message") || "") || undefined,
+                source: String(fd.get("source") || "") || "Manual",
+                status: String(fd.get("status") || "new"),
+                notes: String(fd.get("notes") || "") || undefined,
+              });
+            }} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <input name="name" className="input" placeholder="Name *" required />
+              <input name="email" type="email" className="input" placeholder="Email *" required />
+              <textarea name="message" className="input" placeholder="Message" rows={2} style={{ resize: "none" }} />
+              <input name="source" className="input" placeholder="Source" defaultValue="Manual" />
+              <select name="status" className="input" defaultValue="new">
+                {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <textarea name="notes" className="input" placeholder="Internal notes" rows={2} style={{ resize: "none" }} />
+              {createLeadMutation.isError && <p style={{ color: "var(--color-error)", fontSize: "var(--text-sm)" }}>Failed to create lead.</p>}
+              <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                <button type="button" onClick={() => setAddLeadOpen(false)} className="btn btn-secondary btn-sm">Cancel</button>
+                <button type="submit" disabled={createLeadMutation.isPending} className="btn btn-primary btn-sm">{createLeadMutation.isPending ? "Adding…" : "Add lead"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
         <div>
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Leads</h1>
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{totalCount} total lead{totalCount !== 1 ? "s" : ""} captured</p>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{totalCount} total · {filteredLeads.length} shown</p>
         </div>
-        <div style={{ display: "flex", gap: "0.625rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           {pages.length > 1 && (
             <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
               {pages.map((p: any) => <option key={p.id} value={p.id}>{p.username}</option>)}
             </select>
           )}
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={exportCSV}
-            data-testid="button-export-leads"
-          >
-            ↓ Export CSV
-          </button>
+          <button className="btn btn-primary btn-sm" onClick={() => setAddLeadOpen(true)} data-testid="button-add-lead">+ Add lead</button>
+          <button className="btn btn-secondary btn-sm" onClick={exportCSV} data-testid="button-export-leads">↓ Export CSV</button>
         </div>
+      </div>
+
+      {/* Filter bar */}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+        <select
+          value={filterCategory}
+          onChange={e => setFilterCategory(e.target.value)}
+          className="input"
+          style={{ fontSize: "var(--text-sm)", width: "auto", minWidth: 110 }}
+          data-testid="select-leads-filter-category"
+        >
+          {leadFilterCategories.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+        <input
+          className="input"
+          style={{ flex: 1, minWidth: 140, fontSize: "var(--text-sm)" }}
+          placeholder={`Search by ${leadFilterCategories.find(c => c.value === filterCategory)?.label ?? filterCategory}…`}
+          value={filterText}
+          onChange={e => setFilterText(e.target.value)}
+          data-testid="input-leads-filter-text"
+        />
+        {filterText && <button className="btn btn-secondary btn-sm" onClick={() => setFilterText("")} style={{ flexShrink: 0 }}>✕ Clear</button>}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1.5rem" }}>
@@ -2735,7 +2898,12 @@ function LeadsPanel({ pages }: { pages: any[] }) {
         <div className="card" style={{ padding: "3rem 2rem", textAlign: "center" }}>
           <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>✉️</div>
           <h3 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>No leads yet</h3>
-          <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>Share your page to start capturing leads.</p>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>Share your page to start capturing leads, or <button onClick={() => setAddLeadOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-primary)", fontWeight: 700, padding: 0, fontSize: "inherit" }}>add one manually</button>.</p>
+        </div>
+      ) : filteredLeads.length === 0 ? (
+        <div className="card" style={{ padding: "2rem", textAlign: "center" }}>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No leads match your search.</p>
+          <button className="btn btn-secondary btn-sm" onClick={() => setFilterText("")} style={{ marginTop: "0.75rem" }}>Clear filter</button>
         </div>
       ) : (
         <div className="card" style={{ overflow: "hidden" }}>
@@ -2749,7 +2917,7 @@ function LeadsPanel({ pages }: { pages: any[] }) {
                 </tr>
               </thead>
               <tbody>
-                {(leads || []).map((lead: any, i: number) => (
+                {filteredLeads.map((lead: any, i: number) => (
                   <tr key={lead.id} style={{ borderBottom: "1px solid var(--color-divider)", background: i % 2 === 0 ? "transparent" : "var(--color-surface-2)" }} data-testid={`lead-row-${lead.id}`}>
                     <td data-label="Name" style={{ padding: "0.875rem 1rem", fontWeight: 600 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
@@ -2856,7 +3024,9 @@ function ContactsPanel() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(""); // legacy — kept for compat
+  const [filterCategory, setFilterCategory] = useState("name");
+  const [filterText, setFilterText] = useState("");
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermission | "unsupported">(typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported");
 
   const { data: contacts, isLoading } = useQuery<any[]>({
@@ -2950,10 +3120,40 @@ function ContactsPanel() {
 
   const [editingActivityId, setEditingActivityId] = useState<number | null>(null);
 
+  // Derive custom field keys from all contacts (from lead forms)
+  const contactCustomFieldKeys: string[] = [];
+  (contacts || []).forEach((c: any) => {
+    try {
+      const cf = typeof c.customFields === "string" ? JSON.parse(c.customFields) : c.customFields;
+      if (cf && typeof cf === "object") {
+        Object.keys(cf).forEach(k => { if (!contactCustomFieldKeys.includes(k)) contactCustomFieldKeys.push(k); });
+      }
+    } catch { /* */ }
+  });
+
+  const contactFilterCategories = [
+    { value: "name", label: "Name" },
+    { value: "email", label: "Email" },
+    { value: "company", label: "Company" },
+    { value: "phone", label: "Phone" },
+    { value: "source", label: "Source" },
+    { value: "notes", label: "Notes" },
+    ...contactCustomFieldKeys.map(k => ({ value: `custom:${k}`, label: k })),
+  ];
+
   const filtered = (contacts || []).filter((c: any) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (c.name || "").toLowerCase().includes(q) || (c.email || "").toLowerCase().includes(q) || (c.company || "").toLowerCase().includes(q);
+    const activeFilter = filterText.trim();
+    if (!activeFilter) return true;
+    const q = activeFilter.toLowerCase();
+    if (filterCategory.startsWith("custom:")) {
+      const key = filterCategory.slice(7);
+      try {
+        const cf = typeof c.customFields === "string" ? JSON.parse(c.customFields) : c.customFields;
+        return cf && String(cf[key] ?? "").toLowerCase().includes(q);
+      } catch { return false; }
+    }
+    const val = String((c as any)[filterCategory] ?? "").toLowerCase();
+    return val.includes(q);
   });
 
   const overdueContacts = (contacts || []).filter((c: any) =>
@@ -3025,8 +3225,26 @@ function ContactsPanel() {
         </div>
       )}
 
-      <div className="card" style={{ padding: "0.75rem", marginBottom: "1rem" }}>
-        <input className="input" placeholder="Search by name, email, or company…" value={search} onChange={e => setSearch(e.target.value)} data-testid="input-contact-search" />
+      {/* Category + free-text filter */}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+        <select
+          value={filterCategory}
+          onChange={e => setFilterCategory(e.target.value)}
+          className="input"
+          style={{ fontSize: "var(--text-sm)", width: "auto", minWidth: 110 }}
+          data-testid="select-contacts-filter-category"
+        >
+          {contactFilterCategories.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+        <input
+          className="input"
+          style={{ flex: 1, minWidth: 140, fontSize: "var(--text-sm)" }}
+          placeholder={`Search by ${contactFilterCategories.find(c => c.value === filterCategory)?.label ?? filterCategory}…`}
+          value={filterText}
+          onChange={e => setFilterText(e.target.value)}
+          data-testid="input-contacts-filter-text"
+        />
+        {filterText && <button className="btn btn-secondary btn-sm" onClick={() => setFilterText("")} style={{ flexShrink: 0 }}>✕ Clear</button>}
       </div>
 
       {isLoading ? (
@@ -3076,7 +3294,7 @@ function ContactsPanel() {
 
       {/* Add modal */}
       {addOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={() => setAddOpen(false)}>
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={() => setAddOpen(false)}>
           <div className="card" style={{ width: "100%", maxWidth: 480, padding: "1.5rem" }} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontWeight: 800, marginBottom: "1rem", fontFamily: "Cabinet Grotesk, sans-serif" }}>Add contact</h3>
             <form onSubmit={e => {
@@ -3116,7 +3334,7 @@ function ContactsPanel() {
 
       {/* Detail panel */}
       {selectedId && detail && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={() => { setSelectedId(null); setEditMode(false); }}>
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={() => { setSelectedId(null); setEditMode(false); }}>
           <div className="card contact-detail-pane" style={{ width: "100%", maxWidth: 640, maxHeight: "85vh", overflow: "auto", padding: "1.5rem" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
               <div>
@@ -3317,7 +3535,7 @@ function NewPageWizardModal({ open, onClose, onCreated }: { open: boolean; onClo
   if (!open) return null;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={onClose}>
+    <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={onClose}>
       <div className="card" style={{ width: "100%", maxWidth: 480, padding: "1.5rem" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
           {[1, 2, 3].map(n => (
@@ -3392,6 +3610,12 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
   const [avatarError, setAvatarError] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [, navigate] = useLocation();
+  // Notification preferences (stored in user's browser via state; can be persisted per user)
+  const [emailOnNewLead, setEmailOnNewLead] = useState(false);
+  const [weeklyDigest, setWeeklyDigest] = useState(false);
+  const [notifMsg, setNotifMsg] = useState("");
+  // Page visibility toggles
+  const [pageVisibilityMsg, setPageVisibilityMsg] = useState<Record<number, string>>({});
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3473,6 +3697,20 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
     },
   });
 
+  const togglePublishedMutation = useMutation({
+    mutationFn: async ({ id, published }: { id: number; published: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/pages/${id}`, { published });
+      if (!res.ok) throw new Error("Failed to update");
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+      setPageVisibilityMsg(m => ({ ...m, [vars.id]: vars.published ? "✓ Page is now public" : "✓ Page is now private" }));
+      setTimeout(() => setPageVisibilityMsg(m => { const n = { ...m }; delete n[vars.id]; return n; }), 2500);
+    },
+  });
+
   return (
     <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
       <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "1.5rem" }}>Settings</h1>
@@ -3488,6 +3726,7 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
               <img
                 src={resolveMediaUrl(user.avatarUrl)}
                 alt={user.name}
+                className="avatar-img"
                 style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: "3px solid var(--color-surface)", boxShadow: "var(--shadow-md)" }}
               />
             ) : (
@@ -3563,6 +3802,82 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
           <input className="input" placeholder="yourdomain.com" style={{ flex: 1 }} />
           <button className="btn btn-secondary">Connect →</button>
         </div>
+      </div>
+
+      {/* Page visibility */}
+      {pages.length > 0 && (
+        <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem" }}>
+          <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.25rem" }}>Page visibility</h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>Control whether each page is publicly accessible.</p>
+          {pages.map((p: any) => (
+            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 0", borderBottom: "1px solid var(--color-divider)" }}>
+              <div>
+                <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>/{p.username}</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{p.title || "Untitled page"}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                {pageVisibilityMsg[p.id] && <span style={{ fontSize: 12, color: "var(--color-success)", fontWeight: 600 }}>{pageVisibilityMsg[p.id]}</span>}
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontSize: "var(--text-sm)", userSelect: "none" }}>
+                  <div
+                    onClick={() => togglePublishedMutation.mutate({ id: p.id, published: !p.published })}
+                    style={{
+                      width: 44, height: 24, borderRadius: 999, cursor: "pointer",
+                      background: p.published ? "var(--color-primary)" : "var(--color-surface-offset)",
+                      border: `1.5px solid ${p.published ? "var(--color-primary)" : "var(--color-border)"}`,
+                      position: "relative", transition: "background 0.15s", flexShrink: 0,
+                    }}
+                  >
+                    <div style={{
+                      position: "absolute", top: 2, left: p.published ? 22 : 2,
+                      width: 18, height: 18, borderRadius: "50%", background: "#fff",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                      transition: "left 0.15s",
+                    }} />
+                  </div>
+                  <span style={{ color: p.published ? "var(--color-success)" : "var(--color-text-faint)", fontWeight: 600, fontSize: 12 }}>
+                    {p.published ? "Public" : "Private"}
+                  </span>
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Notification preferences */}
+      <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem" }}>
+        <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.25rem" }}>Notifications</h2>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>Choose how you hear about activity on your pages.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {[
+            { id: "newLead", label: "Email on new lead", desc: "Get an email whenever someone submits your lead form.", val: emailOnNewLead, set: setEmailOnNewLead },
+            { id: "weekly", label: "Weekly summary", desc: "A weekly digest of your page views, clicks and leads.", val: weeklyDigest, set: setWeeklyDigest },
+          ].map(row => (
+            <div key={row.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{row.label}</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{row.desc}</div>
+              </div>
+              <div
+                onClick={() => row.set(!row.val)}
+                style={{
+                  width: 44, height: 24, borderRadius: 999, cursor: "pointer",
+                  background: row.val ? "var(--color-primary)" : "var(--color-surface-offset)",
+                  border: `1.5px solid ${row.val ? "var(--color-primary)" : "var(--color-border)"}`,
+                  position: "relative", transition: "background 0.15s", flexShrink: 0,
+                }}
+              >
+                <div style={{
+                  position: "absolute", top: 2, left: row.val ? 22 : 2,
+                  width: 18, height: 18, borderRadius: "50%", background: "#fff",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.15s",
+                }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        {notifMsg && <p style={{ fontSize: 12, color: "var(--color-success)", fontWeight: 600, marginTop: "0.75rem" }}>✓ {notifMsg}</p>}
+        <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: "0.75rem" }}>Email delivery requires your email to be confirmed. Coming soon.</p>
       </div>
 
       {/* Danger zone */}
@@ -3653,6 +3968,13 @@ export default function DashboardPage() {
   useEffect(() => {
     if (pages.length && activePageId == null) setActivePageId(pages[0].id);
   }, [pages, activePageId]);
+
+  // Escape key closes help drawer
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") { setHelpOpen(false); setNewPageWizardOpen(false); } };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // Count new leads across all pages (for nav dot)
   const { data: leadsData } = useQuery({

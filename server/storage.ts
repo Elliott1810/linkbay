@@ -280,7 +280,7 @@ export interface IStorage {
   getEventsByPage(pageId: number, days?: number): Promise<PageEvent[]>;
   getDailyViews(pageId: number, days?: number): Promise<Array<{ date: string; count: number }>>;
   // Dashboard
-  getDashboardStats(userEmail: string, days?: number): Promise<{ totalViews: number; totalClicks: number; totalLeads: number; totalPages: number }>;
+  getDashboardStats(userEmail: string, days?: number): Promise<{ totalViews: number; totalClicks: number; totalLeads: number; totalPages: number; todayViews: number; todayLeads: number }>;
   // Poll votes
   getPollVotes(pageId: number, pollId: string): Promise<Array<{ optionIndex: number; count: number }>>;
   castVote(data: { pageId: number; pollId: string; voterEmail: string; optionIndex: number }): Promise<void>;
@@ -510,12 +510,16 @@ export class DatabaseStorage implements IStorage {
     }
     return result;
   }
-  async getDashboardStats(userEmail: string, days?: number): Promise<{ totalViews: number; totalClicks: number; totalLeads: number; totalPages: number }> {
+  async getDashboardStats(userEmail: string, days?: number): Promise<{ totalViews: number; totalClicks: number; totalLeads: number; totalPages: number; todayViews: number; todayLeads: number }> {
     const pages = sqlite.prepare("SELECT id, view_count FROM pages WHERE owner_email = ?").all(userEmail) as Array<{ id: number; view_count: number }>;
     const totalPages = pages.length;
     let totalViews = 0;
     let totalClicks = 0;
     let totalLeads = 0;
+    let todayViews = 0;
+    let todayLeads = 0;
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const todaySince = todayStart.toISOString();
     for (const p of pages) {
       if (days) {
         const since = new Date(Date.now() - days * 86400000).toISOString();
@@ -532,8 +536,13 @@ export class DatabaseStorage implements IStorage {
         totalClicks += clicks;
         totalLeads += leads;
       }
+      // Today stats (always calculated)
+      const tViews = (sqlite.prepare("SELECT COUNT(*) as total FROM page_events WHERE page_id = ? AND type = 'view' AND created_at >= ?").get(p.id, todaySince) as any)?.total ?? 0;
+      const tLeads = (sqlite.prepare("SELECT COUNT(*) as total FROM leads WHERE page_id = ? AND created_at >= ?").get(p.id, todaySince) as any)?.total ?? 0;
+      todayViews += tViews;
+      todayLeads += tLeads;
     }
-    return { totalViews, totalClicks, totalLeads, totalPages };
+    return { totalViews, totalClicks, totalLeads, totalPages, todayViews, todayLeads };
   }
 
   // ── Poll votes ──

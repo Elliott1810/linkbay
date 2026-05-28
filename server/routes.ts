@@ -1215,7 +1215,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   .msg{color:#555;font-size:12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ts{color:#aaa;font-size:11px;white-space:nowrap}
   @media(max-width:600px){.stats{grid-template-columns:1fr 1fr}.wrap{padding:1rem}}
+  .search-bar{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem}
+  .search-bar input{flex:1;padding:6px 10px;border:1px solid #e5e3df;border-radius:6px;font-size:13px;background:#f8f7f5;outline:none;transition:border-color .15s}
+  .search-bar input:focus{border-color:#e06b1a;background:#fff}
+  .search-bar label{font-size:11px;color:#aaa;white-space:nowrap;user-select:none}
+  .search-bar .count{font-size:11px;color:#aaa;min-width:60px;text-align:right}
+  tr.hidden-row{display:none}
 </style>
+<script>
+function filterTable(input,tbodyId){
+  var q=(input.value||'').toLowerCase().trim();
+  var rows=document.getElementById(tbodyId).querySelectorAll('tr');
+  var vis=0;
+  rows.forEach(function(r){
+    var t=r.textContent.toLowerCase();
+    var show=!q||t.indexOf(q)!==-1;
+    r.classList.toggle('hidden-row',!show);
+    if(show)vis++;
+  });
+  var cEl=document.getElementById(tbodyId+'-count');
+  if(cEl)cEl.textContent=q?(vis+' match'+(vis!==1?'es':'')):'';
+}
+</script>
 </head>
 <body>
 <div class="topbar">
@@ -1276,9 +1297,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   <div class="section">
     <h2>Users (${users.length})</h2>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search users by name, email, status…" oninput="filterTable(this,'tbody-users')" /><span class="count" id="tbody-users-count"></span></div>
     <table>
       <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Pages</th><th>Joined</th><th>Last Sign In</th><th>Status</th><th></th></tr></thead>
-      <tbody>
+      <tbody id="tbody-users">
         ${users.map((u) => `
           <tr>
             <td style="color:#aaa">${u.id}</td>
@@ -1300,9 +1322,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   <div class="section">
     <h2>Pages (${pages.length} real, excl. demo profiles)</h2>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search pages by username, owner, status…" oninput="filterTable(this,'tbody-pages')" /><span class="count" id="tbody-pages-count"></span></div>
     <table>
       <thead><tr><th>Username</th><th>Owner</th><th>Title</th><th>Status</th><th>Views</th><th>Clicks</th><th>Leads</th><th>Created</th><th></th></tr></thead>
-      <tbody>
+      <tbody id="tbody-pages">
         ${pages.map(p => `
           <tr>
             <td><a href="/${escHtml(p.username)}" style="color:#e06b1a;text-decoration:none;font-weight:600">/${escHtml(p.username)}</a></td>
@@ -1321,9 +1344,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   <div class="section">
     <h2>Recent leads (last 20)</h2>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search leads by name, email, message, page…" oninput="filterTable(this,'tbody-leads')" /><span class="count" id="tbody-leads-count"></span></div>
     <table>
       <thead><tr><th>Name</th><th>Email</th><th>Message</th><th>Page</th><th>When</th><th></th></tr></thead>
-      <tbody>
+      <tbody id="tbody-leads">
         ${recentLeads.map(l => `
           <tr>
             <td><strong>${escHtml(l.name)}</strong></td>
@@ -1339,9 +1363,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   <div class="section">
     <h2>Recent connections (last 20 unique IPs)</h2>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search connections by IP, location, path, user…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
     <table>
       <thead><tr><th>IP</th><th>Location</th><th>Last Path</th><th>User</th><th>Device</th><th>Browser</th><th>When</th></tr></thead>
-      <tbody>
+      <tbody id="tbody-connections">
         ${ipsWithGeo.map(e => `
           <tr>
             <td><code style="font-family:ui-monospace,monospace;font-size:12px">${escHtml(e.ip)}</code></td>

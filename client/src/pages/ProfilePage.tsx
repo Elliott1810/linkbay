@@ -220,7 +220,7 @@ function TestimonialBlock({ block, accent }: { block: Block; accent: string }) {
       <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.65, fontStyle: "italic", color: "var(--color-text)", margin: 0 }}>“{block.quote}”</p>
       {(name || role) && (
         <footer style={{ marginTop: "0.75rem", fontSize: 12, color: "var(--color-text-muted)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          {block.avatarUrl && <img src={resolveMediaUrl(block.avatarUrl)} alt="" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />}
+          {block.avatarUrl && <img src={resolveMediaUrl(block.avatarUrl)} alt="" className="avatar-img" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />}
           <span>— <strong>{name}</strong>{role && <span>, {role}</span>}</span>
         </footer>
       )}
@@ -669,6 +669,7 @@ export default function ProfilePage() {
               <img
                 src={resolveMediaUrl(page.avatarUrl)}
                 alt={page.ownerName}
+                className="avatar-img"
                 style={{
                   width: 72, height: 72, borderRadius: avatarRadius,
                   objectFit: "cover",

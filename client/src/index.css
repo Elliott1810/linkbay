@@ -982,24 +982,32 @@ a, button, [role="button"] {
   .nav-label-desktop { display: none !important; }
   .nav-label-mobile { display: block !important; font-size: 9px !important; line-height: 1 !important; }
 
-  /* ─── Fix 3: Each tab button — use % width not flex:1 for even spacing ─── */
+  /* ─── Fix 3: Each tab button — scrollable, equal min-width ─── */
+  .dashboard-sidebar .sidebar-nav {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+  .dashboard-sidebar .sidebar-nav::-webkit-scrollbar { display: none !important; }
+
   .dashboard-sidebar .sidebar-nav-item {
-    width: calc(100% / 6) !important; /* 6 nav items — exactly equal */
-    flex: 0 0 calc(100% / 6) !important;
+    flex: 1 1 0 !important;         /* share space equally */
+    min-width: 52px !important;     /* but never smaller than icon+label */
+    max-width: 72px !important;
     flex-direction: column !important;
     justify-content: center !important;
     align-items: center !important;
-    padding: 4px 1px 3px !important;
+    padding: 4px 2px 3px !important;
     font-size: 9px !important;
     font-weight: 600 !important;
     gap: 2px !important;
     border-radius: 0 !important;
     border-left: none !important;
-    min-width: 0 !important;
     height: 58px !important;
     overflow: visible !important;  /* allow badge to show above */
     letter-spacing: 0 !important;
     position: relative !important;
+    flex-shrink: 0 !important;
   }
 
   /* Tab label text — truncate to fit */
@@ -1107,22 +1115,33 @@ a, button, [role="button"] {
   }
 
   /* ─── Fix 2: Page editor — stack settings + blocks vertically on mobile ─── */
+  /* The outer container must scroll as a whole — not clip inner panels */
   .editor-outer {
     flex-direction: column !important;
-    overflow: visible !important;
+    overflow-y: auto !important;    /* single scrollable area */
+    overflow-x: hidden !important;
     height: auto !important;
+    min-height: 100% !important;
   }
+  /* Settings panel becomes a collapsible top section, always above blocks */
   .editor-settings-panel {
     width: 100% !important;
     border-right: none !important;
     border-bottom: 1px solid var(--color-border) !important;
     overflow: visible !important;
     height: auto !important;
+    flex-shrink: 0 !important;
+    position: static !important;    /* never sticky/fixed on mobile */
   }
   .editor-blocks-panel {
     overflow: visible !important;
     height: auto !important;
     padding: 1rem !important;
+    flex-shrink: 0 !important;
+  }
+  /* Live preview is always hidden on mobile */
+  .live-preview-panel {
+    display: none !important;
   }
 
   /* Editor blocks/add tabs */
@@ -1188,6 +1207,38 @@ a, button, [role="button"] {
     min-width: 60px;
   }
 
+  /* Mobile Fix 3: Countdown datetime-local overflow */
+  input[type="datetime-local"], input[type="date"], input[type="time"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    font-size: 14px !important; /* prevent iOS zoom */
+  }
+
+  /* Mobile Fix 4: Remove double border on leads/contacts table wrapper card */
+  .card:has(.leads-table) {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+
+  /* Mobile Fix 5 & 6: Modals must appear above mobile header/tab-bar */
+  .modal-overlay {
+    z-index: 3000 !important;
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+  .modal-overlay > div {
+    max-height: calc(100dvh - 60px) !important;
+    margin: 0 !important;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-y: auto !important;
+    padding-bottom: 80px !important; /* clear tab bar */
+  }
+
   /* Stats grid — 2 columns on mobile */
   .stats-grid-4 { grid-template-columns: 1fr 1fr !important; }
 
@@ -1208,4 +1259,14 @@ a, button, [role="button"] {
   .recharts-wrapper, .recharts-responsive-container {
     max-width: 100% !important;
   }
+}
+
+/* Mobile Fix 7: Profile picture fixed dimensions — override global img { height: auto } */
+img.avatar-img {
+  height: revert !important;
+  width: revert !important;
+  display: inline-block !important;
+  max-width: none !important;
+  object-fit: cover;
+  flex-shrink: 0;
 }

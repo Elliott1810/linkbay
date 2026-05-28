@@ -1,7 +1,7 @@
 import { useParams, Link } from "wouter";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, resolveMediaUrl } from "@/lib/queryClient";
 import { useAuth } from "@/App";
 import { backgroundToCss, getBackgroundLuminance } from "./BuilderPage";
 import {
@@ -220,7 +220,7 @@ function TestimonialBlock({ block, accent }: { block: Block; accent: string }) {
       <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.65, fontStyle: "italic", color: "var(--color-text)", margin: 0 }}>“{block.quote}”</p>
       {(name || role) && (
         <footer style={{ marginTop: "0.75rem", fontSize: 12, color: "var(--color-text-muted)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          {block.avatarUrl && <img src={block.avatarUrl} alt="" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />}
+          {block.avatarUrl && <img src={resolveMediaUrl(block.avatarUrl)} alt="" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />}
           <span>— <strong>{name}</strong>{role && <span>, {role}</span>}</span>
         </footer>
       )}
@@ -667,7 +667,7 @@ export default function ProfilePage() {
             const avatarRadius = (page as any).avatarShape === "rounded" ? "var(--radius-lg)" : "50%";
             return page.avatarUrl ? (
               <img
-                src={page.avatarUrl}
+                src={resolveMediaUrl(page.avatarUrl)}
                 alt={page.ownerName}
                 style={{
                   width: 72, height: 72, borderRadius: avatarRadius,

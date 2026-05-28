@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, resolveMediaUrl } from "@/lib/queryClient";
 import { useTheme, useAuth } from "@/App";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { backgroundToCss, parseBackground, PATTERN_OPTIONS, COLOR_OPTIONS } from "./BuilderPage";
+import { QRCodeSVG } from "qrcode.react";
 
 // --- Icons ---
 const icons: Record<string, JSX.Element> = {
@@ -232,6 +233,59 @@ function CopyUrlButton({ url, label }: { url: string; label?: string }) {
   );
 }
 
+// --- QR Code card ---
+function QRCodeCard({ url, username }: { url: string; username?: string }) {
+  const [show, setShow] = useState(false);
+  const svgRef = useRef<HTMLDivElement>(null);
+
+  const downloadQR = () => {
+    const svgEl = svgRef.current?.querySelector("svg");
+    if (!svgEl) return;
+    const svgData = new XMLSerializer().serializeToString(svgEl);
+    const blob = new Blob([svgData], { type: "image/svg+xml" });
+    const url2 = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url2;
+    a.download = `linkbay-${username || "qr"}.svg`;
+    a.click();
+    URL.revokeObjectURL(url2);
+  };
+
+  return (
+    <div style={{ marginBottom: "0.75rem" }}>
+      <button
+        type="button"
+        onClick={() => setShow(s => !s)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0.625rem", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)" }}
+        data-testid="button-toggle-qr"
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="5" height="5"/><rect x="16" y="3" width="5" height="5"/><rect x="3" y="16" width="5" height="5"/><rect x="10" y="10" width="4" height="4"/><path d="M16 16h5v5h-5z" opacity="0.4"/></svg>
+          QR code
+        </span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points={show ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}/></svg>
+      </button>
+      {show && (
+        <div style={{ padding: "0.75rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", marginTop: "0.375rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.625rem" }}>
+          <div ref={svgRef} style={{ background: "white", padding: "0.5rem", borderRadius: "var(--radius-sm)" }}>
+            <QRCodeSVG value={url} size={140} fgColor="#1a1a1a" bgColor="#ffffff" level="M" />
+          </div>
+          <p style={{ fontSize: 11, color: "var(--color-text-faint)", textAlign: "center", margin: 0 }}>linkbay.ai/{username}</p>
+          <button
+            type="button"
+            onClick={downloadQR}
+            className="btn btn-secondary btn-sm"
+            style={{ fontSize: 11 }}
+            data-testid="button-download-qr"
+          >
+            Download SVG
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Overview Panel ---
 function OverviewPanel({
   pages,
@@ -321,9 +375,9 @@ function OverviewPanel({
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent("Check out my Linkbay page: " + pageUrl)}`;
 
   return (
-    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
+    <div className="overview-panel-content" style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.25rem" }}>
+      <div className="overview-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.25rem" }}>
         <div>
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Overview</h1>
           {pages.length > 1 ? (
@@ -340,16 +394,16 @@ function OverviewPanel({
             <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>linkbay.ai/{page?.username}</p>
           )}
         </div>
-        <div style={{ display: "flex", gap: "0.625rem", alignItems: "center" }}>
+        <div className="overview-header-actions" style={{ display: "flex", gap: "0.625rem", alignItems: "center" }}>
           <CopyUrlButton url={pageUrl} label="Copy link" />
           <Link
             href={`/${page?.username}`}
-            style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.875rem", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", textDecoration: "none" }}
+            style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.875rem", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", textDecoration: "none", whiteSpace: "nowrap" }}
             data-testid="link-view-page"
           >
             {icons.external} View page
           </Link>
-          <Link href="/builder" className="btn btn-primary btn-sm" style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+          <Link href="/builder" className="btn btn-primary btn-sm" style={{ display: "flex", alignItems: "center", gap: "0.375rem", whiteSpace: "nowrap" }}>
             {icons.plus} New page
           </Link>
         </div>
@@ -445,7 +499,7 @@ function OverviewPanel({
       )}
 
       {/* Top links + share section */}
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
+      <div className="overview-bottom-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
         {/* Top links */}
         <div className="card" style={{ padding: "1.25rem" }}>
           <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "1rem" }}>Top links by clicks</div>
@@ -492,6 +546,9 @@ function OverviewPanel({
           {/* Share your link section */}
           <div className="card" style={{ padding: "1.25rem" }}>
             <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>Share your link</div>
+            {/* QR Code */}
+            <QRCodeCard url={pageUrl} username={page?.username} />
+
             {/* URL display */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.625rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", marginBottom: "0.625rem" }}>
               <span style={{ flex: 1, fontSize: 11, color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1288,11 +1345,11 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
   if (pages.length === 0) return <NoPageState />;
 
   return (
-    <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+    <div className="editor-outer" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
       {/* Live preview panel — desktop only (hidden on mobile via CSS) */}
       <LivePreviewPanel username={page?.username} previewKey={`${blocksUpdatedAt}-${pageUpdatedAt}`} />
       {/* Left panel — page settings */}
-      <div style={{ width: 280, borderRight: "1px solid var(--color-border)", background: "var(--color-surface-2)", padding: "1.25rem", overflow: "auto" }}>
+      <div className="editor-settings-panel" style={{ width: 280, borderRight: "1px solid var(--color-border)", background: "var(--color-surface-2)", padding: "1.25rem", overflow: "auto" }}>
         <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-faint)", marginBottom: "1rem" }}>Page settings</div>
 
         {pages.length > 1 && (
@@ -1341,7 +1398,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
       </div>
 
       {/* Right panel — link editor + blocks */}
-      <div style={{ flex: 1, padding: "1.25rem", overflow: "auto" }}>
+      <div className="editor-blocks-panel" style={{ flex: 1, padding: "1.25rem", overflow: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
           <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700 }}>Links</h2>
           <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{links?.length ?? 0} links</span>
@@ -2232,7 +2289,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
       ) : analytics ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
           {/* Stats row */}
-          <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr) repeat(3, 1fr)", gap: "1rem" }}>
+          <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
             {[
               { label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0" },
               { label: `Views (${days}d)`, value: analytics.periodViews?.toLocaleString() ?? "0" },
@@ -2240,6 +2297,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
               { label: "Click rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%" },
               { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString() },
               { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString() },
+              { label: "Best day", value: analytics.bestDay ? `${analytics.bestDay.count} views (${analytics.bestDay.label})` : "No data" },
             ].map(s => (
               <div key={s.label} className="stat-card">
                 <div className="stat-label">{s.label}</div>
@@ -3059,7 +3117,7 @@ function ContactsPanel() {
       {/* Detail panel */}
       {selectedId && detail && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={() => { setSelectedId(null); setEditMode(false); }}>
-          <div className="card" style={{ width: "100%", maxWidth: 640, maxHeight: "85vh", overflow: "auto", padding: "1.5rem" }} onClick={e => e.stopPropagation()}>
+          <div className="card contact-detail-pane" style={{ width: "100%", maxWidth: 640, maxHeight: "85vh", overflow: "auto", padding: "1.5rem" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
               <div>
                 <h3 style={{ fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", fontSize: "var(--text-lg)" }}>{detail.contact.name}</h3>
@@ -3428,7 +3486,7 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
           <div style={{ position: "relative", flexShrink: 0 }}>
             {user?.avatarUrl ? (
               <img
-                src={user.avatarUrl}
+                src={resolveMediaUrl(user.avatarUrl)}
                 alt={user.name}
                 style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: "3px solid var(--color-surface)", boxShadow: "var(--shadow-md)" }}
               />

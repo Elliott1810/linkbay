@@ -920,7 +920,26 @@ a, button, [role="button"] {
     overflow: hidden !important;
   }
 
-  /* Sidebar becomes a fixed bottom tab bar — compact icon+label */
+  /* ─── Fix 1: Prevent horizontal scroll on ALL dashboard panels ─── */
+  .dashboard-main > * {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  /* Panel wrappers — ensure no horizontal overflow */
+  .dashboard-main [style*="flex: 1"],
+  .dashboard-main [style*="flex:1"] {
+    min-width: 0 !important;
+  }
+  /* Header action buttons in overview — wrap on mobile */
+  .overview-header-actions {
+    width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    justify-content: flex-start !important;
+  }
+
+  /* ─── Fix 3: Sidebar becomes a fixed bottom tab bar ─── */
+  /* overflow: visible so badge dots aren't clipped */
   .dashboard-sidebar {
     order: 2 !important;          /* below main content */
     width: 100% !important;
@@ -930,12 +949,13 @@ a, button, [role="button"] {
     border-right: none !important;
     border-top: 1px solid var(--color-border) !important;
     border-bottom: none !important;
-    overflow: hidden !important;
+    overflow: visible !important;   /* allow badge dots to show above tab bar */
     position: relative !important;
     z-index: 50 !important;
     flex-shrink: 0 !important;
     padding: 0 !important;
     gap: 0 !important;
+    background: var(--color-surface) !important;
   }
 
   /* Hide non-nav sidebar sections (logo, user, page switcher, bottom items) */
@@ -948,43 +968,54 @@ a, button, [role="button"] {
   /* Also hide the "New page" button sub-section inside sidebar-nav on mobile */
   .dashboard-sidebar .sidebar-nav > div:last-child { display: none !important; }
 
-  /* Nav section fills the full tab bar */
+  /* Nav section fills the full tab bar — also overflow: visible for badges */
   .dashboard-sidebar .sidebar-nav {
     flex: 1 !important;
     flex-direction: row !important;
     padding: 0 !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     display: flex !important;
     align-items: stretch !important;
   }
 
   /* Nav label visibility */
   .nav-label-desktop { display: none !important; }
-  .nav-label-mobile { display: inline !important; }
+  .nav-label-mobile { display: block !important; font-size: 9px !important; line-height: 1 !important; }
 
-  /* Each tab button */
+  /* ─── Fix 3: Each tab button — use % width not flex:1 for even spacing ─── */
   .dashboard-sidebar .sidebar-nav-item {
-    flex: 1 !important;
+    width: calc(100% / 6) !important; /* 6 nav items — exactly equal */
+    flex: 0 0 calc(100% / 6) !important;
     flex-direction: column !important;
     justify-content: center !important;
     align-items: center !important;
-    padding: 6px 2px 4px !important;
+    padding: 4px 1px 3px !important;
     font-size: 9px !important;
     font-weight: 600 !important;
     gap: 2px !important;
     border-radius: 0 !important;
     border-left: none !important;
     min-width: 0 !important;
-    height: 100% !important;
-    white-space: nowrap !important;
+    height: 58px !important;
+    overflow: visible !important;  /* allow badge to show above */
+    letter-spacing: 0 !important;
+    position: relative !important;
+  }
+
+  /* Tab label text — truncate to fit */
+  .dashboard-sidebar .sidebar-nav-item .nav-label-mobile {
+    max-width: 100% !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
-    letter-spacing: -0.2px !important;
+    white-space: nowrap !important;
+    width: 100% !important;
+    text-align: center !important;
+    padding: 0 2px !important;
   }
 
   .dashboard-sidebar .sidebar-nav-item svg {
-    width: 20px !important;
-    height: 20px !important;
+    width: 18px !important;
+    height: 18px !important;
     flex-shrink: 0 !important;
   }
 
@@ -994,23 +1025,40 @@ a, button, [role="button"] {
     border-radius: 0 !important;
   }
 
-  /* Hide leads badge dot positioning on mobile tabs */
+  /* ─── Fix 4: Lead badge — position ABOVE the tab bar, not inside it ─── */
   .dashboard-sidebar .sidebar-nav-item span[style*="position: absolute"] {
-    top: 2px !important;
+    position: absolute !important;
+    top: -8px !important;           /* float above the tab */
     right: 4px !important;
-    width: 14px !important;
-    height: 14px !important;
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
     font-size: 8px !important;
+    z-index: 60 !important;
+    pointer-events: none !important;
+    transform: none !important;
   }
 
-  /* Main content fills remaining space and scrolls */
+  /* Main content fills remaining space and scrolls — vertical only */
   .dashboard-main {
     order: 1 !important;
     flex: 1 !important;
     overflow-y: auto !important;
-    overflow-x: hidden !important;
-    padding: 0.875rem !important;
+    overflow-x: hidden !important;  /* lock horizontal scroll */
+    padding: 0 !important;          /* padding set on inner panels instead */
     min-height: 0 !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* ─── Fix 1: All panel wrappers must not overflow horizontally ─── */
+  /* OverviewPanel, AnalyticsPanel, LeadsPanel etc all return this top div */
+  .dashboard-main > div[style*="padding"],
+  .dashboard-main > div:first-child {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
   }
 
   /* Mobile context bar (page name + user) at top of main — shown via JS */
@@ -1018,19 +1066,90 @@ a, button, [role="button"] {
     display: flex !important;
     align-items: center !important;
     gap: 0.5rem !important;
-    padding: 0.625rem 0.875rem !important;
+    padding: 0.625rem 1rem !important;
     background: var(--color-surface) !important;
     border-bottom: 1px solid var(--color-border) !important;
-    margin: -0.875rem -0.875rem 0.875rem !important;
     position: sticky !important;
     top: 0 !important;
     z-index: 10 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
 
-  /* Editor */
-  .editor-panel, .editor-pane { padding: 0.625rem !important; }
+  /* ─── Overview panel specific fixes ─── */
+  /* The inner div that contains all overview content */
+  .overview-panel-content {
+    padding: 0.875rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+  /* Overview header: stack title + buttons vertically */
+  .overview-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.75rem !important;
+    flex-wrap: wrap !important;
+  }
+  .overview-header > div:last-child {
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+  }
+  /* Date range buttons stay in a row */
+  .date-range-row {
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    justify-content: flex-end !important;
+  }
+  /* Overview bottom grid — stack to 1 column on mobile */
+  .overview-bottom-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ─── Fix 2: Page editor — stack settings + blocks vertically on mobile ─── */
+  .editor-outer {
+    flex-direction: column !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .editor-settings-panel {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .editor-blocks-panel {
+    overflow: visible !important;
+    height: auto !important;
+    padding: 1rem !important;
+  }
+
+  /* Editor blocks/add tabs */
+  .editor-panel, .editor-pane { padding: 0 !important; }
   .editor-pane.editor-pane-hidden-mobile { display: none !important; }
   .editor-pane.editor-pane-active { display: block !important; }
+
+  /* ─── Fix 5: Contact follow-up date/time input ─── */
+  input[type="datetime-local"],
+  input[type="date"],
+  input[type="time"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    font-size: 14px !important; /* prevents iOS auto-zoom */
+  }
+  /* Contacts detail pane — full width, vertical scroll only */
+  .contact-detail-pane {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+  .contact-detail-pane form {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
 
   /* Analytics */
   .analytics-grid { grid-template-columns: 1fr 1fr !important; }
@@ -1077,5 +1196,16 @@ a, button, [role="button"] {
     flex-direction: column !important;
     align-items: flex-start !important;
     gap: 0.625rem !important;
+  }
+
+  /* Ensure all inputs and buttons wrap correctly */
+  .input, input, select, textarea {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* recharts responsive container fix */
+  .recharts-wrapper, .recharts-responsive-container {
+    max-width: 100% !important;
   }
 }

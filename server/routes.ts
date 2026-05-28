@@ -696,6 +696,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
+      // Best day (highest-view day in the period)
+      const bestDayEntry = dailyViews.reduce((best: any, d: any) => (
+        !best || d.count > best.count ? d : best
+      ), null as any);
+      const bestDay = bestDayEntry ? {
+        date: bestDayEntry.date,
+        count: bestDayEntry.count,
+        label: new Date(bestDayEntry.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+      } : null;
+
       res.json({
         totalViews: views,
         totalClicks: clicks,
@@ -710,6 +720,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         topLinks: links.sort((a, b) => b.clickCount - a.clickCount).slice(0, 5),
         topCountries,
         dailyViews,
+        bestDay,
         events: events.slice(-200),
       });
     } catch { res.status(500).json({ error: "Server error" }); }

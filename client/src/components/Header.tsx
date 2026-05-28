@@ -118,14 +118,14 @@ export default function Header() {
 
   return (
     <header className="site-header" style={{ boxShadow: scrolled ? "var(--shadow-sm)" : "none" }}>
-      <div className="container" style={{ display: "flex", alignItems: "center", gap: "1rem", height: "60px" }}>
+      <div className="container" style={{ display: "flex", alignItems: "center", gap: "0.5rem", height: "56px" }}>
         {/* Logo */}
         <Link href="/" style={{ color: "var(--color-text)", textDecoration: "none", flexShrink: 0 }}>
           <Logo />
         </Link>
 
-        {/* Nav — desktop */}
-        <nav className="nav-desktop" style={{ display: "flex", alignItems: "center", gap: "0.25rem", marginLeft: "1.5rem" }}>
+        {/* Nav — desktop only */}
+        <nav className="nav-desktop" style={{ display: "flex", alignItems: "center", gap: "0.25rem", marginLeft: "1rem" }}>
           {navLinks.map(link => (
             <Link
               key={link.href}
@@ -141,39 +141,51 @@ export default function Header() {
         <div style={{ flex: 1 }} />
 
         {/* Right actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          {/* Theme toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {/* Theme toggle — always visible */}
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
             style={{
-              width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
+              width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
               borderRadius: "var(--radius-md)", color: "var(--color-text-muted)",
-              background: "none", border: "1px solid var(--color-border)", cursor: "pointer"
+              background: "none", border: "1px solid var(--color-border)", cursor: "pointer", flexShrink: 0
             }}
             data-testid="button-theme-toggle"
           >
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
 
-          {/* Auth links */}
+          {/* Auth links — desktop only */}
           <AuthNav />
 
-          {/* CTA — only shown to logged-out visitors */}
+          {/* CTA — desktop only, logged-out */}
           {!user && (
-            <Link href="/builder" className="btn btn-primary nav-desktop" data-testid="button-start-free">
+            <Link href="/builder" className="btn btn-primary btn-sm nav-desktop" data-testid="button-start-free" style={{ whiteSpace: "nowrap" }}>
               Start free
             </Link>
           )}
 
-          {/* Mobile hamburger — always visible on mobile via CSS */}
+          {/* Mobile: compact Sign in + Dashboard pill OR hamburger */}
+          <div className="nav-mobile-only" style={{ display: "none", alignItems: "center", gap: "0.375rem" }}>
+            {user ? (
+              <Link href="/dashboard" className="btn btn-primary btn-sm" style={{ fontSize: 12, padding: "0.35rem 0.75rem" }}>Dashboard</Link>
+            ) : (
+              <>
+                <Link href="/login" className="btn btn-secondary btn-sm" style={{ fontSize: 12, padding: "0.35rem 0.625rem" }}>Sign in</Link>
+                <Link href="/builder" className="btn btn-primary btn-sm" style={{ fontSize: 12, padding: "0.35rem 0.625rem" }}>Start free</Link>
+              </>
+            )}
+          </div>
+
+          {/* Mobile hamburger */}
           <button
             className="nav-mobile-toggle"
             onClick={() => setMenuOpen(!menuOpen)}
             aria-label={menuOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={menuOpen}
             style={{
-              width: 40, height: 40, alignItems: "center", justifyContent: "center",
+              width: 36, height: 36, alignItems: "center", justifyContent: "center",
               borderRadius: "var(--radius-md)", color: "var(--color-text)", background: "none",
               border: "1px solid var(--color-border)", cursor: "pointer"
             }}

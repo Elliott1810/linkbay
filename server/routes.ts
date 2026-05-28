@@ -414,6 +414,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         url: z.string().url().optional(),
         icon: z.string().max(50).optional(),
         featured: z.boolean().optional(),
+        style: z.enum(["default", "featured", "outline"]).optional(),
         sortOrder: z.number().int().optional(),
       });
       let updateData: Record<string, unknown>;
@@ -676,7 +677,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Count occurrences per visitorId
       const visitorCounts = new Map<string, number>();
       for (const e of viewEvents) {
-        const vid = (e as any).visitorId;
+        const vid = (e as any).visitorId ?? (e as any).visitor_id;
         if (vid) visitorCounts.set(vid, (visitorCounts.get(vid) || 0) + 1);
       }
       const uniqueVisitors = visitorCounts.size;

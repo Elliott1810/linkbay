@@ -398,7 +398,7 @@ function OverviewPanel({
 
       {/* Stats grid */}
       {statsLoading ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+        <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
           {[0,1,2,3].map(i => (
             <div key={i} className="stat-card" style={{ height: 88 }}>
               <div className="skeleton" style={{ width: "60%", height: 12, marginBottom: "0.5rem" }} />
@@ -407,7 +407,7 @@ function OverviewPanel({
           ))}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+        <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
           {statsData.map(s => (
             <div key={s.label} className="stat-card" data-testid={`stat-${s.label.toLowerCase().replace(/\s+/g, "-")}`}>
               <div className="stat-label">{s.label}</div>
@@ -785,6 +785,9 @@ interface PageBlock {
   quote?: string;
   // faq
   faqs?: { q: string; a: string }[];
+  // divider
+  dividerStyle?: "solid" | "dashed" | "dotted" | "double" | "gradient";
+  thickness?: "1px" | "2px" | "3px" | "4px" | "6px";
 }
 
 function BlockEditor({ pageId, blocks, onSave, saving }: { pageId: number; blocks: PageBlock[]; onSave: (blocks: PageBlock[]) => void; saving: boolean }) {
@@ -942,6 +945,18 @@ function BlockEditor({ pageId, blocks, onSave, saving }: { pageId: number; block
                         style={{ fontSize: 13 }}
                       />
                     </div>
+                    {/* Custom fields editor */}
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Custom fields</label>
+                      {((editValues.customFields ?? block.customFields ?? []) as CustomFieldDef[]).map((f, idx) => (
+                        <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                          <input className="input" placeholder="Field name" value={f.name} onChange={e => { const arr = [...((editValues.customFields ?? block.customFields ?? []) as CustomFieldDef[])]; arr[idx] = { ...arr[idx], name: e.target.value }; setEditValues(v => ({ ...v, customFields: arr })); }} style={{ flex: 1, minWidth: 0, fontSize: 12 }} />
+                          <select className="input" value={f.type} onChange={e => { const arr = [...((editValues.customFields ?? block.customFields ?? []) as CustomFieldDef[])]; arr[idx] = { ...arr[idx], type: e.target.value as any }; setEditValues(v => ({ ...v, customFields: arr })); }} style={{ width: "auto", flexShrink: 0, fontSize: 12 }}><option value="text">Text</option><option value="number">Number</option><option value="dropdown">Dropdown</option><option value="checkbox">Checkbox</option></select>
+                          <button type="button" onClick={() => { const arr = ((editValues.customFields ?? block.customFields ?? []) as CustomFieldDef[]).filter((_, j) => j !== idx); setEditValues(v => ({ ...v, customFields: arr })); }} style={{ background: "none", border: "none", color: "var(--color-error)", cursor: "pointer", flexShrink: 0 }}>×</button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => { const arr = [...((editValues.customFields ?? block.customFields ?? []) as CustomFieldDef[]), { name: "", type: "text" as const, required: false }]; setEditValues(v => ({ ...v, customFields: arr })); }} className="btn btn-secondary btn-sm">+ Add field</button>
+                    </div>
                   </>
                 )}
                 {block.type === "countdown" && (
@@ -977,7 +992,22 @@ function BlockEditor({ pageId, blocks, onSave, saving }: { pageId: number; block
                 {block.type === "divider" && (
                   <>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>➖ Divider Block</div>
-                    <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>A divider has no editable content. It's a visual break between blocks.</div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Style</label>
+                      <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
+                        {(["solid","dashed","dotted","double","gradient"] as const).map(s => (
+                          <button key={s} type="button" onClick={() => setEditValues(v => ({ ...v, dividerStyle: s }))} style={{ padding: "0.25rem 0.6rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${(editValues.dividerStyle ?? block.dividerStyle ?? "solid") === s ? "var(--color-primary)" : "var(--color-border)"}`, background: (editValues.dividerStyle ?? block.dividerStyle ?? "solid") === s ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: (editValues.dividerStyle ?? block.dividerStyle ?? "solid") === s ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer", textTransform: "capitalize" }}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Thickness</label>
+                      <div style={{ display: "flex", gap: "0.375rem" }}>
+                        {(["1px","2px","3px","4px","6px"] as const).map(t => (
+                          <button key={t} type="button" onClick={() => setEditValues(v => ({ ...v, thickness: t }))} style={{ flex: 1, padding: "0.25rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${(editValues.thickness ?? block.thickness ?? "2px") === t ? "var(--color-primary)" : "var(--color-border)"}`, background: (editValues.thickness ?? block.thickness ?? "2px") === t ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: (editValues.thickness ?? block.thickness ?? "2px") === t ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>{t}</button>
+                        ))}
+                      </div>
+                    </div>
                   </>
                 )}
                 {block.type === "button" && (
@@ -1045,11 +1075,11 @@ function BlockEditor({ pageId, blocks, onSave, saving }: { pageId: number; block
                     <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>🌐 Social Links Block</div>
                     {(editValues.socials ?? []).map((p, i) => (
                       <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                        <select className="input" value={p.platform ?? ""} onChange={e => { const arr = [...(editValues.socials ?? [])]; arr[i] = { ...arr[i], platform: e.target.value }; setEditValues(v => ({ ...v, socials: arr })); }} style={{ flex: 1, fontSize: 12 }}>
-                          {["Instagram","TikTok","Twitter/X","LinkedIn","YouTube","Facebook","GitHub","Pinterest","Snapchat"].map(pl => <option key={pl} value={pl}>{pl}</option>)}
+                        <select className="input" value={p.platform ?? ""} onChange={e => { const arr = [...(editValues.socials ?? [])]; arr[i] = { ...arr[i], platform: e.target.value }; setEditValues(v => ({ ...v, socials: arr })); }} style={{ width: "auto", flexShrink: 0, fontSize: 12 }}>
+                          {["instagram","tiktok","twitter","linkedin","youtube","facebook","github","pinterest","snapchat","website"].map(pl => <option key={pl} value={pl}>{pl.charAt(0).toUpperCase()+pl.slice(1)}</option>)}
                         </select>
-                        <input className="input" value={p.url ?? ""} onChange={e => { const arr = [...(editValues.socials ?? [])]; arr[i] = { ...arr[i], url: e.target.value }; setEditValues(v => ({ ...v, socials: arr })); }} placeholder="https://... or @handle" style={{ flex: 2, fontSize: 12 }} />
-                        <button type="button" onClick={() => { const arr = (editValues.socials ?? []).filter((_, j) => j !== i); setEditValues(v => ({ ...v, socials: arr })); }} style={{ background: "none", border: "none", color: "var(--color-error)", cursor: "pointer", fontSize: 16 }}>×</button>
+                        <input className="input" value={p.url ?? ""} onChange={e => { const arr = [...(editValues.socials ?? [])]; arr[i] = { ...arr[i], url: e.target.value }; setEditValues(v => ({ ...v, socials: arr })); }} placeholder="https://... or @handle" style={{ flex: 1, minWidth: 0, fontSize: 12 }} />
+                        <button type="button" onClick={() => { const arr = (editValues.socials ?? []).filter((_, j) => j !== i); setEditValues(v => ({ ...v, socials: arr })); }} style={{ background: "none", border: "none", color: "var(--color-error)", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>×</button>
                       </div>
                     ))}
                     <button type="button" onClick={() => setEditValues(v => ({ ...v, socials: [...(v.socials ?? []), { platform: "Instagram", url: "" }] }))} className="btn btn-secondary btn-sm">+ Add Platform</button>
@@ -1831,6 +1861,9 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
   // countdown
   const [countdownTitle, setCountdownTitle] = useState("");
   const [countdownDate, setCountdownDate] = useState("");
+  // divider
+  const [divStyle, setDivStyle] = useState<"solid"|"dashed"|"dotted"|"double"|"gradient">("solid");
+  const [divThickness, setDivThickness] = useState<"1px"|"2px"|"3px"|"4px"|"6px">("2px");
   // button
   const [btnLabel, setBtnLabel] = useState("");
   const [btnUrl, setBtnUrl] = useState("");
@@ -1892,7 +1925,7 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
       if (!countdownDate) { setError("Target date is required"); return; }
       onAdd({ id, type: "countdown", title: countdownTitle.trim() || undefined, targetDate: countdownDate });
     } else if (blockType === "divider") {
-      onAdd({ id, type: "divider" });
+      onAdd({ id, type: "divider", dividerStyle: divStyle, thickness: divThickness } as any);
     } else if (blockType === "button") {
       if (!btnLabel.trim() || !btnUrl.trim()) { setError("Label and URL are required"); return; }
       onAdd({ id, type: "button", title: btnLabel.trim(), url: btnUrl.trim() });
@@ -1996,8 +2029,8 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
           {customFields.map((f, idx) => (
             <div key={idx} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "0.5rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 6 }}>
               <div style={{ display: "flex", gap: 6 }}>
-                <input className="input" placeholder="Field name" value={f.name} onChange={e => { const arr = [...customFields]; arr[idx] = { ...arr[idx], name: e.target.value }; setCustomFields(arr); }} style={{ flex: 1, fontSize: 12 }} />
-                <select className="input" value={f.type} onChange={e => { const arr = [...customFields]; arr[idx] = { ...arr[idx], type: e.target.value as any }; setCustomFields(arr); }} style={{ fontSize: 12 }}>
+                <input className="input" placeholder="Field name" value={f.name} onChange={e => { const arr = [...customFields]; arr[idx] = { ...arr[idx], name: e.target.value }; setCustomFields(arr); }} style={{ flex: 1, minWidth: 0, fontSize: 12 }} />
+                <select className="input" value={f.type} onChange={e => { const arr = [...customFields]; arr[idx] = { ...arr[idx], type: e.target.value as any }; setCustomFields(arr); }} style={{ width: "auto", flexShrink: 0, fontSize: 12 }}>
                   <option value="text">Text</option>
                   <option value="number">Number</option>
                   <option value="dropdown">Dropdown</option>
@@ -2042,7 +2075,7 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           {socials.map((s, i) => (
             <div key={i} style={{ display: "flex", gap: 6 }}>
-              <select className="input" value={s.platform} onChange={e => { const arr = [...socials]; arr[i] = { ...arr[i], platform: e.target.value }; setSocials(arr); }} style={{ fontSize: 13 }}>
+              <select className="input" value={s.platform} onChange={e => { const arr = [...socials]; arr[i] = { ...arr[i], platform: e.target.value }; setSocials(arr); }} style={{ fontSize: 13, width: "auto", flexShrink: 0 }}>
                 <option value="twitter">Twitter / X</option>
                 <option value="instagram">Instagram</option>
                 <option value="linkedin">LinkedIn</option>
@@ -2052,8 +2085,8 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
                 <option value="facebook">Facebook</option>
                 <option value="website">Website</option>
               </select>
-              <input className="input" placeholder="URL" value={s.url} onChange={e => { const arr = [...socials]; arr[i] = { ...arr[i], url: e.target.value }; setSocials(arr); }} style={{ flex: 1, fontSize: 13 }} />
-              {socials.length > 1 && <button type="button" onClick={() => setSocials(socials.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "#b91c1c" }}>×</button>}
+              <input className="input" placeholder="https://... or @handle" value={s.url} onChange={e => { const arr = [...socials]; arr[i] = { ...arr[i], url: e.target.value }; setSocials(arr); }} style={{ flex: 1, minWidth: 0, fontSize: 13 }} />
+              {socials.length > 1 && <button type="button" onClick={() => setSocials(socials.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "#b91c1c", flexShrink: 0 }}>×</button>}
             </div>
           ))}
           <button type="button" onClick={() => setSocials([...socials, { platform: "twitter", url: "" }])} className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }}>+ Add link</button>
@@ -2068,7 +2101,24 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
       )}
 
       {blockType === "divider" && (
-        <p style={{ fontSize: 12, color: "var(--color-text-muted)" }}>A subtle horizontal divider to separate sections.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Style</label>
+            <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
+              {(["solid","dashed","dotted","double","gradient"] as const).map(s => (
+                <button key={s} type="button" onClick={() => setDivStyle(s)} style={{ padding: "0.25rem 0.6rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${divStyle === s ? "var(--color-primary)" : "var(--color-border)"}`, background: divStyle === s ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: divStyle === s ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer", textTransform: "capitalize" }}>{s}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Thickness</label>
+            <div style={{ display: "flex", gap: "0.375rem" }}>
+              {(["1px","2px","3px","4px","6px"] as const).map(t => (
+                <button key={t} type="button" onClick={() => setDivThickness(t)} style={{ flex: 1, padding: "0.25rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${divThickness === t ? "var(--color-primary)" : "var(--color-border)"}`, background: divThickness === t ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: divThickness === t ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>{t}</button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {blockType === "button" && (
@@ -2182,7 +2232,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
       ) : analytics ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
           {/* Stats row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr) repeat(3, 1fr)", gap: "1rem" }}>
+          <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr) repeat(3, 1fr)", gap: "1rem" }}>
             {[
               { label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0" },
               { label: `Views (${days}d)`, value: analytics.periodViews?.toLocaleString() ?? "0" },
@@ -3022,7 +3072,7 @@ function ContactsPanel() {
             </div>
 
             {editMode ? (
-              <form onSubmit={e => {
+              <form key={`contact-form-${detail.contact.id}-${detail.contact.followUpDate ?? 'none'}-${detail.contact.followUpDone ? '1' : '0'}`} onSubmit={e => {
                 e.preventDefault();
                 const fd = new FormData(e.target as HTMLFormElement);
                 const followUpDateRaw = String(fd.get("followUpDate") || "").trim();
@@ -3076,17 +3126,17 @@ function ContactsPanel() {
                     style={{ resize: "none", marginBottom: "0.5rem" }}
                     data-testid="input-follow-up-note"
                   />
-                  {detail.contact.followUpDate && !detail.contact.followUpDone && (
+                  {detail.contact.followUpDate && !detail.contact.followUpDone ? (
                     <button
                       type="button"
-                      onClick={() => updateMutation.mutate({ id: detail.contact.id, data: { followUpDone: true } })}
+                      onClick={() => updateMutation.mutate({ id: detail.contact.id, data: { followUpDone: true, followUpDate: null, followUpNote: null } })}
                       className="btn btn-secondary btn-sm"
                       data-testid="button-mark-follow-up-done"
                     >
                       ✓ Mark Done
                     </button>
-                  )}
-                  {detail.contact.followUpDone && (
+                  ) : null}
+                  {detail.contact.followUpDone ? (
                     <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                       <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>✓ Marked done</span>
                       <button
@@ -3098,7 +3148,7 @@ function ContactsPanel() {
                         Unmark
                       </button>
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 <button type="submit" disabled={updateMutation.isPending} className="btn btn-primary btn-sm" style={{ alignSelf: "flex-end" }}>{updateMutation.isPending ? "Saving…" : "Save"}</button>
@@ -3641,7 +3691,7 @@ export default function DashboardPage() {
         transition: "width 0.18s ease"
       }}>
         {/* Logo */}
-        <div style={{ padding: sidebarCollapsed ? "1.25rem 0.5rem 1rem" : "1.25rem 1rem 1rem", borderBottom: "1px solid var(--color-divider)", display: "flex", justifyContent: "center" }}>
+        <div className="sidebar-logo" style={{ padding: sidebarCollapsed ? "1.25rem 0.5rem 1rem" : "1.25rem 1rem 1rem", borderBottom: "1px solid var(--color-divider)", display: "flex", justifyContent: "center" }}>
           <Link href="/" style={{ textDecoration: "none", color: "var(--color-text)", display: "flex", alignItems: "center", gap: "0.5rem" }} title="Linkbay">
             {sidebarCollapsed ? (
               <svg width="32" height="26" viewBox="0 0 36 32" fill="none" aria-label="Linkbay">
@@ -3661,7 +3711,7 @@ export default function DashboardPage() {
         </div>
 
         {/* User */}
-        <div style={{ padding: sidebarCollapsed ? "0.875rem 0.5rem" : "0.875rem 1rem", borderBottom: "1px solid var(--color-divider)", display: "flex", alignItems: "center", gap: "0.625rem", justifyContent: sidebarCollapsed ? "center" : "flex-start" }} title={sidebarCollapsed ? `${user.name} — ${user.email}` : undefined}>
+        <div className="sidebar-user" style={{ padding: sidebarCollapsed ? "0.875rem 0.5rem" : "0.875rem 1rem", borderBottom: "1px solid var(--color-divider)", display: "flex", alignItems: "center", gap: "0.625rem", justifyContent: sidebarCollapsed ? "center" : "flex-start" }} title={sidebarCollapsed ? `${user.name} — ${user.email}` : undefined}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--color-primary)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{userInitials}</div>
           {!sidebarCollapsed && (
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -3673,7 +3723,7 @@ export default function DashboardPage() {
 
         {/* Page switcher */}
         {pages.length > 0 && !sidebarCollapsed && (
-          <div style={{ margin: "0.75rem 1rem 0" }}>
+          <div className="sidebar-page-switcher" style={{ margin: "0.75rem 1rem 0" }}>
             <label style={{ display: "block", fontSize: 10, color: "var(--color-text-faint)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: "0.25rem" }}>Active page</label>
             <select
               className="input"
@@ -3690,7 +3740,7 @@ export default function DashboardPage() {
         )}
 
         {/* Nav */}
-        <div style={{ flex: 1, padding: "0.75rem 0.5rem", overflow: "auto" }}>
+        <div className="sidebar-nav" style={{ flex: 1, padding: "0.75rem 0.5rem", overflow: "auto" }}>
           {navItems.map(item => (
             <button
               key={item.id}
@@ -3701,7 +3751,8 @@ export default function DashboardPage() {
               title={sidebarCollapsed ? item.label : undefined}
             >
               {icons[item.icon]}
-              {!sidebarCollapsed && item.label}
+              {!sidebarCollapsed && <span className="nav-label-desktop">{item.label}</span>}
+              <span className="nav-label-mobile">{item.label}</span>
               {/* New leads notification dot */}
               {item.id === "leads" && newLeadsCount > 0 && activeNav !== "leads" && (
                 <span style={{
@@ -3728,7 +3779,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Bottom actions */}
-        <div style={{ padding: "0.75rem 0.5rem", borderTop: "1px solid var(--color-divider)" }}>
+        <div className="sidebar-bottom" style={{ padding: "0.75rem 0.5rem", borderTop: "1px solid var(--color-divider)" }}>
           <button
             onClick={() => setHelpOpen(true)}
             className="sidebar-nav-item"
@@ -3778,6 +3829,34 @@ export default function DashboardPage() {
 
       {/* Content */}
       <div className="dashboard-main" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* Mobile context bar — hidden on desktop via CSS */}
+        <div className="mobile-context-bar" style={{ display: "none" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {navItems.find(n => n.id === activeNav)?.label ?? "Dashboard"}
+            </div>
+            {pages.find((p: any) => p.id === activePageId) && (
+              <div style={{ fontSize: 10, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {pages.find((p: any) => p.id === activePageId)?.title || pages.find((p: any) => p.id === activePageId)?.username}
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+            {pages.length > 1 && (
+              <select
+                className="input"
+                value={activePageId ?? ""}
+                onChange={e => setActivePageId(Number(e.target.value))}
+                style={{ fontSize: 11, height: 28, padding: "0 0.375rem", maxWidth: 110 }}
+              >
+                {pages.map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.title || p.username}</option>
+                ))}
+              </select>
+            )}
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--color-primary)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{userInitials}</div>
+          </div>
+        </div>
         {renderPanel()}
       </div>
 

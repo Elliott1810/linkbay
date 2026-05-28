@@ -612,6 +612,10 @@ a, button, [role="button"] {
   flex-direction: column;
   overflow-y: auto;
 }
+/* Mobile nav labels hidden on desktop, shown only via mobile media query */
+.nav-label-mobile { display: none; }
+.nav-label-desktop { display: inline; }
+
 .sidebar-nav-item {
   display: flex;
   align-items: center;
@@ -765,8 +769,9 @@ a, button, [role="button"] {
 
 /* Mobile nav */
 @media (max-width: 768px) {
-  .nav-desktop { display: none; }
+  .nav-desktop { display: none !important; }
   .nav-mobile-toggle { display: flex; }
+  .nav-mobile-only { display: flex !important; }
   .sidebar {
     width: 100%;
     height: auto;
@@ -895,61 +900,144 @@ a, button, [role="button"] {
   .live-preview-panel { display: none !important; }
 }
 
-/* Mobile editor/dashboard improvements (Goals 20-27) */
-@media (max-width: 768px) {
-  /* Goal 20: HomePage header — keep CTAs visible without overflow */
-  .home-header-cta { font-size: 12px !important; padding: 0.4rem 0.6rem !important; }
-  .home-header-nav-link { display: none !important; }
+/* ═══════════════════════════════════════════════════════════
+   MOBILE DASHBOARD — Comprehensive redesign
+   ═══════════════════════════════════════════════════════════ */
 
-  /* Goal 21: FeaturesPage overflow */
+/* FeaturesPage */
+@media (max-width: 768px) {
   .features-grid { grid-template-columns: 1fr !important; gap: 0.75rem !important; }
   .features-card { padding: 1rem !important; }
   .features-card h3 { font-size: 16px !important; }
+}
 
-  /* Goal 22: Dashboard sidebar collapses to bottom tab bar */
-  .dashboard-sidebar { 
-    flex-direction: row !important;
-    position: fixed !important;
-    bottom: 0; left: 0; right: 0;
-    height: auto !important;
+/* ── Dashboard shell ── */
+@media (max-width: 768px) {
+  /* The entire shell becomes a vertical flex column */
+  .dashboard-shell {
+    flex-direction: column !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  /* Sidebar becomes a fixed bottom tab bar — compact icon+label */
+  .dashboard-sidebar {
+    order: 2 !important;          /* below main content */
     width: 100% !important;
+    height: 58px !important;
+    min-height: 58px !important;
+    flex-direction: row !important;
     border-right: none !important;
     border-top: 1px solid var(--color-border) !important;
-    z-index: 40;
-    padding: 0.25rem 0 !important;
-    background: var(--color-surface) !important;
+    border-bottom: none !important;
+    overflow: hidden !important;
+    position: relative !important;
+    z-index: 50 !important;
+    flex-shrink: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
   }
-  .dashboard-sidebar > div:first-child { display: none !important; }
-  .dashboard-sidebar > div[style*="flex: 1"] { 
+
+  /* Hide non-nav sidebar sections (logo, user, page switcher, bottom items) */
+  .dashboard-sidebar .sidebar-logo,
+  .dashboard-sidebar .sidebar-user,
+  .dashboard-sidebar .sidebar-page-switcher,
+  .dashboard-sidebar .sidebar-bottom
+  { display: none !important; }
+
+  /* Also hide the "New page" button sub-section inside sidebar-nav on mobile */
+  .dashboard-sidebar .sidebar-nav > div:last-child { display: none !important; }
+
+  /* Nav section fills the full tab bar */
+  .dashboard-sidebar .sidebar-nav {
     flex: 1 !important;
     flex-direction: row !important;
-    max-height: none !important;
-    overflow-x: auto !important;
     padding: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: stretch !important;
   }
-  .dashboard-sidebar > div[style*="flex: 1"] > a,
-  .dashboard-sidebar > div[style*="flex: 1"] > button {
-    flex: 1 0 auto !important;
-    padding: 0.5rem 0.75rem !important;
-    font-size: 11px !important;
+
+  /* Nav label visibility */
+  .nav-label-desktop { display: none !important; }
+  .nav-label-mobile { display: inline !important; }
+
+  /* Each tab button */
+  .dashboard-sidebar .sidebar-nav-item {
+    flex: 1 !important;
     flex-direction: column !important;
-    gap: 0.15rem !important;
-    text-align: center !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 6px 2px 4px !important;
+    font-size: 9px !important;
+    font-weight: 600 !important;
+    gap: 2px !important;
     border-radius: 0 !important;
-    min-width: 60px;
+    border-left: none !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    letter-spacing: -0.2px !important;
   }
-  .dashboard-main { padding-bottom: 64px !important; }
 
-  /* Goal 24: Editor mobile redesign */
-  .editor-panel, .editor-pane { padding: 0.75rem !important; }
-  .block-list-item, [data-testid^="block-row-"] { padding: 0.75rem !important; min-height: 60px; }
-  .block-type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+  .dashboard-sidebar .sidebar-nav-item svg {
+    width: 20px !important;
+    height: 20px !important;
+    flex-shrink: 0 !important;
+  }
 
-  /* Goal 25: Analytics — stack cards & shrink */
-  .analytics-grid { grid-template-columns: 1fr !important; }
-  .analytics-stat-value { font-size: 22px !important; }
+  /* Active tab indicator — top border */
+  .dashboard-sidebar .sidebar-nav-item.active {
+    border-top: 2.5px solid var(--color-primary) !important;
+    border-radius: 0 !important;
+  }
 
-  /* Goal 26-27: Leads/Contacts — table -> stacked cards */
+  /* Hide leads badge dot positioning on mobile tabs */
+  .dashboard-sidebar .sidebar-nav-item span[style*="position: absolute"] {
+    top: 2px !important;
+    right: 4px !important;
+    width: 14px !important;
+    height: 14px !important;
+    font-size: 8px !important;
+  }
+
+  /* Main content fills remaining space and scrolls */
+  .dashboard-main {
+    order: 1 !important;
+    flex: 1 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 0.875rem !important;
+    min-height: 0 !important;
+  }
+
+  /* Mobile context bar (page name + user) at top of main — shown via JS */
+  .mobile-context-bar {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    padding: 0.625rem 0.875rem !important;
+    background: var(--color-surface) !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    margin: -0.875rem -0.875rem 0.875rem !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10 !important;
+  }
+
+  /* Editor */
+  .editor-panel, .editor-pane { padding: 0.625rem !important; }
+  .editor-pane.editor-pane-hidden-mobile { display: none !important; }
+  .editor-pane.editor-pane-active { display: block !important; }
+
+  /* Analytics */
+  .analytics-grid { grid-template-columns: 1fr 1fr !important; }
+  .analytics-stat-value { font-size: 20px !important; }
+  .analytics-chart-full { grid-column: 1 / -1 !important; }
+
+  /* Leads/Contacts — table → stacked cards */
   .leads-table thead { display: none !important; }
   .leads-table, .leads-table tbody, .leads-table tr, .leads-table td {
     display: block !important;
@@ -962,12 +1050,32 @@ a, button, [role="button"] {
     padding: 0.625rem !important;
     background: var(--color-surface) !important;
   }
-  .leads-table td { padding: 0.2rem 0 !important; border: none !important; font-size: 13px !important; }
+  .leads-table td {
+    padding: 0.2rem 0 !important;
+    border: none !important;
+    font-size: 13px !important;
+    display: flex !important;
+    gap: 0.375rem !important;
+    align-items: baseline !important;
+  }
   .leads-table td::before {
-    content: attr(data-label) ":  ";
+    content: attr(data-label);
     font-weight: 700;
     color: var(--color-text-muted);
-    font-size: 11px;
-    margin-right: 0.25rem;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+    min-width: 60px;
+  }
+
+  /* Stats grid — 2 columns on mobile */
+  .stats-grid-4 { grid-template-columns: 1fr 1fr !important; }
+
+  /* Page header section in each panel */
+  .dashboard-panel-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.625rem !important;
   }
 }

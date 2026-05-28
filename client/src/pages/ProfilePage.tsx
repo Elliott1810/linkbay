@@ -4,6 +4,21 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/App";
 import { backgroundToCss, getBackgroundLuminance } from "./BuilderPage";
+import {
+  SiInstagram, SiTiktok, SiX, SiYoutube, SiFacebook,
+  SiGithub, SiPinterest, SiSnapchat, SiThreads, SiWhatsapp, SiTelegram,
+  SiDiscord, SiTwitch, SiSpotify,
+} from "react-icons/si";
+
+// LinkedIn inline SVG (not in react-icons v5)
+function SiLinkedin({ size = 18, style }: { size?: number; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={style}>
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+    </svg>
+  );
+}
+import { Globe } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────
 interface Block {
@@ -39,7 +54,7 @@ interface Block {
   showSeconds?: boolean;
   // divider
   thickness?: "thin" | "medium" | "thick";
-  dividerStyle?: "line" | "dots" | "spacer";
+  dividerStyle?: "line" | "dots" | "spacer" | "solid" | "dashed" | "dotted" | "double" | "gradient";
   // button
   color?: "accent" | "white" | "dark";
   size?: "normal" | "large";
@@ -71,22 +86,38 @@ function ImageBlock({ block }: { block: Block }) {
 function VideoBlock({ block }: { block: Block }) {
   const src = block.src || block.url || "";
   let embedUrl = src;
-  const yt = src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
-  if (yt) embedUrl = `https://www.youtube.com/embed/${yt[1]}`;
+  const yt = src.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([-\w]+)/);
+  if (yt) embedUrl = `https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&modestbranding=1`;
   const vimeo = src.match(/vimeo\.com\/(\d+)/);
   if (vimeo) embedUrl = `https://player.vimeo.com/video/${vimeo[1]}`;
   return (
     <div style={{ borderRadius: "var(--radius-lg)", overflow: "hidden", background: "#000", border: "1px solid var(--color-border)" }}>
       <div style={{ position: "relative", paddingBottom: "56.25%" }}>
-        <iframe src={embedUrl} title="Video" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />
+        <iframe src={embedUrl} title="Video" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />
       </div>
       {block.caption && <div style={{ padding: "0.5rem 0.75rem", fontSize: 12, color: "var(--color-text-muted)", textAlign: "center", background: "var(--color-surface)" }}>{block.caption}</div>}
     </div>
   );
 }
 
-const SOCIAL_EMOJI: Record<string, string> = {
-  twitter: "🐦", x: "𝕏", instagram: "📷", linkedin: "💼", github: "🐱", tiktok: "🎥", youtube: "📺", facebook: "👥", website: "🌐", pinterest: "📌", snapchat: "👻",
+const SOCIAL_ICON: Record<string, React.ComponentType<{ size?: number; style?: React.CSSProperties }>> = {
+  instagram: SiInstagram,
+  tiktok: SiTiktok,
+  twitter: SiX,
+  x: SiX,
+  "twitter/x": SiX,
+  linkedin: SiLinkedin,
+  youtube: SiYoutube,
+  facebook: SiFacebook,
+  github: SiGithub,
+  pinterest: SiPinterest,
+  snapchat: SiSnapchat,
+  threads: SiThreads,
+  whatsapp: SiWhatsapp,
+  telegram: SiTelegram,
+  discord: SiDiscord,
+  twitch: SiTwitch,
+  spotify: SiSpotify,
 };
 
 function SocialLinksBlock({ block, accent, pageId }: { block: Block; accent: string; pageId: number }) {
@@ -94,14 +125,20 @@ function SocialLinksBlock({ block, accent, pageId }: { block: Block; accent: str
   const items = (block.platforms || block.socials || []) as Array<{ platform: string; handle?: string; url: string }>;
   const track = () => { apiRequest("POST", `/api/pages/${pageId}/track-click`).catch(() => {}); };
   return (
-    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", flexWrap: "wrap", padding: "0.75rem", background: "var(--color-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
-      {items.map((s, i) => (
-        <a key={i} href={s.url} onClick={track} target="_blank" rel="noopener noreferrer"
-           aria-label={s.platform}
-           style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, background: `${accent}14`, color: accent, textDecoration: "none", borderRadius: 999, fontSize: 18, fontWeight: 600, border: `1px solid ${accent}30` }}>
-          <span>{SOCIAL_EMOJI[s.platform.toLowerCase()] || "🔗"}</span>
-        </a>
-      ))}
+    <div style={{ display: "flex", gap: "0.625rem", justifyContent: "center", flexWrap: "wrap", padding: "1rem", background: "var(--color-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
+      {items.map((s, i) => {
+        const key = s.platform.toLowerCase();
+        const IconComponent = SOCIAL_ICON[key];
+        return (
+          <a key={i} href={s.url} onClick={track} target="_blank" rel="noopener noreferrer"
+             aria-label={s.platform}
+             style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, background: `${accent}18`, color: accent, textDecoration: "none", borderRadius: 999, border: `1px solid ${accent}35`, transition: "background 0.15s, transform 0.15s" }}
+             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${accent}30`; (e.currentTarget as HTMLElement).style.transform = "scale(1.1)"; }}
+             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = `${accent}18`; (e.currentTarget as HTMLElement).style.transform = "scale(1)"; }}>
+            {IconComponent ? <IconComponent size={20} /> : <Globe size={20} />}
+          </a>
+        );
+      })}
     </div>
   );
 }
@@ -143,13 +180,18 @@ function CountdownBlock({ block, accent }: { block: Block; accent: string }) {
 }
 
 function DividerBlock({ block }: { block: Block }) {
-  const thickness = block.thickness === "thin" ? 1 : block.thickness === "thick" ? 4 : 2;
-  const style = block.dividerStyle || "line";
+  const thicknessMap: Record<string, number> = { "1px": 1, "2px": 2, "3px": 3, "4px": 4, "6px": 6 };
+  const thickness = thicknessMap[block.thickness as string] ?? (block.thickness === "thin" ? 1 : block.thickness === "thick" ? 4 : 2);
+  const style = block.dividerStyle || "solid";
   if (style === "spacer") {
     return <div style={{ height: thickness * 8 }} />;
   }
-  const borderStyle = style === "dots" ? "dotted" : "solid";
-  return <hr style={{ border: "none", borderTop: `${thickness}px ${borderStyle} var(--color-divider)`, margin: "0.25rem 0" }} />;
+  if (style === "gradient") {
+    return <div style={{ height: thickness, background: "linear-gradient(to right, transparent, var(--color-divider) 30%, var(--color-divider) 70%, transparent)", margin: "0.75rem 0" }} />;
+  }
+  const borderStyle = style === "dotted" ? "dotted" : style === "dashed" ? "dashed" : style === "double" ? "double" : "solid";
+  const topThickness = style === "double" ? Math.max(thickness * 3, 6) : thickness;
+  return <hr style={{ border: "none", borderTop: `${topThickness}px ${borderStyle} var(--color-divider)`, margin: "0.75rem 0" }} />;
 }
 
 function ButtonBlock({ block, accent, pageId }: { block: Block; accent: string; pageId: number }) {
@@ -333,7 +375,7 @@ function LeadForm({ pageId, accentColor, block }: { pageId: number; accentColor:
               </label>
             );
           }
-          const ph = (f.description || f.name) + (f.required ? " *" : "");
+          const ph = f.name + (f.required ? " *" : "");
           if (f.type === "number") {
             return <input key={idx} className="input" type="number" placeholder={ph} value={val} onChange={e => setVal(e.target.value)} required={f.required} aria-label={f.name} />;
           }

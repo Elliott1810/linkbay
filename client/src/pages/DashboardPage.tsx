@@ -944,6 +944,117 @@ function BlockEditor({ pageId, blocks, onSave, saving }: { pageId: number; block
                     </div>
                   </>
                 )}
+                {block.type === "countdown" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>⏰ Countdown Block</div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Label</label>
+                      <input className="input" value={editValues.title ?? ""} onChange={e => setEditValues(v => ({ ...v, title: e.target.value }))} placeholder="Event name" style={{ fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Target Date & Time</label>
+                      <input type="datetime-local" className="input" value={editValues.targetDate ?? ""} onChange={e => setEditValues(v => ({ ...v, targetDate: e.target.value }))} style={{ fontSize: 13 }} />
+                    </div>
+                  </>
+                )}
+                {block.type === "image" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>🖼️ Image Block</div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Image URL</label>
+                      <input className="input" value={editValues.src ?? ""} onChange={e => setEditValues(v => ({ ...v, src: e.target.value }))} placeholder="https://..." style={{ fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Caption (optional)</label>
+                      <input className="input" value={editValues.caption ?? ""} onChange={e => setEditValues(v => ({ ...v, caption: e.target.value }))} placeholder="Image caption" style={{ fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Alt text</label>
+                      <input className="input" value={editValues.alt ?? ""} onChange={e => setEditValues(v => ({ ...v, alt: e.target.value }))} placeholder="Describe the image" style={{ fontSize: 13 }} />
+                    </div>
+                  </>
+                )}
+                {block.type === "divider" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>➖ Divider Block</div>
+                    <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>A divider has no editable content. It's a visual break between blocks.</div>
+                  </>
+                )}
+                {block.type === "button" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>🔘 Button Block</div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Label</label>
+                      <input className="input" value={editValues.title ?? ""} onChange={e => setEditValues(v => ({ ...v, title: e.target.value }))} placeholder="Click here" style={{ fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>URL</label>
+                      <input className="input" value={editValues.url ?? ""} onChange={e => setEditValues(v => ({ ...v, url: e.target.value }))} placeholder="https://..." style={{ fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Description (optional)</label>
+                      <input className="input" value={editValues.description ?? ""} onChange={e => setEditValues(v => ({ ...v, description: e.target.value }))} placeholder="Subtitle" style={{ fontSize: 13 }} />
+                    </div>
+                  </>
+                )}
+                {block.type === "testimonial" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>💬 Testimonial Block</div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Quote</label>
+                      <textarea className="input" value={editValues.quote ?? ""} onChange={e => setEditValues(v => ({ ...v, quote: e.target.value }))} rows={3} placeholder="Enter testimonial quote..." style={{ fontSize: 13, resize: "vertical" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Author Name</label>
+                      <input className="input" value={editValues.author ?? ""} onChange={e => setEditValues(v => ({ ...v, author: e.target.value }))} placeholder="Jane Smith" style={{ fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Author Title / Company</label>
+                      <input className="input" value={editValues.authorRole ?? ""} onChange={e => setEditValues(v => ({ ...v, authorRole: e.target.value }))} placeholder="CEO, Acme Inc." style={{ fontSize: 13 }} />
+                    </div>
+                  </>
+                )}
+                {block.type === "faq" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>❓ FAQ Block</div>
+                    {(editValues.faqs ?? []).map((item, i) => (
+                      <div key={i} style={{ display: "flex", flexDirection: "column", gap: "0.25rem", padding: "0.5rem", background: "var(--color-bg)", borderRadius: "var(--radius-sm)", border: "1px solid var(--color-border)" }}>
+                        <input className="input" value={item.q ?? ""} onChange={e => { const arr = [...(editValues.faqs ?? [])]; arr[i] = { ...arr[i], q: e.target.value }; setEditValues(v => ({ ...v, faqs: arr })); }} placeholder={`Question ${i+1}`} style={{ fontSize: 12 }} />
+                        <textarea className="input" value={item.a ?? ""} onChange={e => { const arr = [...(editValues.faqs ?? [])]; arr[i] = { ...arr[i], a: e.target.value }; setEditValues(v => ({ ...v, faqs: arr })); }} rows={2} placeholder="Answer..." style={{ fontSize: 12, resize: "vertical" }} />
+                        <button type="button" onClick={() => { const arr = (editValues.faqs ?? []).filter((_, j) => j !== i); setEditValues(v => ({ ...v, faqs: arr })); }} style={{ alignSelf: "flex-end", background: "none", border: "none", color: "var(--color-error)", cursor: "pointer", fontSize: 12 }}>Remove</button>
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => setEditValues(v => ({ ...v, faqs: [...(v.faqs ?? []), { q: "", a: "" }] }))} className="btn btn-secondary btn-sm">+ Add FAQ Item</button>
+                  </>
+                )}
+                {block.type === "video" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>🎬 Video Block</div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>YouTube / Vimeo URL</label>
+                      <input className="input" value={editValues.src ?? ""} onChange={e => setEditValues(v => ({ ...v, src: e.target.value }))} placeholder="https://youtube.com/watch?v=..." style={{ fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Caption (optional)</label>
+                      <input className="input" value={editValues.caption ?? ""} onChange={e => setEditValues(v => ({ ...v, caption: e.target.value }))} placeholder="Video description" style={{ fontSize: 13 }} />
+                    </div>
+                  </>
+                )}
+                {block.type === "social-links" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>🌐 Social Links Block</div>
+                    {(editValues.socials ?? []).map((p, i) => (
+                      <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                        <select className="input" value={p.platform ?? ""} onChange={e => { const arr = [...(editValues.socials ?? [])]; arr[i] = { ...arr[i], platform: e.target.value }; setEditValues(v => ({ ...v, socials: arr })); }} style={{ flex: 1, fontSize: 12 }}>
+                          {["Instagram","TikTok","Twitter/X","LinkedIn","YouTube","Facebook","GitHub","Pinterest","Snapchat"].map(pl => <option key={pl} value={pl}>{pl}</option>)}
+                        </select>
+                        <input className="input" value={p.url ?? ""} onChange={e => { const arr = [...(editValues.socials ?? [])]; arr[i] = { ...arr[i], url: e.target.value }; setEditValues(v => ({ ...v, socials: arr })); }} placeholder="https://... or @handle" style={{ flex: 2, fontSize: 12 }} />
+                        <button type="button" onClick={() => { const arr = (editValues.socials ?? []).filter((_, j) => j !== i); setEditValues(v => ({ ...v, socials: arr })); }} style={{ background: "none", border: "none", color: "var(--color-error)", cursor: "pointer", fontSize: 16 }}>×</button>
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => setEditValues(v => ({ ...v, socials: [...(v.socials ?? []), { platform: "Instagram", url: "" }] }))} className="btn btn-secondary btn-sm">+ Add Platform</button>
+                  </>
+                )}
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button onClick={saveEdit} className="btn btn-primary btn-sm" disabled={saving} style={{ flex: 1, justifyContent: "center" }}>
                     {saving ? "Saving…" : "Save"}
@@ -1138,10 +1249,18 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
     },
   });
 
+  // Bump these counters whenever a relevant mutation succeeds so the preview iframe refreshes.
+  const [blocksUpdatedAt, setBlocksUpdatedAt] = useState(0);
+  const [pageUpdatedAt, setPageUpdatedAt] = useState(0);
+  useEffect(() => { if (saveBlocksMutation.isSuccess) setBlocksUpdatedAt(Date.now()); }, [saveBlocksMutation.isSuccess, saveBlocksMutation.data]);
+  useEffect(() => { if (savePageMutation.isSuccess) setPageUpdatedAt(Date.now()); }, [savePageMutation.isSuccess, savePageMutation.data]);
+
   if (pages.length === 0) return <NoPageState />;
 
   return (
     <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      {/* Live preview panel — desktop only (hidden on mobile via CSS) */}
+      <LivePreviewPanel username={page?.username} previewKey={`${blocksUpdatedAt}-${pageUpdatedAt}`} />
       {/* Left panel — page settings */}
       <div style={{ width: 280, borderRight: "1px solid var(--color-border)", background: "var(--color-surface-2)", padding: "1.25rem", overflow: "auto" }}>
         <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-faint)", marginBottom: "1rem" }}>Page settings</div>
@@ -1319,6 +1438,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
         <div className={editorTab === "add" ? "editor-pane editor-pane-active" : "editor-pane editor-pane-hidden-mobile"}>
           <AddBlockForm
             onAdd={(block) => saveBlocksMutation.mutate([...(pageBlocks || []), block])}
+            onAddAll={(newBlocks) => saveBlocksMutation.mutate([...(pageBlocks || []), ...newBlocks])}
             saving={saveBlocksMutation.isPending}
           />
         </div>
@@ -1347,7 +1467,8 @@ type BlockKind = PageBlock["type"];
 // ─── Smart Block Recommender (decision-tree wizard) ─────────────────────────
 type WizardQuestion = { prompt: string; options: string[] };
 
-function getNextQuestion(answers: string[]): WizardQuestion | null {
+// Goal 11: 5-question wizard. `answers` is an array of selected-answer arrays (one entry per asked question).
+function getNextQuestion(answers: string[][]): WizardQuestion | null {
   if (answers.length === 0) {
     return {
       prompt: "What best describes you?",
@@ -1355,63 +1476,83 @@ function getNextQuestion(answers: string[]): WizardQuestion | null {
     };
   }
   if (answers.length === 1) {
-    const a0 = answers[0];
-    if (a0 === "Creator / Influencer") return { prompt: "What's your main goal?", options: ["Grow my following", "Monetise my content", "Build a community"] };
-    if (a0 === "Business / Brand") return { prompt: "What do you want visitors to do?", options: ["Contact / Enquire", "Buy something", "Learn about us"] };
-    if (a0 === "Freelancer / Consultant") return { prompt: "What's your priority?", options: ["Get more clients", "Share my work", "Both"] };
-    if (a0 === "Job Seeker") return { prompt: "What do you want to show?", options: ["My CV / Portfolio", "References / Testimonials"] };
+    const a0s = answers[0];
+    // Mix options from all selected personas
+    const set = new Set<string>();
+    a0s.forEach(a0 => {
+      if (a0 === "Creator / Influencer") ["Grow my following", "Monetise my content", "Build a community"].forEach(o => set.add(o));
+      else if (a0 === "Business / Brand") ["Contact / Enquire", "Buy something", "Learn about us"].forEach(o => set.add(o));
+      else if (a0 === "Freelancer / Consultant") ["Get more clients", "Share my work", "Both"].forEach(o => set.add(o));
+      else if (a0 === "Job Seeker") ["My CV / Portfolio", "References / Testimonials"].forEach(o => set.add(o));
+    });
+    if (set.size === 0) return null;
+    return { prompt: "What's your main goal?", options: Array.from(set) };
   }
   if (answers.length === 2) {
-    const [a0, a1] = answers;
-    if (a0 === "Creator / Influencer" && a1 === "Grow my following") {
-      return { prompt: "Which platforms?", options: ["Instagram / TikTok", "YouTube", "Twitter / X", "Multiple"] };
-    }
-    if (a0 === "Business / Brand" && a1 === "Contact / Enquire") {
-      return { prompt: "How urgently?", options: ["ASAP (phone/form)", "At their leisure"] };
-    }
-    if (a0 === "Business / Brand" && a1 === "Buy something") {
-      return { prompt: "Do you have a product page?", options: ["Yes, link me", "No, just describe"] };
-    }
+    return {
+      prompt: "What's your aesthetic preference?",
+      options: ["Minimal & clean", "Bold & colourful", "Professional", "Playful"],
+    };
+  }
+  if (answers.length === 3) {
+    return {
+      prompt: "What content do you have ready?",
+      options: ["Photos / images", "Videos", "Written copy", "Testimonials", "A link / product"],
+    };
+  }
+  if (answers.length === 4) {
+    return {
+      prompt: "Anything specific you want to highlight?",
+      options: ["An upcoming event", "A new product", "My social media", "Customer reviews", "Frequently asked questions"],
+    };
   }
   return null;
 }
 
-function getRecommendations(answers: string[]): BlockKind[] {
-  const [a0, a1, a2] = answers;
-  // Creator paths
-  if (a0 === "Creator / Influencer") {
-    if (a1 === "Grow my following") {
-      if (a2 === "Instagram / TikTok") return ["social-links", "link" as any, "poll", "countdown", "text"] as BlockKind[];
-      if (a2 === "YouTube") return ["video", "link" as any, "social-links", "countdown", "poll"] as BlockKind[];
-      if (a2 === "Twitter / X" || a2 === "Multiple") return ["social-links", "link" as any, "poll", "countdown", "text"] as BlockKind[];
+// Score-based recommendation: each selected answer contributes weights to a set of block kinds.
+function getRecommendations(answers: string[][]): BlockKind[] {
+  const scores: Record<string, number> = {};
+  const add = (kind: string, w = 1) => { scores[kind] = (scores[kind] || 0) + w; };
+  const flat = answers.flat();
+  for (const a of flat) {
+    switch (a) {
+      case "Creator / Influencer": add("social-links", 2); add("poll", 2); add("countdown", 1); add("button", 1); break;
+      case "Business / Brand": add("lead-form", 3); add("text", 2); add("testimonial", 2); add("button", 2); add("faq", 1); break;
+      case "Freelancer / Consultant": add("lead-form", 2); add("testimonial", 2); add("button", 2); add("text", 2); break;
+      case "Job Seeker": add("text", 2); add("button", 2); add("testimonial", 2); add("social-links", 1); break;
+      case "Grow my following": add("social-links", 3); add("poll", 2); add("countdown", 1); break;
+      case "Monetise my content": add("button", 3); add("lead-form", 2); add("testimonial", 1); break;
+      case "Build a community": add("poll", 3); add("lead-form", 1); add("social-links", 2); break;
+      case "Contact / Enquire": add("lead-form", 3); add("button", 1); break;
+      case "Buy something": add("button", 3); add("countdown", 1); add("testimonial", 1); break;
+      case "Learn about us": add("text", 2); add("faq", 2); add("testimonial", 1); break;
+      case "Get more clients": add("lead-form", 3); add("testimonial", 2); add("button", 1); break;
+      case "Share my work": add("image", 2); add("button", 1); add("text", 2); break;
+      case "Both": add("lead-form", 2); add("testimonial", 1); add("button", 1); break;
+      case "My CV / Portfolio": add("text", 2); add("button", 2); add("image", 1); break;
+      case "References / Testimonials": add("testimonial", 3); add("text", 1); break;
+      case "Minimal & clean": add("text", 1); add("divider", 1); break;
+      case "Bold & colourful": add("button", 1); add("image", 1); break;
+      case "Professional": add("text", 1); add("testimonial", 1); add("lead-form", 1); break;
+      case "Playful": add("poll", 1); add("countdown", 1); break;
+      case "Photos / images": add("image", 3); break;
+      case "Videos": add("video", 3); break;
+      case "Written copy": add("text", 2); add("faq", 1); break;
+      case "Testimonials": add("testimonial", 3); break;
+      case "A link / product": add("button", 3); break;
+      case "An upcoming event": add("countdown", 3); break;
+      case "A new product": add("button", 2); add("countdown", 1); add("image", 1); break;
+      case "My social media": add("social-links", 3); break;
+      case "Customer reviews": add("testimonial", 3); break;
+      case "Frequently asked questions": add("faq", 3); break;
     }
-    if (a1 === "Monetise my content") return ["button", "lead-form", "testimonial", "link" as any, "text"] as BlockKind[];
-    if (a1 === "Build a community") return ["poll", "lead-form", "text", "social-links", "countdown"] as BlockKind[];
   }
-  // Business paths
-  if (a0 === "Business / Brand") {
-    if (a1 === "Contact / Enquire") {
-      if (a2 === "ASAP (phone/form)") return ["lead-form", "button", "text", "social-links", "testimonial"] as BlockKind[];
-      if (a2 === "At their leisure") return ["text", "faq", "lead-form", "social-links", "button"] as BlockKind[];
-    }
-    if (a1 === "Buy something") {
-      if (a2 === "Yes, link me") return ["button", "testimonial", "countdown", "lead-form", "text"] as BlockKind[];
-      if (a2 === "No, just describe") return ["text", "testimonial", "lead-form", "button", "faq"] as BlockKind[];
-    }
-    if (a1 === "Learn about us") return ["text", "faq", "testimonial", "social-links", "link" as any] as BlockKind[];
+  // If nothing was answered, fall back to sensible defaults
+  if (Object.keys(scores).length === 0) {
+    return ["text", "button", "social-links", "lead-form", "image"] as BlockKind[];
   }
-  // Freelancer
-  if (a0 === "Freelancer / Consultant") {
-    if (a1 === "Get more clients") return ["lead-form", "testimonial", "button", "text", "link" as any] as BlockKind[];
-    if (a1 === "Share my work") return ["link" as any, "image", "testimonial", "text", "social-links"] as BlockKind[];
-    if (a1 === "Both") return ["lead-form", "testimonial", "button", "link" as any, "text"] as BlockKind[];
-  }
-  // Job seeker
-  if (a0 === "Job Seeker") {
-    if (a1 === "My CV / Portfolio") return ["link" as any, "text", "button", "image", "social-links"] as BlockKind[];
-    if (a1 === "References / Testimonials") return ["testimonial", "text", "link" as any, "lead-form", "social-links"] as BlockKind[];
-  }
-  return ["text", "link" as any, "button", "social-links", "lead-form"] as BlockKind[];
+  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  return sorted.slice(0, 5) as BlockKind[];
 }
 
 const BLOCK_META: Record<string, { icon: string; name: string; desc: string }> = {
@@ -1436,15 +1577,131 @@ function normaliseRecommendation(kind: string): BlockKind {
   return kind as BlockKind;
 }
 
-function SmartBlockWizard({ onPick, onSkip }: { onPick: (kind: BlockKind) => void; onSkip: () => void }) {
-  const [wizardAnswers, setWizardAnswers] = useState<string[]>([]);
+// ─── Live Preview Panel (Goal 18) ──────────────────────────────
+// Renders the published page inside an iframe with a phone-shaped mockup.
+// Hidden on screens narrower than 1100px via CSS class `live-preview-panel`.
+function LivePreviewPanel({ username, previewKey }: { username?: string; previewKey: string }) {
+  const [manualBump, setManualBump] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
+  if (!username) return null;
+  const src = `/${encodeURIComponent(username)}?preview=1&t=${previewKey}-${manualBump}`;
+
+  if (collapsed) {
+    return (
+      <div className="live-preview-panel live-preview-collapsed" style={{ width: 36, borderLeft: "1px solid var(--color-border)", background: "var(--color-surface-2)", display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "0.75rem" }}>
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          title="Show preview"
+          aria-label="Show preview"
+          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, padding: "0.25rem" }}
+          data-testid="button-preview-expand"
+        >
+          📱
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="live-preview-panel" style={{ width: 340, borderLeft: "1px solid var(--color-border)", background: "var(--color-surface-2)", padding: "1rem 0.75rem", overflow: "auto", display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: "0.625rem", gap: "0.5rem" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-faint)" }}>Live preview</div>
+        <div style={{ display: "flex", gap: "0.25rem" }}>
+          <button
+            type="button"
+            onClick={() => setManualBump(n => n + 1)}
+            title="Refresh preview"
+            aria-label="Refresh preview"
+            style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: 11, padding: "0.25rem 0.5rem", fontWeight: 600 }}
+            data-testid="button-preview-refresh"
+          >
+            ↻
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            title="Hide preview"
+            aria-label="Hide preview"
+            style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: 11, padding: "0.25rem 0.5rem", fontWeight: 600 }}
+            data-testid="button-preview-collapse"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+      {/* Phone mockup */}
+      <div style={{ width: 280, height: 560, background: "#1a1a1a", borderRadius: 32, padding: 10, boxShadow: "0 10px 30px rgba(0,0,0,0.15)", position: "relative" }}>
+        <div style={{ position: "absolute", top: 14, left: "50%", transform: "translateX(-50%)", width: 60, height: 4, background: "#000", borderRadius: 999, zIndex: 2 }} />
+        <iframe
+          key={src}
+          src={src}
+          title="Live preview"
+          style={{ width: "100%", height: "100%", border: "none", borderRadius: 24, background: "white" }}
+          data-testid="iframe-live-preview"
+        />
+      </div>
+      <div style={{ marginTop: "0.625rem", fontSize: 10, color: "var(--color-text-faint)", textAlign: "center" }}>Auto-refreshes when you save</div>
+    </div>
+  );
+}
+
+// Create a sensible default block for a given kind (used by "Add all 5 blocks")
+function defaultBlockFor(kind: BlockKind): PageBlock {
+  const id = `b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  switch (kind) {
+    case "text":
+      return { id, type: "text", title: "About me", content: "Tell visitors who you are and what you do." };
+    case "poll":
+      return { id, type: "poll", question: "What do you think?", options: ["Option 1", "Option 2"] };
+    case "lead-form":
+      return { id, type: "lead-form", title: "Get in touch", description: "Leave your details and I'll be in touch.", buttonText: "Send message", customFields: [] };
+    case "image":
+      return { id, type: "image", src: "", alt: "", caption: "" };
+    case "video":
+      return { id, type: "video", src: "", caption: "" };
+    case "social-links":
+      return { id, type: "social-links", socials: [{ platform: "instagram", url: "" }, { platform: "twitter", url: "" }] };
+    case "countdown":
+      return { id, type: "countdown", title: "Launching soon", targetDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16) };
+    case "divider":
+      return { id, type: "divider" };
+    case "button":
+      return { id, type: "button", title: "Visit my site", url: "https://" };
+    case "testimonial":
+      return { id, type: "testimonial", quote: "This service changed my life!", author: "Happy customer", authorRole: "" };
+    case "faq":
+      return { id, type: "faq", faqs: [{ q: "How does it work?", a: "Click the button to get started." }] };
+    default:
+      return { id, type: "text", content: "" };
+  }
+}
+
+function SmartBlockWizard({ onPick, onAddAll, onSkip }: { onPick: (kind: BlockKind) => void; onAddAll: (kinds: BlockKind[]) => void; onSkip: () => void }) {
+  const [wizardAnswers, setWizardAnswers] = useState<string[][]>([]);
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [recommendations, setRecommendations] = useState<string[] | null>(null);
 
   const question = recommendations === null ? getNextQuestion(wizardAnswers) : null;
 
-  const answer = (opt: string) => {
-    const nextAnswers = [...wizardAnswers, opt];
+  const toggleOption = (opt: string) => {
+    setSelectedOptions(prev => prev.includes(opt) ? prev.filter(o => o !== opt) : [...prev, opt]);
+  };
+
+  const continueStep = () => {
+    const nextAnswers = [...wizardAnswers, selectedOptions];
     setWizardAnswers(nextAnswers);
+    setSelectedOptions([]);
+    const nextQ = getNextQuestion(nextAnswers);
+    if (!nextQ) {
+      setRecommendations(getRecommendations(nextAnswers));
+    }
+  };
+
+  const skipStep = () => {
+    const nextAnswers = [...wizardAnswers, [] as string[]];
+    setWizardAnswers(nextAnswers);
+    setSelectedOptions([]);
     const nextQ = getNextQuestion(nextAnswers);
     if (!nextQ) {
       setRecommendations(getRecommendations(nextAnswers));
@@ -1453,41 +1710,69 @@ function SmartBlockWizard({ onPick, onSkip }: { onPick: (kind: BlockKind) => voi
 
   const restart = () => {
     setWizardAnswers([]);
+    setSelectedOptions([]);
     setRecommendations(null);
   };
+
+  const stepNum = wizardAnswers.length + 1;
+  const totalSteps = 5;
 
   return (
     <div style={{ background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", borderRadius: "var(--radius-lg)", padding: "1rem", marginBottom: "1rem" }} data-testid="smart-block-wizard">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem", gap: "0.5rem" }}>
-        <div style={{ fontSize: "var(--text-sm)", fontWeight: 800, color: "var(--color-primary)" }}>🤖 Smart Block Recommender</div>
+        <div style={{ fontSize: "var(--text-sm)", fontWeight: 800, color: "var(--color-primary)" }}>
+          🤖 Smart Block Recommender{recommendations === null && question ? ` · ${stepNum}/${totalSteps}` : ""}
+        </div>
         <button type="button" onClick={onSkip} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 11, fontWeight: 600 }} data-testid="button-wizard-skip">
           I'll choose myself →
         </button>
       </div>
 
       {recommendations === null && question && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <p style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{question.prompt}</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+          <p style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{question.prompt} <span style={{ fontSize: 11, color: "var(--color-text-muted)", fontWeight: 500 }}>(pick any that apply)</span></p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
-            {question.options.map(opt => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => answer(opt)}
-                className="btn btn-secondary btn-sm"
-                style={{ fontSize: 12, fontWeight: 600 }}
-                data-testid={`button-wizard-answer-${opt.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-              >
-                {opt}
-              </button>
-            ))}
+            {question.options.map(opt => {
+              const isOn = selectedOptions.includes(opt);
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => toggleOption(opt)}
+                  style={{
+                    padding: "0.4rem 0.75rem", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    border: `1.5px solid ${isOn ? "var(--color-primary)" : "var(--color-border)"}`,
+                    background: isOn ? "var(--color-primary)" : "var(--color-surface)",
+                    color: isOn ? "white" : "var(--color-text-muted)",
+                  }}
+                  data-testid={`button-wizard-answer-${opt.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                >
+                  {isOn ? "✓ " : ""}{opt}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+            <button
+              type="button"
+              onClick={continueStep}
+              disabled={selectedOptions.length === 0}
+              className="btn btn-primary btn-sm"
+              style={{ fontWeight: 700, opacity: selectedOptions.length === 0 ? 0.5 : 1 }}
+              data-testid="button-wizard-continue"
+            >
+              Continue →
+            </button>
+            <button type="button" onClick={skipStep} className="btn btn-secondary btn-sm" style={{ fontWeight: 600 }} data-testid="button-wizard-step-skip">
+              Skip
+            </button>
           </div>
         </div>
       )}
 
       {recommendations && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <p style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>Based on your answers, try these blocks:</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+          <p style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>Based on your answers, we recommend these blocks:</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "0.5rem" }}>
             {recommendations.map((kind, i) => {
               const meta = BLOCK_META[kind] ?? BLOCK_META.text;
@@ -1505,14 +1790,25 @@ function SmartBlockWizard({ onPick, onSkip }: { onPick: (kind: BlockKind) => voi
               );
             })}
           </div>
-          <button type="button" onClick={restart} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-primary)", fontSize: 11, fontWeight: 600, alignSelf: "flex-start", marginTop: "0.25rem" }} data-testid="button-wizard-restart">↻ Start over</button>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", marginTop: "0.25rem" }}>
+            <button
+              type="button"
+              onClick={() => onAddAll(recommendations.map(normaliseRecommendation))}
+              className="btn btn-primary btn-sm"
+              style={{ fontWeight: 700 }}
+              data-testid="button-wizard-add-all"
+            >
+              ✨ Add all {recommendations.length} blocks to my page
+            </button>
+            <button type="button" onClick={restart} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-primary)", fontSize: 11, fontWeight: 600 }} data-testid="button-wizard-restart">↻ Start over</button>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function AddBlockForm({ onAdd, saving }: { onAdd: (b: PageBlock) => void; saving: boolean }) {
+function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => void; onAddAll?: (blocks: PageBlock[]) => void; saving: boolean }) {
   const [blockType, setBlockType] = useState<BlockKind>("text");
   const [wizardSkipped, setWizardSkipped] = useState(false);
   // Text
@@ -1618,6 +1914,12 @@ function AddBlockForm({ onAdd, saving }: { onAdd: (b: PageBlock) => void; saving
       {!wizardSkipped && (
         <SmartBlockWizard
           onPick={(kind) => { setBlockType(kind); setWizardSkipped(true); setError(""); }}
+          onAddAll={(kinds) => {
+            const blocks = kinds.map(k => defaultBlockFor(k));
+            if (onAddAll) onAddAll(blocks);
+            else blocks.forEach(b => onAdd(b));
+            setWizardSkipped(true);
+          }}
           onSkip={() => setWizardSkipped(true)}
         />
       )}
@@ -2330,7 +2632,7 @@ function LeadsPanel({ pages }: { pages: any[] }) {
       ) : (
         <div className="card" style={{ overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: "var(--text-sm)" }}>
+            <table className="leads-table" style={{ width: "100%", fontSize: "var(--text-sm)" }}>
               <thead>
                 <tr style={{ background: "var(--color-surface-offset)" }}>
                   {["Name", "Email", "Message", "Source", "Status", "Date", ""].map(h => (
@@ -2341,7 +2643,7 @@ function LeadsPanel({ pages }: { pages: any[] }) {
               <tbody>
                 {(leads || []).map((lead: any, i: number) => (
                   <tr key={lead.id} style={{ borderBottom: "1px solid var(--color-divider)", background: i % 2 === 0 ? "transparent" : "var(--color-surface-2)" }} data-testid={`lead-row-${lead.id}`}>
-                    <td style={{ padding: "0.875rem 1rem", fontWeight: 600 }}>
+                    <td data-label="Name" style={{ padding: "0.875rem 1rem", fontWeight: 600 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
                         <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--color-primary-highlight)", color: "var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
                           {lead.name[0]}
@@ -2349,8 +2651,8 @@ function LeadsPanel({ pages }: { pages: any[] }) {
                         {lead.name}
                       </div>
                     </td>
-                    <td style={{ padding: "0.875rem 1rem", color: "var(--color-text-muted)" }}>{lead.email}</td>
-                    <td style={{ padding: "0.875rem 1rem", color: "var(--color-text-muted)", maxWidth: 200 }}>
+                    <td data-label="Email" style={{ padding: "0.875rem 1rem", color: "var(--color-text-muted)" }}>{lead.email}</td>
+                    <td data-label="Message" style={{ padding: "0.875rem 1rem", color: "var(--color-text-muted)", maxWidth: 200 }}>
                       {lead.message ? (
                         <div>
                           <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: expandedMessage === lead.id ? "normal" : "nowrap", display: "block", maxWidth: 180 }}>
@@ -2367,8 +2669,8 @@ function LeadsPanel({ pages }: { pages: any[] }) {
                         </div>
                       ) : <span style={{ color: "var(--color-text-faint)", fontSize: 12 }}>—</span>}
                     </td>
-                    <td style={{ padding: "0.875rem 1rem", color: "var(--color-text-faint)", fontSize: 12 }}>{lead.source || "—"}</td>
-                    <td style={{ padding: "0.875rem 1rem" }}>
+                    <td data-label="Source" style={{ padding: "0.875rem 1rem", color: "var(--color-text-faint)", fontSize: 12 }}>{lead.source || "—"}</td>
+                    <td data-label="Status" style={{ padding: "0.875rem 1rem" }}>
                       <select
                         value={lead.status}
                         onChange={e => updateStatusMutation.mutate({ id: lead.id, status: e.target.value })}
@@ -2378,10 +2680,10 @@ function LeadsPanel({ pages }: { pages: any[] }) {
                         {statusOptions.map(s => <option key={s} value={s}>● {s}</option>)}
                       </select>
                     </td>
-                    <td style={{ padding: "0.875rem 1rem", color: "var(--color-text-faint)", fontSize: 12 }}>
+                    <td data-label="Date" style={{ padding: "0.875rem 1rem", color: "var(--color-text-faint)", fontSize: 12 }}>
                       {new Date(lead.createdAt).toLocaleDateString()}
                     </td>
-                    <td style={{ padding: "0.875rem 1rem" }}>
+                    <td data-label="Actions" style={{ padding: "0.875rem 1rem" }}>
                       <div style={{ display: "flex", gap: 4 }}>
                         <button
                           onClick={() => setSelectedLead(lead)}
@@ -2630,7 +2932,7 @@ function ContactsPanel() {
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--text-sm)" }}>
+          <table className="leads-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--text-sm)" }}>
             <thead>
               <tr style={{ background: "var(--color-surface-offset)", borderBottom: "1px solid var(--color-divider)" }}>
                 <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: 700, fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: 0.5 }}>Name</th>
@@ -2644,17 +2946,17 @@ function ContactsPanel() {
             <tbody>
               {filtered.map((c: any) => (
                 <tr key={c.id} style={{ borderBottom: "1px solid var(--color-divider)", cursor: "pointer" }} onClick={() => setSelectedId(c.id)} data-testid={`row-contact-${c.id}`}>
-                  <td style={{ padding: "0.75rem", fontWeight: 600 }}>
+                  <td data-label="Name" style={{ padding: "0.75rem", fontWeight: 600 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <span>{c.name}</span>
                       {c.followUpDate && !c.followUpDone && <FollowUpBadge dateStr={c.followUpDate} />}
                     </div>
                   </td>
-                  <td style={{ padding: "0.75rem", color: "var(--color-text-muted)" }}>{c.email}</td>
-                  <td style={{ padding: "0.75rem", color: "var(--color-text-muted)" }}>{c.company || "—"}</td>
-                  <td style={{ padding: "0.75rem" }}><span className="badge" style={{ background: "var(--color-surface-offset)", fontSize: 10 }}>{c.source || "manual"}</span></td>
-                  <td style={{ padding: "0.75rem", color: "var(--color-text-faint)", fontSize: 12 }}>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}</td>
-                  <td style={{ padding: "0.75rem", textAlign: "right" }}>
+                  <td data-label="Email" style={{ padding: "0.75rem", color: "var(--color-text-muted)" }}>{c.email}</td>
+                  <td data-label="Company" style={{ padding: "0.75rem", color: "var(--color-text-muted)" }}>{c.company || "—"}</td>
+                  <td data-label="Source" style={{ padding: "0.75rem" }}><span className="badge" style={{ background: "var(--color-surface-offset)", fontSize: 10 }}>{c.source || "manual"}</span></td>
+                  <td data-label="Created" style={{ padding: "0.75rem", color: "var(--color-text-faint)", fontSize: 12 }}>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}</td>
+                  <td data-label="Actions" style={{ padding: "0.75rem", textAlign: "right" }}>
                     <button onClick={e => { e.stopPropagation(); if (confirm("Delete this contact?")) deleteMutation.mutate(c.id); }} className="btn btn-secondary btn-sm" style={{ fontSize: 11 }}>Delete</button>
                   </td>
                 </tr>
@@ -2785,7 +3087,17 @@ function ContactsPanel() {
                     </button>
                   )}
                   {detail.contact.followUpDone && (
-                    <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>Marked done</span>
+                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>✓ Marked done</span>
+                      <button
+                        type="button"
+                        onClick={() => updateMutation.mutate({ id: detail.contact.id, data: { followUpDone: false } })}
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: 11 }}
+                      >
+                        Unmark
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -3465,7 +3777,7 @@ export default function DashboardPage() {
       </nav>
 
       {/* Content */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div className="dashboard-main" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {renderPanel()}
       </div>
 

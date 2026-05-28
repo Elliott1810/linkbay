@@ -889,3 +889,85 @@ a, button, [role="button"] {
 }
 
 /* Help drawer mobile - already responsive via min(420px, 100%) */
+
+/* Live preview panel (Goal 18) — desktop only */
+@media (max-width: 1099px) {
+  .live-preview-panel { display: none !important; }
+}
+
+/* Mobile editor/dashboard improvements (Goals 20-27) */
+@media (max-width: 768px) {
+  /* Goal 20: HomePage header — keep CTAs visible without overflow */
+  .home-header-cta { font-size: 12px !important; padding: 0.4rem 0.6rem !important; }
+  .home-header-nav-link { display: none !important; }
+
+  /* Goal 21: FeaturesPage overflow */
+  .features-grid { grid-template-columns: 1fr !important; gap: 0.75rem !important; }
+  .features-card { padding: 1rem !important; }
+  .features-card h3 { font-size: 16px !important; }
+
+  /* Goal 22: Dashboard sidebar collapses to bottom tab bar */
+  .dashboard-sidebar { 
+    flex-direction: row !important;
+    position: fixed !important;
+    bottom: 0; left: 0; right: 0;
+    height: auto !important;
+    width: 100% !important;
+    border-right: none !important;
+    border-top: 1px solid var(--color-border) !important;
+    z-index: 40;
+    padding: 0.25rem 0 !important;
+    background: var(--color-surface) !important;
+  }
+  .dashboard-sidebar > div:first-child { display: none !important; }
+  .dashboard-sidebar > div[style*="flex: 1"] { 
+    flex: 1 !important;
+    flex-direction: row !important;
+    max-height: none !important;
+    overflow-x: auto !important;
+    padding: 0 !important;
+  }
+  .dashboard-sidebar > div[style*="flex: 1"] > a,
+  .dashboard-sidebar > div[style*="flex: 1"] > button {
+    flex: 1 0 auto !important;
+    padding: 0.5rem 0.75rem !important;
+    font-size: 11px !important;
+    flex-direction: column !important;
+    gap: 0.15rem !important;
+    text-align: center !important;
+    border-radius: 0 !important;
+    min-width: 60px;
+  }
+  .dashboard-main { padding-bottom: 64px !important; }
+
+  /* Goal 24: Editor mobile redesign */
+  .editor-panel, .editor-pane { padding: 0.75rem !important; }
+  .block-list-item, [data-testid^="block-row-"] { padding: 0.75rem !important; min-height: 60px; }
+  .block-type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+
+  /* Goal 25: Analytics — stack cards & shrink */
+  .analytics-grid { grid-template-columns: 1fr !important; }
+  .analytics-stat-value { font-size: 22px !important; }
+
+  /* Goal 26-27: Leads/Contacts — table -> stacked cards */
+  .leads-table thead { display: none !important; }
+  .leads-table, .leads-table tbody, .leads-table tr, .leads-table td {
+    display: block !important;
+    width: 100% !important;
+  }
+  .leads-table tr {
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--radius-md) !important;
+    margin-bottom: 0.5rem !important;
+    padding: 0.625rem !important;
+    background: var(--color-surface) !important;
+  }
+  .leads-table td { padding: 0.2rem 0 !important; border: none !important; font-size: 13px !important; }
+  .leads-table td::before {
+    content: attr(data-label) ":  ";
+    font-weight: 700;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    margin-right: 0.25rem;
+  }
+}

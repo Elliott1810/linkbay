@@ -91,6 +91,27 @@ declare module 'express-session' {
   }
 }
 
+// Force-logout middleware: if an admin sets force_logout=1 on a user, destroy their session
+// the next time they make a request, and clear the flag so they can sign back in.
+import Database from 'better-sqlite3';
+const FL_DB_PATH = process.env.DB_PATH || "data.db";
+app.use((req, _res, next) => {
+  try {
+    if (req.session && req.session.userId) {
+      const db = new Database(FL_DB_PATH);
+      const row = db.prepare("SELECT force_logout FROM users WHERE id = ?").get(req.session.userId) as any;
+      if (row && row.force_logout === 1) {
+        db.prepare("UPDATE users SET force_logout = 0 WHERE id = ?").run(req.session.userId);
+        db.close();
+        req.session.destroy(() => next());
+        return;
+      }
+      db.close();
+    }
+  } catch {}
+  next();
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",

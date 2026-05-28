@@ -26,7 +26,7 @@ function FeatureBlock({ label, title, body, items, visual, reverse = false }: an
   return (
     <section className="section-sm" style={{ borderTop: "1px solid var(--color-divider)" }}>
       <div className="container-default">
-        <div style={{
+        <div className="feature-row" style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
           gap: "3.5rem",

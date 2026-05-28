@@ -87,22 +87,32 @@ const BACKGROUND_OPTIONS = [
   { label: "Rose", value: "rose", preview: "linear-gradient(135deg, #ffe4e6, #fecdd3)" },
 ];
 
-// Pattern options (no colour — applied on top of a base colour)
+// Pattern options (no colour — applied on top of a base colour, semi-transparent so the
+// base colour shows through). Goal 1a/1b.
 export const PATTERN_OPTIONS = [
   { label: "None", value: "none" },
+  // Organic & textured
+  { label: "Linen", value: "linen" },
+  { label: "Paper", value: "paper" },
+  { label: "Weave", value: "weave" },
+  // Bold & geometric
+  { label: "Hexagons", value: "hexagons" },
+  { label: "Diamonds", value: "diamonds" },
+  { label: "Art Deco", value: "art-deco" },
+  { label: "Tiles", value: "tiles" },
+  // Modern & abstract
+  { label: "Topo Lines", value: "topography" },
+  { label: "Circuit", value: "circuit" },
+  { label: "Large Dots", value: "dots-lg" },
+  { label: "Fine Grid", value: "grid-fine" },
+  { label: "Zigzag", value: "zigzag" },
+  { label: "Waves", value: "waves" },
+  // Legacy values still supported (for existing pages)
   { label: "Dots", value: "dots" },
   { label: "Grid", value: "grid" },
   { label: "Diagonal", value: "diagonal" },
-  { label: "Waves", value: "waves" },
-  { label: "Hexagon", value: "hexagon" },
-  { label: "Circles", value: "circles" },
   { label: "Chevron", value: "chevron" },
-  { label: "Noise", value: "noise" },
   { label: "Crosshatch", value: "crosshatch" },
-  { label: "Topography", value: "topography" },
-  { label: "Bubble", value: "bubble" },
-  { label: "Circuit", value: "circuit" },
-  { label: "Moroccan", value: "moroccan" },
 ];
 
 // Colour options for page background (paired with a pattern)
@@ -150,23 +160,129 @@ function colorToCss(c: string): { bg?: string; bgColor?: string; text?: string }
   }
 }
 
-function patternToCss(p: string, baseBg = "#f7f6f4"): React.CSSProperties {
-  switch (p) {
-    case "dots": return { backgroundImage: "radial-gradient(circle, #c0bdb9 1px, transparent 1px)", backgroundSize: "20px 20px", backgroundColor: baseBg };
-    case "grid": return { backgroundImage: "linear-gradient(#e0dedd 1px, transparent 1px), linear-gradient(90deg, #e0dedd 1px, transparent 1px)", backgroundSize: "32px 32px", backgroundColor: baseBg };
-    case "diagonal": return { backgroundImage: "repeating-linear-gradient(-45deg, #e0dedd 0px, #e0dedd 1px, transparent 1px, transparent 8px)", backgroundColor: baseBg };
-    case "waves": return { backgroundImage: "repeating-radial-gradient(circle at 0 50%, transparent 0, #e0dedd 1px, transparent 1px, transparent 12px)", backgroundSize: "24px 24px", backgroundColor: baseBg };
-    case "hexagon": return { backgroundImage: "linear-gradient(30deg, #e0dedd 12%, transparent 12.5%, transparent 87%, #e0dedd 87.5%), linear-gradient(150deg, #e0dedd 12%, transparent 12.5%, transparent 87%, #e0dedd 87.5%), linear-gradient(30deg, #e0dedd 12%, transparent 12.5%, transparent 87%, #e0dedd 87.5%), linear-gradient(150deg, #e0dedd 12%, transparent 12.5%, transparent 87%, #e0dedd 87.5%)", backgroundSize: "40px 70px", backgroundColor: baseBg };
-    case "circles": return { backgroundImage: "radial-gradient(circle, transparent 8px, #e0dedd 9px, transparent 10px)", backgroundSize: "24px 24px", backgroundColor: baseBg };
-    case "chevron": return { backgroundImage: "linear-gradient(135deg, #e0dedd 25%, transparent 25%), linear-gradient(225deg, #e0dedd 25%, transparent 25%)", backgroundSize: "20px 20px", backgroundPosition: "0 0, 10px 0", backgroundColor: baseBg };
-    case "noise": return { backgroundImage: "radial-gradient(#0001 1px, transparent 1px), radial-gradient(#0001 1px, transparent 1px)", backgroundSize: "3px 3px, 5px 5px", backgroundPosition: "0 0, 1px 1px", backgroundColor: baseBg };
-    case "crosshatch": return { backgroundImage: "repeating-linear-gradient(45deg, #e0dedd 0, #e0dedd 1px, transparent 1px, transparent 6px), repeating-linear-gradient(-45deg, #e0dedd 0, #e0dedd 1px, transparent 1px, transparent 6px)", backgroundColor: baseBg };
-    case "topography": return { backgroundImage: "radial-gradient(at 50% 50%, transparent 0, transparent 20px, #d8d4cf 21px, #d8d4cf 22px, transparent 23px, transparent 40px, #d8d4cf 41px, #d8d4cf 42px, transparent 43px, transparent 60px, #d8d4cf 61px, #d8d4cf 62px, transparent 63px)", backgroundSize: "120px 120px", backgroundColor: baseBg };
-    case "bubble": return { backgroundImage: "radial-gradient(circle at 20% 30%, #d8d4cf 6px, transparent 7px), radial-gradient(circle at 70% 60%, #d8d4cf 10px, transparent 11px), radial-gradient(circle at 40% 80%, #d8d4cf 4px, transparent 5px)", backgroundSize: "80px 80px", backgroundColor: baseBg };
-    case "circuit": return { backgroundImage: "linear-gradient(#cfcac3 1px, transparent 1px), linear-gradient(90deg, #cfcac3 1px, transparent 1px), radial-gradient(circle at 0 0, #cfcac3 3px, transparent 3.5px), radial-gradient(circle at 100% 100%, #cfcac3 3px, transparent 3.5px)", backgroundSize: "40px 40px, 40px 40px, 40px 40px, 40px 40px", backgroundColor: baseBg };
-    case "moroccan": return { backgroundImage: "linear-gradient(45deg, #d8d4cf 25%, transparent 25%, transparent 75%, #d8d4cf 75%), linear-gradient(45deg, #d8d4cf 25%, transparent 25%, transparent 75%, #d8d4cf 75%)", backgroundSize: "40px 40px", backgroundPosition: "0 0, 20px 20px", backgroundColor: baseBg };
-    default: return { backgroundColor: baseBg };
+/**
+ * Build a CSS background-image for a pattern using a semi-transparent SVG data URI.
+ * The pattern overlays on top of any base colour so the base colour shows through.
+ * `tint` is the ink colour ("dark" -> rgba(0,0,0,a), "light" -> rgba(255,255,255,a)).
+ */
+function svgPatternUri(pattern: string, tint: "dark" | "light"): { uri: string; size: string } | null {
+  const ink = (a: number) => tint === "dark" ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
+  const enc = (s: string) => `url("data:image/svg+xml;utf8,${encodeURIComponent(s)}")`;
+  switch (pattern) {
+    case "linen": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='6' viewBox='0 0 24 6'><line x1='0' y1='1' x2='24' y2='1' stroke='${ink(0.06)}' stroke-width='1'/><line x1='0' y1='4' x2='24' y2='4' stroke='${ink(0.04)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "24px 6px" };
+    }
+    case "paper": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'><circle cx='1' cy='1' r='0.6' fill='${ink(0.05)}'/><circle cx='5' cy='3' r='0.5' fill='${ink(0.04)}'/><circle cx='3' cy='6' r='0.6' fill='${ink(0.05)}'/></svg>`;
+      return { uri: enc(s), size: "8px 8px" };
+    }
+    case "weave": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='0' y1='0' x2='16' y2='16' stroke='${ink(0.08)}' stroke-width='1'/><line x1='16' y1='0' x2='0' y2='16' stroke='${ink(0.08)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "16px 16px" };
+    }
+    case "hexagons": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='44' viewBox='0 0 40 44'><path d='M20 2 L36 11 L36 33 L20 42 L4 33 L4 11 Z' fill='none' stroke='${ink(0.1)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "40px 44px" };
+    }
+    case "diamonds": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><rect x='8' y='8' width='16' height='16' transform='rotate(45 16 16)' fill='none' stroke='${ink(0.09)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "32px 32px" };
+    }
+    case "art-deco": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><path d='M24 0 A24 24 0 0 1 48 24' fill='none' stroke='${ink(0.08)}' stroke-width='1'/><path d='M0 24 A24 24 0 0 1 24 0' fill='none' stroke='${ink(0.08)}' stroke-width='1'/><path d='M48 24 A24 24 0 0 1 24 48' fill='none' stroke='${ink(0.06)}' stroke-width='1'/><path d='M24 48 A24 24 0 0 1 0 24' fill='none' stroke='${ink(0.06)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "48px 48px" };
+    }
+    case "tiles": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><path d='M20 4 L24 16 L36 20 L24 24 L20 36 L16 24 L4 20 L16 16 Z' fill='none' stroke='${ink(0.1)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "40px 40px" };
+    }
+    case "topography": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><ellipse cx='40' cy='40' rx='15' ry='12' fill='none' stroke='${ink(0.07)}' stroke-width='1'/><ellipse cx='40' cy='40' rx='25' ry='20' fill='none' stroke='${ink(0.06)}' stroke-width='1'/><ellipse cx='40' cy='40' rx='35' ry='28' fill='none' stroke='${ink(0.05)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "80px 80px" };
+    }
+    case "circuit": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><path d='M0 10 L15 10 L15 25 L30 25 L30 5 L40 5' fill='none' stroke='${ink(0.09)}' stroke-width='1'/><circle cx='15' cy='10' r='2' fill='${ink(0.09)}'/><circle cx='30' cy='25' r='2' fill='${ink(0.09)}'/><path d='M10 30 L25 30 L25 40' fill='none' stroke='${ink(0.07)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "40px 40px" };
+    }
+    case "dots-lg": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><circle cx='16' cy='16' r='3' fill='${ink(0.07)}'/></svg>`;
+      return { uri: enc(s), size: "32px 32px" };
+    }
+    case "grid-fine": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M12 0 L0 0 L0 12' fill='none' stroke='${ink(0.06)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "12px 12px" };
+    }
+    case "zigzag": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'><path d='M0 10 L6 2 L12 10 L18 2 L24 10' fill='none' stroke='${ink(0.09)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "24px 12px" };
+    }
+    case "waves": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'><path d='M0 10 Q10 0 20 10 T40 10' fill='none' stroke='${ink(0.08)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "40px 20px" };
+    }
+    // Legacy fallbacks — keep CSS-only patterns but ensure they're semi-transparent so the colour shows through.
+    case "dots": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'><circle cx='10' cy='10' r='1' fill='${ink(0.12)}'/></svg>`;
+      return { uri: enc(s), size: "20px 20px" };
+    }
+    case "grid": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M32 0 L0 0 L0 32' fill='none' stroke='${ink(0.07)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "32px 32px" };
+    }
+    case "diagonal": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'><line x1='-2' y1='10' x2='10' y2='-2' stroke='${ink(0.08)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "8px 8px" };
+    }
+    case "chevron": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'><path d='M0 12 L12 0 L24 12' fill='none' stroke='${ink(0.09)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "24px 12px" };
+    }
+    case "crosshatch": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'><line x1='0' y1='0' x2='8' y2='8' stroke='${ink(0.08)}' stroke-width='1'/><line x1='8' y1='0' x2='0' y2='8' stroke='${ink(0.08)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "8px 8px" };
+    }
+    case "hexagon": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='44' viewBox='0 0 40 44'><path d='M20 2 L36 11 L36 33 L20 42 L4 33 L4 11 Z' fill='none' stroke='${ink(0.1)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "40px 44px" };
+    }
+    case "circles": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><circle cx='12' cy='12' r='6' fill='none' stroke='${ink(0.09)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "24px 24px" };
+    }
+    case "noise": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='6' height='6' viewBox='0 0 6 6'><circle cx='1' cy='1' r='0.5' fill='${ink(0.06)}'/><circle cx='4' cy='3' r='0.5' fill='${ink(0.04)}'/><circle cx='2' cy='5' r='0.5' fill='${ink(0.05)}'/></svg>`;
+      return { uri: enc(s), size: "6px 6px" };
+    }
+    case "bubble": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'><circle cx='15' cy='15' r='5' fill='${ink(0.06)}'/><circle cx='45' cy='35' r='8' fill='${ink(0.05)}'/><circle cx='25' cy='50' r='4' fill='${ink(0.06)}'/></svg>`;
+      return { uri: enc(s), size: "60px 60px" };
+    }
+    case "moroccan": {
+      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><path d='M20 4 L24 16 L36 20 L24 24 L20 36 L16 24 L4 20 L16 16 Z' fill='none' stroke='${ink(0.1)}' stroke-width='1'/></svg>`;
+      return { uri: enc(s), size: "40px 40px" };
+    }
+    default:
+      return null;
   }
+}
+
+/**
+ * Compose a pattern with the given base colour. The pattern image overlays the colour.
+ * `tint` defaults to "dark" but should be "light" for dark backgrounds.
+ */
+function patternToCss(p: string, baseBg = "#f7f6f4", tint: "dark" | "light" = "dark"): React.CSSProperties {
+  if (!p || p === "none") return { backgroundColor: baseBg };
+  const svg = svgPatternUri(p, tint);
+  if (svg) {
+    return {
+      backgroundColor: baseBg,
+      backgroundImage: svg.uri,
+      backgroundSize: svg.size,
+      backgroundRepeat: "repeat",
+    };
+  }
+  return { backgroundColor: baseBg };
 }
 
 export function parseBackground(bg: string | null | undefined): { pattern: string; color: string } {
@@ -179,7 +295,7 @@ export function parseBackground(bg: string | null | undefined): { pattern: strin
     } catch { /* fall through to legacy */ }
   }
   // Legacy single-value format: map to new schema
-  const patterns = ["dots", "grid", "grid-bg", "diagonal", "waves", "hexagon", "circles", "chevron", "noise", "crosshatch"];
+  const patterns = ["dots", "grid", "grid-bg", "diagonal", "waves", "hexagon", "hexagons", "circles", "chevron", "noise", "crosshatch", "linen", "paper", "weave", "diamonds", "art-deco", "tiles", "topography", "circuit", "dots-lg", "grid-fine", "zigzag", "bubble", "moroccan"];
   if (patterns.includes(bg)) return { pattern: bg === "grid-bg" ? "grid" : bg, color: "none" };
   return { pattern: "none", color: bg };
 }
@@ -209,11 +325,26 @@ export function backgroundToCss(bg: string | null | undefined): React.CSSPropert
   if (!bg || bg === "none") return {};
   const { pattern, color } = parseBackground(bg);
   const c = colorToCss(color);
-  const baseColor = c.bgColor || "#f7f6f4";
   const out: React.CSSProperties = {};
 
+  // Determine pattern ink tint (light for dark bgs, dark otherwise)
+  const tint: "dark" | "light" = getBackgroundLuminance(bg) === "dark" ? "light" : "dark";
+
   if (pattern && pattern !== "none") {
-    Object.assign(out, patternToCss(pattern, baseColor));
+    // Apply colour first (gradient or solid), then pattern image on top via the dual CSS keys.
+    if (c.bg) {
+      // Gradient background: layer SVG pattern OVER the gradient
+      const svg = svgPatternUri(pattern, tint);
+      if (svg) {
+        out.backgroundImage = `${svg.uri}, ${c.bg}`;
+        out.backgroundSize = `${svg.size}, cover`;
+        out.backgroundRepeat = `repeat, no-repeat`;
+      } else {
+        out.background = c.bg;
+      }
+    } else {
+      Object.assign(out, patternToCss(pattern, c.bgColor || "#f7f6f4", tint));
+    }
   } else if (c.bg) {
     out.background = c.bg;
   } else if (c.bgColor) {

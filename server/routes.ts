@@ -3,6 +3,9 @@ import { type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import Database from "better-sqlite3";
+
+const DB_PATH = process.env.DB_PATH || "data.db";
 import {
   insertWaitlistSchema, insertDemoRequestSchema,
   insertPageSchema, insertPageLinkSchema,
@@ -161,15 +164,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/pages/public/:username", async (req, res) => {
     try {
       const page = await storage.getPageByUsername(req.params.username);
-      if (!page || !page.published) return res.status(404).json({ error: "Page not found" });
+      if (!page) return res.status(404).json({ error: "Page not found" });
+      // Preview mode: allow unpublished pages to be viewed but skip analytics tracking entirely
+      const isPreview = req.query.preview === "1";
+      if (!page.published && !isPreview) return res.status(404).json({ error: "Page not found" });
       // Generate hashed visitor ID from IP for unique visitor tracking
       const rawIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
       const visitorId = crypto.createHash("sha256").update(rawIp).digest("hex").slice(0, 16);
-      // Determine country: prefer Cloudflare header; otherwise leave null (avoid blocking ip lookups)
-      const country = ((req.headers["cf-ipcountry"] as string) || "").toUpperCase() || null;
-      // Track view event
-      await storage.incrementViewCount(page.id);
-      await storage.recordEvent({ pageId: page.id, type: "view", referrer: req.headers.referer || null, device: req.headers["user-agent"]?.includes("Mobile") ? "mobile" : "desktop", visitorId, country } as any);
+      // Determine country: prefer Cloudflare header; otherwise leave null (will be back-filled async via ipapi.co)
+      const cfCountry = ((req.headers["cf-ipcountry"] as string) || "").toUpperCase() || null;
+      // Track view event (skipped in preview)
+      if (!isPreview) {
+        await storage.incrementViewCount(page.id);
+        await storage.recordEvent({ pageId: page.id, type: "view", referrer: req.headers.referer || null, device: req.headers["user-agent"]?.includes("Mobile") ? "mobile" : "desktop", visitorId, country: cfCountry } as any);
+      }
+      // Best-effort async country lookup if no CF header and the IP looks publicly routable.
+      if (!isPreview && !cfCountry && rawIp && rawIp !== "127.0.0.1" && !rawIp.startsWith("192.168") && !rawIp.startsWith("10.") && !rawIp.startsWith("::1")) {
+        try {
+          // Fire-and-forget; do not block the response.
+          fetch(`https://ipapi.co/${rawIp}/country/`)
+            .then(r => r.text())
+            .then(c => {
+              const code = (c || "").trim().toUpperCase();
+              if (code && code.length === 2 && /^[A-Z]{2}$/.test(code)) {
+                try {
+                  const db2 = new Database(DB_PATH);
+                  db2.prepare(
+                    "UPDATE page_events SET country = ? WHERE page_id = ? AND visitor_id = ? AND country IS NULL"
+                  ).run(code, page.id, visitorId);
+                  db2.close();
+                } catch {}
+              }
+            })
+            .catch(() => {});
+        } catch {}
+      }
       const links = await storage.getLinksByPage(page.id);
       // Get owner avatar (public — only avatarUrl, no PII)
       const owner = await storage.getUserByEmail(page.ownerEmail);
@@ -543,6 +572,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         followUpDone: z.union([z.number(), z.boolean()]).optional().transform(v => typeof v === "boolean" ? (v ? 1 : 0) : v),
       });
       const data = allowed.parse(req.body);
+      // If marking follow-up done, log a history activity snapshot before clearing
+      const becomingDone = (data as any).followUpDone === 1 && !existing.followUpDone;
+      if (becomingDone && (existing.followUpNote || existing.followUpDate)) {
+        try {
+          const due = existing.followUpDate ? new Date(existing.followUpDate).toLocaleString() : "no date";
+          await storage.addContactActivity({
+            contactId: id,
+            type: "follow-up-completed",
+            body: `✅ Follow-up completed: ${existing.followUpNote || "(no note)"} (due: ${due})`,
+          } as any);
+        } catch {}
+      }
       const contact = await storage.updateContact(id, data as any);
       res.json({ success: true, contact });
     } catch (err) {
@@ -632,8 +673,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }, {});
       // Unique vs repeat visitor calculation
       const viewEvents = events.filter(e => e.type === "view");
-      const uniqueVisitors = new Set(viewEvents.filter((e: any) => e.visitorId).map((e: any) => e.visitorId)).size;
-      const repeatVisitors = Math.max(0, viewEvents.length - uniqueVisitors);
+      // Count occurrences per visitorId
+      const visitorCounts = new Map<string, number>();
+      for (const e of viewEvents) {
+        const vid = (e as any).visitorId;
+        if (vid) visitorCounts.set(vid, (visitorCounts.get(vid) || 0) + 1);
+      }
+      const uniqueVisitors = visitorCounts.size;
+      // Repeat visitors = distinct visitor_ids that have viewed more than once
+      let repeatVisitors = 0;
+      visitorCounts.forEach(c => { if (c > 1) repeatVisitors++; });
 
       // Top countries from view events
       const countryMap = new Map<string, number>();
@@ -967,7 +1016,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch { res.status(500).send("Delete failed"); }
   });
 
-  app.get("/admin", requireAdmin as any, async (_req: Request, res: Response) => {
+  // Force a user to be signed out (sets force_logout flag; session middleware will destroy session on next request)
+  app.post("/admin/signout-user", requireAdmin as any, async (req, res) => {
+    try {
+      const email = String(req.body?.email || "").trim();
+      if (!email) return res.status(400).send("Missing email");
+      const db2 = new Database(DB_PATH);
+      db2.prepare("UPDATE users SET force_logout = 1 WHERE email = ?").run(email);
+      db2.close();
+      res.redirect("/admin?signoutDone=" + encodeURIComponent(email));
+    } catch { res.status(500).send("Sign-out failed"); }
+  });
+
+  // Reset a user's password to a freshly-generated random string and return it via query param
+  app.post("/admin/reset-password", requireAdmin as any, async (req, res) => {
+    try {
+      const email = String(req.body?.email || "").trim();
+      if (!email) return res.status(400).send("Missing email");
+      const newPassword =
+        Math.random().toString(36).slice(2, 6) +
+        Math.random().toString(36).slice(2, 6).toUpperCase();
+      const hash = await bcrypt.hash(newPassword, 12);
+      const db2 = new Database(DB_PATH);
+      db2.prepare("UPDATE users SET password_hash = ?, force_logout = 1 WHERE email = ?").run(hash, email);
+      db2.close();
+      res.redirect(
+        "/admin?resetDone=" + encodeURIComponent(email) + "&newPass=" + encodeURIComponent(newPassword)
+      );
+    } catch { res.status(500).send("Reset failed"); }
+  });
+
+  app.get("/admin", requireAdmin as any, async (req: Request, res: Response) => {
     // Read directly from SQLite for admin view
     const sqlite = require("better-sqlite3")(process.env.DB_PATH || "data.db") as import("better-sqlite3").Database;
 
@@ -1132,6 +1211,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   <span>Generated ${new Date().toUTCString()}</span>
 </div>
 <div class="wrap">
+  ${req.query.resetDone ? `<div style="background:#fef3c7;border:1px solid #f59e0b;padding:1rem;border-radius:8px;margin-bottom:1rem;">Password reset for <strong>${escHtml(String(req.query.resetDone))}</strong>. New password: <code style="font-size:1.1em;font-weight:bold;background:#fff;padding:2px 6px;border-radius:4px">${escHtml(String(req.query.newPass || ""))}</code><br><span style="font-size:11px;color:#92400e">User is also force-signed-out and must use this new password.</span></div>` : ""}
+  ${req.query.signoutDone ? `<div style="background:#fee2e2;border:1px solid #fca5a5;padding:1rem;border-radius:8px;margin-bottom:1rem;">Sign-out flag set for <strong>${escHtml(String(req.query.signoutDone))}</strong>. They will be logged out on their next request.</div>` : ""}
 
   <div class="stats">
     <div class="stat"><div class="val">${fmt(users.length)}</div><div class="lbl">Total users</div></div>
@@ -1195,7 +1276,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             <td class="ts">${(u.created_at || "").slice(0,10)}</td>
             <td class="ts">${u.last_sign_in ? ago(u.last_sign_in) : "—"}</td>
             <td>${activeUserEmails.has(u.email) ? '<span style="color:#16a34a;font-weight:700">● Online</span>' : '<span style="color:#aaa">—</span>'}</td>
-            <td><form method="POST" action="/admin/delete-user?id=${u.id}" onsubmit="return confirm('Delete user and all their pages?')" style="display:inline"><button class="delbtn" type="submit">Delete</button></form></td>
+            <td style="white-space:nowrap">
+              <form method="POST" action="/admin/reset-password" style="display:inline" onsubmit="return confirm('Reset password for ${escHtml(u.email)}?')"><input type="hidden" name="email" value="${escHtml(u.email)}"><button type="submit" style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">Reset PW</button></form>
+              <form method="POST" action="/admin/signout-user" style="display:inline" onsubmit="return confirm('Sign out ${escHtml(u.email)}?')"><input type="hidden" name="email" value="${escHtml(u.email)}"><button type="submit" style="background:#fde68a;border:1px solid #fbbf24;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">Sign Out</button></form>
+              <form method="POST" action="/admin/delete-user?id=${u.id}" onsubmit="return confirm('Delete user and all their pages?')" style="display:inline"><button class="delbtn" type="submit">Delete</button></form>
+            </td>
           </tr>`).join("")}
       </tbody>
     </table>

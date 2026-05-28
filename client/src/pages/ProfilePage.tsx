@@ -556,11 +556,14 @@ function PageNotFound({ username }: { username: string }) {
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
   const { user } = useAuth();
+  // Preview mode: when embedded in dashboard iframe, hide CTAs and Linkbay branding
+  const isPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "1";
 
   const { data, isLoading, isError } = useQuery<PageData>({
-    queryKey: ["/api/pages/public", username],
+    queryKey: ["/api/pages/public", username, isPreview],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/pages/public/${username}`);
+      const url = isPreview ? `/api/pages/public/${username}?preview=1` : `/api/pages/public/${username}`;
+      const res = await apiRequest("GET", url);
       if (!res.ok) throw new Error("Not found");
       return res.json();
     },
@@ -741,19 +744,22 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Floating copy URL button */}
-        <button
-          onClick={() => {
-            const url = `${window.location.origin}/${page.username}`;
-            navigator.clipboard?.writeText(url).catch(() => {});
-          }}
-          style={{ position: "fixed", bottom: 20, right: 20, background: accent, color: "#fff", border: "none", borderRadius: 999, padding: "0.625rem 1rem", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "var(--shadow-lg)", zIndex: 50 }}
-          data-testid="button-copy-page-url"
-        >
-          🔗 Copy URL
-        </button>
+        {/* Floating copy URL button (hidden in preview) */}
+        {!isPreview && (
+          <button
+            onClick={() => {
+              const url = `${window.location.origin}/${page.username}`;
+              navigator.clipboard?.writeText(url).catch(() => {});
+            }}
+            style={{ position: "fixed", bottom: 20, right: 20, background: accent, color: "#fff", border: "none", borderRadius: 999, padding: "0.625rem 1rem", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "var(--shadow-lg)", zIndex: 50 }}
+            data-testid="button-copy-page-url"
+          >
+            🔗 Copy URL
+          </button>
+        )}
 
-        {/* Powered by Linkbay */}
+        {/* Powered by Linkbay (hidden in preview) */}
+        {!isPreview && (
         <div style={{ textAlign: "center", paddingTop: "0.5rem" }}>
           <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", textDecoration: "none", color: "var(--color-text-faint)", fontSize: "var(--text-xs)", fontWeight: 500 }}>
             <svg width="14" height="14" viewBox="0 0 32 32" fill="none">
@@ -764,6 +770,7 @@ export default function ProfilePage() {
             Built with Linkbay
           </Link>
         </div>
+        )}
       </div>
     </div>
   );

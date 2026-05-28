@@ -12,6 +12,7 @@ export const users = sqliteTable("users", {
   lastSignIn: text("last_sign_in"),
   onboardingDismissed: integer("onboarding_dismissed").default(0),
   onboardingSharedLink: integer("onboarding_shared_link").default(0),
+  forceLogout: integer("force_logout").default(0),
   createdAt: text("created_at").notNull().default(""),
 });
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, passwordHash: true }).extend({

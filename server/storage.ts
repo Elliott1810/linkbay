@@ -129,6 +129,7 @@ try { sqlite.exec("ALTER TABLE pages ADD COLUMN text_color TEXT DEFAULT 'auto'")
 try { sqlite.exec("ALTER TABLE contacts ADD COLUMN follow_up_date TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE contacts ADD COLUMN follow_up_note TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE contacts ADD COLUMN follow_up_done INTEGER DEFAULT 0"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN force_logout INTEGER DEFAULT 0"); } catch {}
 
 // Contacts table (idempotent)
 sqlite.exec(`

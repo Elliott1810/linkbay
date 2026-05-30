@@ -103,6 +103,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         onboardingDismissed: !!(user as any).onboardingDismissed,
         onboardingSharedLink: !!(user as any).onboardingSharedLink,
         lastSignIn: (user as any).lastSignIn ?? null,
+        newsletterOptin: !!(user as any).newsletterOptin,
       },
       pages,
     });
@@ -268,6 +269,68 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch { res.json({ success: false }); }
   });
 
+  // POST track a block interaction (poll vote, FAQ expand, video play, countdown view, etc.)
+  app.post("/api/pages/:pageId/track-block", async (req, res) => {
+    try {
+      const pageId = parseInt(req.params.pageId);
+      const { blockId, blockType, eventType } = req.body as { blockId?: string; blockType?: string; eventType?: string };
+      const ua = String(req.headers["user-agent"] || "");
+      const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
+      await storage.recordEvent({
+        pageId,
+        type: eventType || "block_interact",
+        device,
+        blockId: blockId || null,
+        blockType: blockType || null,
+      } as any);
+      res.json({ success: true });
+    } catch { res.json({ success: false }); }
+  });
+
+  // GET block analytics for a page (for Block Analysis dashboard tab)
+  app.get("/api/pages/:pageId/block-analytics", requireAuth as any, async (req, res) => {
+    try {
+      const pageId = parseInt(req.params.pageId);
+      const days = parseInt(req.query.days as string) || 30;
+      const since = new Date(Date.now() - days * 86400000).toISOString();
+      const DB_PATH_LOCAL = process.env.DB_PATH || "data.db";
+      const sqliteLocal = new Database(DB_PATH_LOCAL);
+      // Get all block-level events grouped by blockId + blockType + type
+      const blockEvents = sqliteLocal.prepare(`
+        SELECT block_id, block_type, type, COUNT(*) as count
+        FROM page_events
+        WHERE page_id = ? AND block_id IS NOT NULL AND created_at >= ?
+        GROUP BY block_id, block_type, type
+        ORDER BY count DESC
+      `).all(pageId, since) as Array<{ block_id: string; block_type: string; type: string; count: number }>;
+
+      // Also get all-time block events (no date filter) for historical data
+      const allTimeBlockEvents = sqliteLocal.prepare(`
+        SELECT block_id, block_type, type, COUNT(*) as count
+        FROM page_events
+        WHERE page_id = ? AND block_id IS NOT NULL
+        GROUP BY block_id, block_type, type
+        ORDER BY count DESC
+      `).all(pageId) as Array<{ block_id: string; block_type: string; type: string; count: number }>;
+
+      // Aggregate by blockId across event types
+      const blockMap = new Map<string, { blockId: string; blockType: string; totalInteractions: number; byEventType: Record<string, number> }>();
+      for (const e of allTimeBlockEvents) {
+        const key = e.block_id;
+        if (!blockMap.has(key)) blockMap.set(key, { blockId: e.block_id, blockType: e.block_type, totalInteractions: 0, byEventType: {} });
+        const b = blockMap.get(key)!;
+        b.totalInteractions += e.count;
+        b.byEventType[e.type] = (b.byEventType[e.type] || 0) + e.count;
+      }
+
+      res.json({
+        periodEvents: blockEvents,
+        allTimeBlocks: Array.from(blockMap.values()).sort((a, b) => b.totalInteractions - a.totalInteractions),
+        days,
+      });
+    } catch (err) { res.status(500).json({ error: "Server error" }); }
+  });
+
   // ─────────────────────────────────────────────────
   //  PAGES — owner/builder routes
   // ─────────────────────────────────────────────────
@@ -337,6 +400,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         blocks: z.string().optional(),
         phone: z.string().max(40).optional(),
         contactEmail: z.string().max(200).optional(),
+        pageFont: z.string().max(60).optional(),
+        archivedBlockIds: z.string().optional(),
       });
       const data = allowedFields.parse(req.body);
       const page = await storage.updatePage(pageId, data);
@@ -665,6 +730,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         storage.getDailyViews(pageId, days),
       ]);
 
+      // Build dailyClicks and dailyLeads arrays aligned to the same date range as dailyViews
+      const dailyClicks = dailyViews.map(({ date }: { date: string }) => ({
+        date,
+        count: events.filter((e: any) => e.type === "link_click" && new Date(e.createdAt || e.created_at).toISOString().startsWith(date)).length,
+      }));
+      const dailyLeads = dailyViews.map(({ date }: { date: string }) => ({
+        date,
+        count: events.filter((e: any) => e.type === "lead_submit" && new Date(e.createdAt || e.created_at).toISOString().startsWith(date)).length,
+      }));
+
       const views = events.filter(e => e.type === "view").length;
       const clicks = events.filter(e => e.type === "link_click").length;
       const formLeads = events.filter(e => e.type === "lead_submit").length;
@@ -720,7 +795,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         topLinks: links.sort((a, b) => b.clickCount - a.clickCount).slice(0, 5),
         topCountries,
         dailyViews,
+        dailyClicks,
+        dailyLeads,
         bestDay,
+        // Top interactions: merge link clicks (by linkId→block) with block-level events
+        topInteractions: (() => {
+          const interMap = new Map<string, { id: string; label: string; type: string; count: number; isLink: boolean; linkId?: number }>();
+          // Link clicks
+          for (const link of links) {
+            if (link.clickCount > 0) {
+              interMap.set(`link-${link.id}`, { id: `link-${link.id}`, label: link.label || link.url, type: "link", count: link.clickCount, isLink: true, linkId: link.id });
+            }
+          }
+          // Block events (poll votes, FAQ expands, video plays, etc.)
+          const blockEventMap = new Map<string, { label: string; type: string; count: number }>();
+          for (const e of events) {
+            const bid = (e as any).blockId ?? (e as any).block_id;
+            const btype = (e as any).blockType ?? (e as any).block_type;
+            if (!bid) continue;
+            const key = `block-${bid}`;
+            if (!blockEventMap.has(key)) blockEventMap.set(key, { label: btype || "block", type: btype || "block", count: 0 });
+            blockEventMap.get(key)!.count++;
+          }
+          blockEventMap.forEach((v, k) => {
+            interMap.set(k, { id: k, label: v.label, type: v.type, count: v.count, isLink: false });
+          });
+          return Array.from(interMap.values()).sort((a, b) => b.count - a.count).slice(0, 8);
+        })(),
         events: events.slice(-200),
       });
     } catch { res.status(500).json({ error: "Server error" }); }
@@ -914,7 +1015,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/account/profile", requireAuth as any, async (req, res) => {
     try {
-      const { name } = req.body;
+      const { name, newsletterOptin } = req.body;
+      if (newsletterOptin !== undefined) {
+        // Just update newsletter opt-in
+        const nlDb = new Database(process.env.DB_PATH || "data.db");
+        nlDb.prepare("UPDATE users SET newsletter_optin = ? WHERE id = ?").run(newsletterOptin ? 1 : 0, req.session.userId!);
+        const user = await storage.getUserById(req.session.userId!);
+        return res.json({ success: true, user: { id: user?.id, email: user?.email, name: user?.name } });
+      }
       if (!name || !name.trim()) return res.status(400).json({ error: "Name is required." });
       const user = await storage.updateUser(req.session.userId!, { name: name.trim() });
       req.session.userName = user.name;
@@ -1113,6 +1221,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       SELECT AVG(c) as avg FROM (SELECT COUNT(*) as c FROM page_links GROUP BY page_id)
     `).get() as any;
     const avgLinks = avgLinksRow?.avg ? Number(avgLinksRow.avg).toFixed(1) : "0.0";
+    // Avg blocks per page (General 12)
+    const avgBlocksRow = sqlite.prepare(`
+      SELECT AVG(block_count) as avg FROM (
+        SELECT id, CASE WHEN blocks IS NULL OR blocks = '[]' OR blocks = '' THEN 0
+          ELSE (LENGTH(blocks) - LENGTH(REPLACE(blocks, '{"id"', ''))) / 5
+        END as block_count FROM pages WHERE published = 1
+      )
+    `).get() as any;
+    const avgBlocks = avgBlocksRow?.avg ? Number(avgBlocksRow.avg).toFixed(1) : "0.0";
+    // Total contacts across all users (General 14)
+    const totalContacts = (sqlite.prepare("SELECT COUNT(*) as c FROM contacts").get() as any).c || 0;
+    // Recent connections from page_events — last 30 days, top 20 by most recent (General 13)
+    const recentConnEvents = sqlite.prepare(`
+      SELECT DISTINCT visitor_id, country, device, created_at
+      FROM page_events
+      WHERE created_at >= ?
+      ORDER BY created_at DESC
+      LIMIT 20
+    `).all(thirtyDaysAgo) as Array<{ visitor_id: string; country: string; device: string; created_at: string }>;
     const devicesBreakdown = sqlite.prepare(`
       SELECT device, COUNT(*) as c FROM page_events WHERE device IS NOT NULL GROUP BY device
     `).all() as Array<{ device: string; c: number }>;
@@ -1253,7 +1380,8 @@ function filterTable(input,tbodyId){
     <div class="stat"><div class="val">${fmt(totalViews)}</div><div class="lbl">Total views</div></div>
     <div class="stat"><div class="val">${fmt(totalClicks)}</div><div class="lbl">Total clicks</div></div>
     <div class="stat"><div class="val">${fmt(totalLeads)}</div><div class="lbl">Total leads</div></div>
-    <div class="stat"><div class="val">${fmt(totalEvents)}</div><div class="lbl">Total Events (views + clicks + leads)</div></div>
+    <div class="stat"><div class="val">${fmt(totalContacts)}</div><div class="lbl">Total contacts</div></div>
+    <div class="stat"><div class="val">${fmt(totalEvents)}</div><div class="lbl">Total events</div></div>
   </div>
 
   <div class="section">
@@ -1262,6 +1390,7 @@ function filterTable(input,tbodyId){
       <div><strong style="color:#e06b1a">Views:</strong> ${fmt(viewEvents)}</div>
       <div><strong style="color:#e06b1a">Link Clicks:</strong> ${fmt(linkClickEvents)}</div>
       <div><strong style="color:#e06b1a">Lead Submits:</strong> ${fmt(leadSubmitEvents)}</div>
+      <div><strong style="color:#e06b1a">Total Contacts (all users):</strong> ${fmt(totalContacts)}</div>
     </div>
   </div>
 
@@ -1273,6 +1402,7 @@ function filterTable(input,tbodyId){
       <div class="stat"><div class="val">${fmt(pagesPublished)}</div><div class="lbl">Published</div></div>
       <div class="stat"><div class="val">${fmt(pagesDraft)}</div><div class="lbl">Draft</div></div>
       <div class="stat"><div class="val">${avgLinks}</div><div class="lbl">Avg links / page</div></div>
+      <div class="stat"><div class="val">${avgBlocks}</div><div class="lbl">Avg blocks / page</div></div>
     </div>
     <div style="display:flex;gap:1rem;flex-wrap:wrap;font-size:13px;margin-bottom:1rem">
       <div><strong>Mobile:</strong> ${devicePct("mobile")}%</div>
@@ -1362,21 +1492,18 @@ function filterTable(input,tbodyId){
   </div>
 
   <div class="section">
-    <h2>Recent connections (last 20 unique IPs)</h2>
-    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search connections by IP, location, path, user…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
+    <h2>Recent connections (last 30 days — top 20)</h2>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search connections by visitor ID, country, device…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
     <table>
-      <thead><tr><th>IP</th><th>Location</th><th>Last Path</th><th>User</th><th>Device</th><th>Browser</th><th>When</th></tr></thead>
+      <thead><tr><th>Visitor ID</th><th>Country</th><th>Device</th><th>When</th></tr></thead>
       <tbody id="tbody-connections">
-        ${ipsWithGeo.map(e => `
+        ${recentConnEvents.map(e => `
           <tr>
-            <td><code style="font-family:ui-monospace,monospace;font-size:12px">${escHtml(e.ip)}</code></td>
-            <td class="ts">${escHtml(e.location)}</td>
-            <td class="email">${escHtml(e.path)}</td>
-            <td class="email">${escHtml(e.userEmail || "—")}</td>
-            <td class="ts">${escHtml(parseDevice(e.userAgent))}</td>
-            <td class="ts">${escHtml(parseBrowser(e.userAgent))}</td>
-            <td class="ts">${ago(e.timestamp)}</td>
-          </tr>`).join("") || '<tr><td colspan="7" class="ts" style="text-align:center;padding:1rem">No connections logged yet</td></tr>'}
+            <td><code style="font-family:ui-monospace,monospace;font-size:11px">${escHtml((e.visitor_id||"").slice(0,16))}…</code></td>
+            <td class="ts">${escHtml(e.country || "Unknown")}</td>
+            <td class="ts">${escHtml(e.device || "—")}</td>
+            <td class="ts">${ago(e.created_at)}</td>
+          </tr>`).join("") || '<tr><td colspan="4" class="ts" style="text-align:center;padding:1rem">No connections in last 30 days</td></tr>'}
       </tbody>
     </table>
   </div>

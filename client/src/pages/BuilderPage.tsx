@@ -131,11 +131,15 @@ export const PATTERN_OPTIONS = [
 // 20 options: mix of professional neutrals, rich darks, and creative gradients
 // All chosen so body text remains readable with good contrast.
 export const COLOR_OPTIONS = [
-  // --- Neutrals & Professionals ---
+  // --- Neutrals ---
   { label: "Cream", value: "warm-white", preview: "#fef9f4" },
   { label: "Parchment", value: "warm-sand", preview: "#f5e6c8" },
-  { label: "Slate", value: "slate", preview: "#f1f5f9" },
   { label: "Stone", value: "stone", preview: "#e7e5e4" },
+  // --- Pastels (new) ---
+  { label: "Mint", value: "mint", preview: "#d1fae5" },
+  { label: "Lavender", value: "lavender", preview: "#ede9fe" },
+  { label: "Butter", value: "butter", preview: "#fef9c3" },
+  { label: "Powder", value: "powder", preview: "#dbeafe" },
   { label: "Blush", value: "blush", preview: "#fce7f3" },
   // --- Rich Darks ---
   { label: "Charcoal", value: "charcoal", preview: "#1e293b" },
@@ -144,15 +148,12 @@ export const COLOR_OPTIONS = [
   { label: "Espresso", value: "espresso", preview: "#2c1a0e" },
   { label: "Aubergine", value: "deep-purple", preview: "#2d1b69" },
   // --- Warm Gradients ---
-  { label: "Amber", value: "warm-amber", preview: "linear-gradient(135deg, #fef3c7, #fde68a)" },
   { label: "Peach", value: "rose", preview: "linear-gradient(135deg, #ffe4e6, #fecdd3)" },
-  { label: "Copper", value: "copper", preview: "linear-gradient(135deg, #fed7aa, #fb923c)" },
   { label: "Sunset", value: "sunset", preview: "linear-gradient(135deg, #f97316 0%, #ec4899 50%, #8b5cf6 100%)" },
   // --- Cool Gradients ---
   { label: "Sky", value: "cool-blue", preview: "linear-gradient(135deg, #dbeafe, #bfdbfe)" },
   { label: "Ocean", value: "ocean", preview: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)" },
   { label: "Sage", value: "sage", preview: "linear-gradient(135deg, #d1fae5, #a7f3d0)" },
-  { label: "Forest", value: "forest", preview: "linear-gradient(135deg, #10b981 0%, #065f46 100%)" },
   { label: "Aurora", value: "aurora", preview: "linear-gradient(135deg, #a855f7 0%, #06b6d4 50%, #10b981 100%)" },
   { label: "Frosted", value: "glass", preview: "linear-gradient(135deg, rgba(255,255,255,0.55), rgba(241,245,249,0.35)), #f1f5f9" },
 ];
@@ -161,6 +162,7 @@ function colorToCss(c: string): { bg?: string; bgColor?: string; text?: string }
   switch (c) {
     case "stone": return { bgColor: "#e7e5e4" };
     case "blush": return { bgColor: "#fce7f3" };
+    case "blush-pink": return { bgColor: "#fce7f3" };
     case "espresso": return { bgColor: "#2c1a0e", text: "#fef9f4" };
     case "copper": return { bg: "linear-gradient(135deg, #fed7aa, #fb923c)", text: "#431407" };
     case "warm-white": return { bgColor: "#fef9f4" };
@@ -179,6 +181,11 @@ function colorToCss(c: string): { bg?: string; bgColor?: string; text?: string }
     case "midnight-blue": return { bgColor: "#1e3a5f", text: "#f1f5f9" };
     case "warm-sand": return { bgColor: "#f5e6c8" };
     case "deep-purple": return { bgColor: "#2d1b69", text: "#e9d5ff" };
+    // --- Pastels ---
+    case "mint": return { bgColor: "#d1fae5" };
+    case "lavender": return { bgColor: "#ede9fe" };
+    case "butter": return { bgColor: "#fef9c3" };
+    case "powder": return { bgColor: "#dbeafe" };
     default:
       if (c && c.startsWith("#")) return { bgColor: c };
       return {};

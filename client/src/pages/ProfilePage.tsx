@@ -1,5 +1,5 @@
 import { useParams, Link } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, resolveMediaUrl } from "@/lib/queryClient";
 import { useAuth } from "@/App";
@@ -70,6 +70,11 @@ interface Block {
   items?: { question: string; answer: string }[];
 }
 
+// ─── Block interaction tracker ───────────────────────────────
+function trackBlock(pageId: number, blockId: string, blockType: string, eventType = "view") {
+  apiRequest("POST", `/api/pages/${pageId}/track-block`, { blockId, blockType, eventType }).catch(() => {});
+}
+
 // ─── Extra block renderers ───────────────────────────────────
 function ImageBlock({ block }: { block: Block }) {
   const src = block.src || block.url || "";
@@ -83,7 +88,22 @@ function ImageBlock({ block }: { block: Block }) {
   );
 }
 
-function VideoBlock({ block }: { block: Block }) {
+function VideoBlock({ block, pageId }: { block: Block; pageId: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const tracked = useRef(false);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !tracked.current) {
+        tracked.current = true;
+        trackBlock(pageId, block.id, "video", "view");
+      }
+    }, { threshold: 0.5 });
+    obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, [block.id, pageId]);
+
   const src = block.src || block.url || "";
   let embedUrl = src;
   const yt = src.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([-\w]+)/);
@@ -91,7 +111,7 @@ function VideoBlock({ block }: { block: Block }) {
   const vimeo = src.match(/vimeo\.com\/(\d+)/);
   if (vimeo) embedUrl = `https://player.vimeo.com/video/${vimeo[1]}`;
   return (
-    <div style={{ borderRadius: "var(--radius-lg)", overflow: "hidden", background: "#000", border: "1px solid var(--color-border)" }}>
+    <div ref={ref} style={{ borderRadius: "var(--radius-lg)", overflow: "hidden", background: "#000", border: "1px solid var(--color-border)" }}>
       <div style={{ position: "relative", paddingBottom: "56.25%" }}>
         <iframe src={embedUrl} title="Video" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />
       </div>
@@ -121,16 +141,18 @@ const SOCIAL_ICON: Record<string, React.ComponentType<{ size?: number; style?: R
 };
 
 function SocialLinksBlock({ block, accent, pageId }: { block: Block; accent: string; pageId: number }) {
-  // Support both legacy `socials` and new `platforms` shape
   const items = (block.platforms || block.socials || []) as Array<{ platform: string; handle?: string; url: string }>;
-  const track = () => { apiRequest("POST", `/api/pages/${pageId}/track-click`).catch(() => {}); };
+  const track = (platform: string) => {
+    trackBlock(pageId, block.id, "social-links", "click");
+    apiRequest("POST", `/api/pages/${pageId}/track-click`).catch(() => {});
+  };
   return (
     <div style={{ display: "flex", gap: "0.625rem", justifyContent: "center", flexWrap: "wrap", padding: "1rem", background: "var(--color-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
       {items.map((s, i) => {
         const key = s.platform.toLowerCase();
         const IconComponent = SOCIAL_ICON[key];
         return (
-          <a key={i} href={s.url} onClick={track} target="_blank" rel="noopener noreferrer"
+          <a key={i} href={s.url} onClick={() => track(s.platform)} target="_blank" rel="noopener noreferrer"
              aria-label={s.platform}
              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, background: `${accent}18`, color: accent, textDecoration: "none", borderRadius: 999, border: `1px solid ${accent}35`, transition: "background 0.15s, transform 0.15s" }}
              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${accent}30`; (e.currentTarget as HTMLElement).style.transform = "scale(1.1)"; }}
@@ -143,12 +165,28 @@ function SocialLinksBlock({ block, accent, pageId }: { block: Block; accent: str
   );
 }
 
-function CountdownBlock({ block, accent }: { block: Block; accent: string }) {
+function CountdownBlock({ block, accent, pageId }: { block: Block; accent: string; pageId: number }) {
   const [now, setNow] = useState(Date.now());
+  const ref = useRef<HTMLDivElement>(null);
+  const tracked = useRef(false);
+
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !tracked.current) {
+        tracked.current = true;
+        trackBlock(pageId, block.id, "countdown", "view");
+      }
+    }, { threshold: 0.5 });
+    obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, [block.id, pageId]);
+
   const target = block.targetDate ? new Date(block.targetDate).getTime() : 0;
   const diff = Math.max(0, target - now);
   const days = Math.floor(diff / 86400000);
@@ -161,8 +199,8 @@ function CountdownBlock({ block, accent }: { block: Block; accent: string }) {
   const units = [{ v: days, l: "days" }, { v: hours, l: "hrs" }, { v: minutes, l: "min" }];
   if (showSeconds) units.push({ v: seconds, l: "sec" });
   return (
-    <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", textAlign: "center" }}>
-      {label && <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>{label}</div>}
+    <div ref={ref} style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", textAlign: "center" }}>
+      {label && <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem", color: accent }}>{label}</div>}
       {ended ? (
         <div style={{ fontSize: "var(--text-base)", color: accent, fontWeight: 700 }}>✨ The wait is over!</div>
       ) : (
@@ -203,7 +241,10 @@ function ButtonBlock({ block, accent, pageId }: { block: Block; accent: string; 
   const border = color === "white" ? "1px solid var(--color-border)" : "none";
   const pad = size === "large" ? "1.125rem 1.5rem" : "0.875rem 1.25rem";
   const fontSize = size === "large" ? "var(--text-base)" : "var(--text-sm)";
-  const track = () => { apiRequest("POST", `/api/pages/${pageId}/track-click`).catch(() => {}); };
+  const track = () => {
+    trackBlock(pageId, block.id, "button", "click");
+    apiRequest("POST", `/api/pages/${pageId}/track-click`).catch(() => {});
+  };
   return (
     <a href={block.url} onClick={track} target="_blank" rel="noopener noreferrer"
        style={{ display: "block", textAlign: "center", padding: pad, background: bg, color: fg, textDecoration: "none", borderRadius: "var(--radius-lg)", fontWeight: 700, fontSize, border }}>
@@ -217,28 +258,32 @@ function TestimonialBlock({ block, accent }: { block: Block; accent: string }) {
   const role = block.authorTitle || block.authorRole;
   return (
     <blockquote style={{ margin: 0, padding: "1.25rem", background: "var(--color-surface)", borderLeft: `3px solid ${accent}`, borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
-      <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.65, fontStyle: "italic", color: "var(--color-text)", margin: 0 }}>“{block.quote}”</p>
+      <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.65, fontStyle: "italic", color: "var(--color-text)", margin: 0 }}>"{block.quote}"</p>
       {(name || role) && (
         <footer style={{ marginTop: "0.75rem", fontSize: 12, color: "var(--color-text-muted)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
           {block.avatarUrl && <img src={resolveMediaUrl(block.avatarUrl)} alt="" className="avatar-img" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />}
-          <span>— <strong>{name}</strong>{role && <span>, {role}</span>}</span>
+          <span>— <strong style={{ color: accent }}>{name}</strong>{role && <span>, {role}</span>}</span>
         </footer>
       )}
     </blockquote>
   );
 }
 
-function FaqBlock({ block }: { block: Block }) {
-  // Support both legacy `faqs:{q,a}` and new `items:{question,answer}`
+function FaqBlock({ block, accent, pageId }: { block: Block; accent: string; pageId: number }) {
   const items: Array<{ q: string; a: string }> = block.items
     ? block.items.map(i => ({ q: i.question, a: i.answer }))
     : (block.faqs || []);
   if (items.length === 0) return null;
+
+  const handleToggle = (idx: number) => {
+    trackBlock(pageId, block.id, "faq", "expand");
+  };
+
   return (
     <div style={{ padding: "1rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)" }}>
       {items.map((f, i) => (
-        <details key={i} style={{ marginBottom: i === (items.length - 1) ? 0 : "0.5rem", borderBottom: i === (items.length - 1) ? "none" : "1px solid var(--color-divider)", paddingBottom: "0.5rem" }}>
-          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "var(--text-sm)", padding: "0.25rem 0" }}>{f.q}</summary>
+        <details key={i} onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) handleToggle(i); }} style={{ marginBottom: i === (items.length - 1) ? 0 : "0.5rem", borderBottom: i === (items.length - 1) ? "none" : "1px solid var(--color-divider)", paddingBottom: "0.5rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "var(--text-sm)", padding: "0.25rem 0", color: accent }}>{f.q}</summary>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: "0.375rem", lineHeight: 1.6 }}>{f.a}</p>
         </details>
       ))}
@@ -262,6 +307,7 @@ interface PageData {
     blocks: string;
     background?: string;
     avatarUrl?: string | null;
+    pageFont?: string | null;
   };
   links: Array<{
     id: number;
@@ -284,6 +330,11 @@ function LeadForm({ pageId, accentColor, block }: { pageId: number; accentColor:
   const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const customFields = block?.customFields || [];
 
+  // Track on mount (form view)
+  useEffect(() => {
+    if (block?.id) trackBlock(pageId, block.id, "lead-form", "view");
+  }, [block?.id, pageId]);
+
   const mutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/pages/${pageId}/leads`, {
@@ -295,7 +346,10 @@ function LeadForm({ pageId, accentColor, block }: { pageId: number; accentColor:
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    onSuccess: () => setDone(true),
+    onSuccess: () => {
+      setDone(true);
+      if (block?.id) trackBlock(pageId, block.id, "lead-form", "submit");
+    },
   });
 
   if (done) {
@@ -320,7 +374,7 @@ function LeadForm({ pageId, accentColor, block }: { pageId: number; accentColor:
 
   return (
     <div style={{ padding: "1.5rem", background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)" }}>
-      <h3 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>{formTitle}</h3>
+      <h3 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem", color: accentColor }}>{formTitle}</h3>
       <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
         {formDescription}
       </p>
@@ -425,7 +479,10 @@ function PollBlock({ block, pageId, accentColor }: { block: Block; pageId: numbe
       }
       return res.json();
     },
-    onSuccess: () => refetch(),
+    onSuccess: () => {
+      refetch();
+      trackBlock(pageId, block.id, "poll", "vote");
+    },
   });
 
   const votes = data?.votes ?? [];
@@ -434,7 +491,7 @@ function PollBlock({ block, pageId, accentColor }: { block: Block; pageId: numbe
 
   return (
     <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)" }}>
-      <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>
+      <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem", color: accentColor }}>
         🗳️ {block.question}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -485,11 +542,11 @@ function PollBlock({ block, pageId, accentColor }: { block: Block; pageId: numbe
 }
 
 // ─── Text block ───────────────────────────────────────────────
-function TextBlock({ block }: { block: Block }) {
+function TextBlock({ block, accent }: { block: Block; accent: string }) {
   const body = block.body || block.content || "";
   return (
     <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)" }}>
-      {block.title && <h3 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>{block.title}</h3>}
+      {block.title && <h3 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem", color: accent }}>{block.title}</h3>}
       <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: "var(--color-text)", whiteSpace: "pre-wrap" }}>
         {body}
       </p>
@@ -594,6 +651,50 @@ function PageNotFound({ username }: { username: string }) {
   );
 }
 
+// ─── Google Fonts loader ──────────────────────────────────────
+const FONT_MAP: Record<string, string> = {
+  inter: "Inter",
+  "dm-sans": "DM+Sans",
+  outfit: "Outfit",
+  "plus-jakarta": "Plus+Jakarta+Sans",
+  nunito: "Nunito",
+  raleway: "Raleway",
+  lato: "Lato",
+  poppins: "Poppins",
+  "work-sans": "Work+Sans",
+  rubik: "Rubik",
+  figtree: "Figtree",
+  jost: "Jost",
+  manrope: "Manrope",
+  karla: "Karla",
+  urbanist: "Urbanist",
+  quicksand: "Quicksand",
+  "libre-baskerville": "Libre+Baskerville",
+  "playfair-display": "Playfair+Display",
+  "cormorant-garamond": "Cormorant+Garamond",
+  "josefin-sans": "Josefin+Sans",
+};
+
+function getFontFamily(fontKey: string | null | undefined): string {
+  if (!fontKey || fontKey === "inter") return "'Inter', 'General Sans', sans-serif";
+  const name = FONT_MAP[fontKey];
+  if (!name) return "'Inter', sans-serif";
+  return `'${name.replace(/\+/g, " ")}', sans-serif`;
+}
+
+function loadGoogleFont(fontKey: string | null | undefined) {
+  if (!fontKey || fontKey === "inter") return;
+  const name = FONT_MAP[fontKey];
+  if (!name) return;
+  const id = `gfont-${fontKey}`;
+  if (document.getElementById(id)) return;
+  const link = document.createElement("link");
+  link.id = id;
+  link.rel = "stylesheet";
+  link.href = `https://fonts.googleapis.com/css2?family=${name}:wght@400;500;600;700;800&display=swap`;
+  document.head.appendChild(link);
+}
+
 // ─── Main profile page ────────────────────────────────────────
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
@@ -613,11 +714,17 @@ export default function ProfilePage() {
     staleTime: 30_000,
   });
 
+  // Load Google Font once page data is available
+  useEffect(() => {
+    if (data?.page?.pageFont) loadGoogleFont(data.page.pageFont);
+  }, [data?.page?.pageFont]);
+
   if (isLoading) return <ProfileSkeleton />;
   if (isError || !data) return <PageNotFound username={username || ""} />;
 
   const { page, links } = data;
   const accent = page.accentColor || "#e06b1a";
+  const fontFamily = getFontFamily(page.pageFont);
   const sortedLinks = [...links].sort((a, b) => a.position - b.position);
   const featuredLinks = sortedLinks.filter(l => l.style === "featured");
   const regularLinks = sortedLinks.filter(l => l.style !== "featured");
@@ -633,7 +740,7 @@ export default function ProfilePage() {
   const autoTextMuted = (page as any).textColor || (luminance === "dark" ? "rgba(245,245,247,0.72)" : "rgba(10,10,11,0.62)");
 
   return (
-    <div style={{ minHeight: "100dvh", background: "var(--color-bg)", color: autoText, ...bgStyle, "--color-text": autoText, "--color-text-muted": autoTextMuted } as any}>
+    <div style={{ minHeight: "100dvh", background: "var(--color-bg)", color: autoText, fontFamily, ...bgStyle, "--color-text": autoText, "--color-text-muted": autoTextMuted } as any}>
       {/* Minimal top bar */}
       <div style={{
         position: "sticky", top: 0, zIndex: 100,
@@ -770,17 +877,17 @@ export default function ProfilePage() {
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
             {blocks.map(block => {
               switch (block.type) {
-                case "text": return <TextBlock key={block.id} block={block} />;
+                case "text": return <TextBlock key={block.id} block={block} accent={accent} />;
                 case "poll": return <PollBlock key={block.id} block={block} pageId={page.id} accentColor={accent} />;
                 case "lead-form": return <LeadForm key={block.id} pageId={page.id} accentColor={accent} block={block} />;
                 case "image": return <ImageBlock key={block.id} block={block} />;
-                case "video": return <VideoBlock key={block.id} block={block} />;
+                case "video": return <VideoBlock key={block.id} block={block} pageId={page.id} />;
                 case "social-links": return <SocialLinksBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
-                case "countdown": return <CountdownBlock key={block.id} block={block} accent={accent} />;
+                case "countdown": return <CountdownBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
                 case "divider": return <DividerBlock key={block.id} block={block} />;
                 case "button": return <ButtonBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
                 case "testimonial": return <TestimonialBlock key={block.id} block={block} accent={accent} />;
-                case "faq": return <FaqBlock key={block.id} block={block} />;
+                case "faq": return <FaqBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
                 default: return null;
               }
             })}

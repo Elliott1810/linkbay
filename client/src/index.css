@@ -992,7 +992,7 @@ a, button, [role="button"] {
 
   .dashboard-sidebar .sidebar-nav-item {
     flex: 1 1 0 !important;         /* share space equally */
-    min-width: 52px !important;     /* but never smaller than icon+label */
+    min-width: 44px !important;     /* reduced to fit 8 tabs on 375px screen */
     max-width: 72px !important;
     flex-direction: column !important;
     justify-content: center !important;
@@ -1258,6 +1258,31 @@ a, button, [role="button"] {
   /* recharts responsive container fix */
   .recharts-wrapper, .recharts-responsive-container {
     max-width: 100% !important;
+  }
+
+  /* ─── Mobile 1: Reduce nav-item padding so 8 tabs fit on 375px ─── */
+  .dashboard-sidebar .sidebar-nav-item {
+    padding: 4px 1px 3px !important;
+    max-width: 60px !important;
+  }
+
+  /* ─── Mobile 2: Editor header / main content must not be clipped by fixed tab bar ─── */
+  /* dashboard-shell flex col: main (order:1) then sidebar (order:2, 58px) */
+  /* editor-outer scrolls inside .dashboard-main which is flex:1 */
+  .editor-outer {
+    max-height: 100% !important;
+  }
+  /* Editor settings panel sticky top must clear mobile context bar */
+  .editor-settings-panel {
+    top: 0 !important;
+    z-index: 5 !important;
+  }
+
+  /* ─── Mobile 4: Ensure badge parent containers don't clip the dot ─── */
+  .dashboard-sidebar,
+  .dashboard-sidebar .sidebar-nav,
+  .dashboard-sidebar .sidebar-nav-item {
+    overflow: visible !important;
   }
 }
 

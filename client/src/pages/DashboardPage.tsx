@@ -27,6 +27,7 @@ const icons: Record<string, JSX.Element> = {
   up: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"/></svg>,
   down: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>,
   close: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  blocks: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="8" height="5" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="3" y="11" width="8" height="5" rx="1"/><rect x="13" y="11" width="8" height="5" rx="1"/><rect x="3" y="19" width="18" height="2" rx="1"/></svg>,
 };
 
 const LINK_ICONS = ["🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇️", "⭐", "💬", "🌐", "📊"];
@@ -34,6 +35,7 @@ const LINK_ICONS = ["🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇
 // --- Nav items (leads dot injected dynamically) ---
 const navItems = [
   { id: "overview", label: "Overview", icon: "grid" },
+  { id: "blocks", label: "Blocks", icon: "blocks" },
   { id: "editor", label: "Page Editor", icon: "edit" },
   { id: "analytics", label: "Analytics", icon: "chart" },
   { id: "leads", label: "Leads", icon: "users" },
@@ -311,8 +313,7 @@ function OverviewPanel({
   const setSelectedPageId = setActivePageId;
   const [days, setDays] = useState<number>(30);
   const [shareUrlCopied, setShareUrlCopied] = useState(false);
-
-
+  const [graphSeries, setGraphSeries] = useState<"views" | "clicks" | "leads">("views");
 
   // Use dashboard/stats for overview cards (supports days param)
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -367,11 +368,28 @@ function OverviewPanel({
 
   const topLinks = analytics?.topLinks ?? [];
 
-  // Chart data from analytics
-  const chartData = (analytics?.dailyViews ?? []).slice(-14).map((d: { date: string; count: number }) => ({
+  // Chart data from analytics (merged for graph series dropdown)
+  const dailyViews = analytics?.dailyViews ?? [];
+  const dailyClicks = analytics?.dailyClicks ?? [];
+  const dailyLeads = analytics?.dailyLeads ?? [];
+  const chartData = dailyViews.slice(-14).map((d: { date: string; count: number }, i: number) => ({
     date: new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
     Views: d.count,
+    Clicks: (dailyClicks[i] as any)?.count ?? 0,
+    Leads: (dailyLeads[i] as any)?.count ?? 0,
   }));
+
+  // Extra: Calculate current visitor streak (consecutive days with at least 1 view)
+  const streak = (() => {
+    if (!dailyViews.length) return 0;
+    let count = 0;
+    const sorted = [...dailyViews].reverse(); // most recent first
+    for (const d of sorted) {
+      if (d.count > 0) count++;
+      else break;
+    }
+    return count;
+  })();
 
   const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(pageUrl)}&text=Check+out+my+Linkbay+page`;
   const linkedinUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(pageUrl)}`;
@@ -474,6 +492,9 @@ function OverviewPanel({
             </span>
           )}
           <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.6 }}>since midnight</span>
+          {streak > 1 && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--color-primary)", background: "rgba(224,107,26,0.12)", padding: "2px 7px", borderRadius: 999, flexShrink: 0 }}>🔥 {streak}d streak</span>
+          )}
         </div>
       )}
 
@@ -502,7 +523,22 @@ function OverviewPanel({
       {/* Chart */}
       {!analyticsLoading && chartData.length > 0 && (
         <div className="card" style={{ padding: "1.25rem", marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "1.25rem" }}>Views — last {Math.min(14, days)} days</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>
+              {graphSeries === "views" ? "Views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — last {Math.min(14, days)} days
+            </div>
+            <select
+              value={graphSeries}
+              onChange={e => setGraphSeries(e.target.value as any)}
+              className="input"
+              style={{ fontSize: 11, width: "auto", padding: "0.25rem 0.5rem", height: "auto" }}
+              data-testid="select-overview-graph-series"
+            >
+              <option value="views">Views</option>
+              <option value="clicks">Clicks</option>
+              <option value="leads">Leads</option>
+            </select>
+          </div>
           <ResponsiveContainer width="100%" height={160}>
             <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -24 }}>
               <defs>
@@ -519,7 +555,7 @@ function OverviewPanel({
                 labelStyle={{ fontWeight: 700, color: "var(--color-text)" }}
                 itemStyle={{ color: "#e06b1a" }}
               />
-              <Area type="monotone" dataKey="Views" stroke="#e06b1a" strokeWidth={2} fill="url(#viewsGrad)" dot={false} activeDot={{ r: 4, fill: "#e06b1a" }} />
+              <Area type="monotone" dataKey={graphSeries === "views" ? "Views" : graphSeries === "clicks" ? "Clicks" : "Leads"} stroke="#e06b1a" strokeWidth={2} fill="url(#viewsGrad)" dot={false} activeDot={{ r: 4, fill: "#e06b1a" }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -529,24 +565,32 @@ function OverviewPanel({
       <div className="overview-bottom-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
         {/* Top links */}
         <div className="card" style={{ padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "1rem" }}>Top links by clicks</div>
-          {topLinks.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>
-              No clicks tracked yet. Share your page to start tracking!
-            </div>
-          ) : (
-            topLinks.map((link: any) => (
-              <div key={link.id} style={{ marginBottom: "0.875rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: "0.25rem" }}>
-                  <span style={{ color: "var(--color-text-muted)", maxWidth: "70%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.label}</span>
-                  <span style={{ fontWeight: 700 }}>{link.clickCount} clicks</span>
-                </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${topLinks[0]?.clickCount > 0 ? Math.round((link.clickCount / topLinks[0].clickCount) * 100) : 0}%` }} />
-                </div>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>Top Interactions</div>
+          {(() => {
+            const interactions = analytics?.topInteractions ?? [];
+            if (interactions.length === 0) return (
+              <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>
+                No interactions tracked yet. Share your page!
               </div>
-            ))
-          )}
+            );
+            const liveBlockIds = (() => { try { return new Set((JSON.parse(page?.blocks || "[]") as any[]).map((b: any) => b.id)); } catch { return new Set(); } })();
+            const max = interactions[0]?.total ?? 1;
+            return interactions.map((item: any) => {
+              const isLive = !item.blockId || liveBlockIds.has(item.blockId);
+              return (
+                <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.75rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: "0.25rem", gap: "0.5rem" }}>
+                    <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Link"}</span>
+                    {!isLive && <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>past</span>}
+                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{item.total ?? item.clickCount} ×</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${max > 0 ? Math.round(((item.total ?? item.clickCount) / max) * 100) : 0}%`, background: isLive ? undefined : "var(--color-text-faint)" }} />
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
 
         {/* Right column: Quick actions + Share section */}
@@ -556,7 +600,7 @@ function OverviewPanel({
             const checks = [
               { label: "Profile photo", done: !!page?.avatarUrl },
               { label: "Bio added", done: !!page?.bio },
-              { label: "Links added", done: (() => { try { const b = typeof page?.blocks === "string" ? JSON.parse(page.blocks) : (page?.blocks ?? []); return Array.isArray(b) && b.some((bl: any) => bl.type === "link"); } catch { return false; } })() },
+              { label: "Links added", done: (() => { try { if ((analytics?.topLinks?.length ?? 0) > 0) return true; const b = typeof page?.blocks === "string" ? JSON.parse(page.blocks) : (page?.blocks ?? []); return Array.isArray(b) && b.some((bl: any) => bl.type === "link"); } catch { return false; } })() || (analytics?.periodClicks ?? 0) > 0 },
               { label: "Page published", done: !!page?.published },
               { label: "Contact email", done: !!page?.contactEmail },
               { label: "Location set", done: !!page?.location },
@@ -672,6 +716,12 @@ const DASHBOARD_BG_OPTIONS = [
   { label: "Slate", value: "slate", preview: "#f1f5f9" },
   { label: "Stone", value: "stone", preview: "#e7e5e4" },
   { label: "Blush", value: "blush", preview: "#fce7f3" },
+  // Pastels (new)
+  { label: "Mint", value: "mint", preview: "#d1fae5" },
+  { label: "Lavender", value: "lavender", preview: "#ede9fe" },
+  { label: "Butter", value: "butter", preview: "#fef9c3" },
+  { label: "Powder", value: "powder", preview: "#dbeafe" },
+  { label: "Blush Pink", value: "blush-pink", preview: "#fce7f3" },
   // Dark
   { label: "Charcoal", value: "charcoal", preview: "#1e293b" },
   { label: "Midnight", value: "midnight", preview: "#0f172a" },
@@ -679,28 +729,51 @@ const DASHBOARD_BG_OPTIONS = [
   { label: "Espresso", value: "espresso", preview: "#2c1a0e" },
   { label: "Aubergine", value: "deep-purple", preview: "#2d1b69" },
   // Warm
-  { label: "Amber", value: "warm-amber", preview: "linear-gradient(135deg, #fef3c7, #fde68a)" },
   { label: "Peach", value: "rose", preview: "linear-gradient(135deg, #ffe4e6, #fecdd3)" },
-  { label: "Copper", value: "copper", preview: "linear-gradient(135deg, #fed7aa, #fb923c)" },
   { label: "Sunset", value: "sunset", preview: "linear-gradient(135deg, #f97316, #ec4899)" },
   // Cool
   { label: "Sky", value: "cool-blue", preview: "linear-gradient(135deg, #dbeafe, #bfdbfe)" },
   { label: "Ocean", value: "ocean", preview: "linear-gradient(135deg, #0891b2, #1e40af)" },
   { label: "Sage", value: "sage", preview: "linear-gradient(135deg, #d1fae5, #a7f3d0)" },
-  { label: "Forest", value: "forest", preview: "linear-gradient(135deg, #15803d, #166534)" },
   { label: "Aurora", value: "aurora", preview: "linear-gradient(135deg, #8b5cf6, #ec4899, #14b8a6)" },
   { label: "Frosted", value: "glass", preview: "linear-gradient(135deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2)), #e0f2fe" },
 ];
 
 const THEME_PRESETS: { id: string; name: string; accentColor: string; background: string }[] = [
-  { id: "ember", name: "Ember", accentColor: "#e06b1a", background: "none" },
-  { id: "midnight", name: "Midnight", accentColor: "#8b5cf6", background: "midnight-blue" },
-  { id: "ocean", name: "Ocean", accentColor: "#0891b2", background: "ocean" },
-  { id: "forest", name: "Forest", accentColor: "#059669", background: "forest" },
-  { id: "aurora", name: "Aurora", accentColor: "#7c3aed", background: "aurora" },
+  { id: "ember", name: "Ember", accentColor: "#e06b1a", background: JSON.stringify({ pattern: "squiggles", color: "warm-white" }) },
+  { id: "blossom", name: "Blossom", accentColor: "#e879a0", background: JSON.stringify({ pattern: "botanica", color: "blush" }) },
+  { id: "peppermint", name: "Peppermint", accentColor: "#0fa87e", background: JSON.stringify({ pattern: "ripples", color: "mint" }) },
+  { id: "periwinkle", name: "Periwinkle", accentColor: "#6366f1", background: JSON.stringify({ pattern: "constellations", color: "lavender" }) },
+  { id: "buttercup", name: "Buttercup", accentColor: "#d97706", background: JSON.stringify({ pattern: "paper", color: "butter" }) },
+  { id: "ocean", name: "Ocean", accentColor: "#0891b2", background: JSON.stringify({ pattern: "waves", color: "ocean" }) },
+  { id: "aurora", name: "Aurora", accentColor: "#7c3aed", background: JSON.stringify({ pattern: "constellations", color: "aurora" }) },
+  { id: "charcoal", name: "Charcoal", accentColor: "#e06b1a", background: JSON.stringify({ pattern: "grid", color: "charcoal" }) },
+  { id: "linen-classic", name: "Linen", accentColor: "#92400e", background: JSON.stringify({ pattern: "linen", color: "warm-sand" }) },
   { id: "minimal", name: "Minimal", accentColor: "#334155", background: "none" },
-  { id: "sunset", name: "Sunset", accentColor: "#e11d48", background: "sunset" },
-  { id: "sand", name: "Sand", accentColor: "#a16207", background: "warm-sand" },
+];
+
+// Font options for page font selector (General 15)
+const PAGE_FONT_OPTIONS = [
+  { label: "Inter (default)", value: "inter" },
+  { label: "DM Sans", value: "dm-sans" },
+  { label: "Outfit", value: "outfit" },
+  { label: "Plus Jakarta Sans", value: "plus-jakarta" },
+  { label: "Nunito", value: "nunito" },
+  { label: "Raleway", value: "raleway" },
+  { label: "Lato", value: "lato" },
+  { label: "Poppins", value: "poppins" },
+  { label: "Work Sans", value: "work-sans" },
+  { label: "Rubik", value: "rubik" },
+  { label: "Figtree", value: "figtree" },
+  { label: "Jost", value: "jost" },
+  { label: "Manrope", value: "manrope" },
+  { label: "Karla", value: "karla" },
+  { label: "Urbanist", value: "urbanist" },
+  { label: "Quicksand", value: "quicksand" },
+  { label: "Libre Baskerville", value: "libre-baskerville" },
+  { label: "Playfair Display", value: "playfair-display" },
+  { label: "Cormorant Garamond", value: "cormorant-garamond" },
+  { label: "Josefin Sans", value: "josefin-sans" },
 ];
 
 function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave: (d: any) => void; saving: boolean; saveMsg: string }) {
@@ -712,6 +785,7 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
   const [accentColor, setAccentColor] = useState(page?.accentColor ?? "#e06b1a");
   const [background, setBackground] = useState(page?.background ?? "none");
   const [avatarShape, setAvatarShape] = useState<string>(page?.avatarShape ?? "circle");
+  const [pageFont, setPageFont] = useState<string>(page?.pageFont ?? "inter");
 
   useEffect(() => {
     if (page) {
@@ -723,6 +797,7 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
       setAccentColor(page.accentColor ?? "#e06b1a");
       setBackground(page.background ?? "none");
       setAvatarShape(page.avatarShape ?? "circle");
+      setPageFont(page.pageFont ?? "inter");
     }
   }, [page?.id]);
 
@@ -862,8 +937,23 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           })}
         </div>
       </div>
+      <div>
+        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Page font</label>
+        <select
+          className="input"
+          value={pageFont}
+          onChange={e => setPageFont(e.target.value)}
+          style={{ fontSize: 13 }}
+          data-testid="select-page-font"
+        >
+          {PAGE_FONT_OPTIONS.map(f => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
+        <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 4 }}>Font applies to your entire public profile page.</p>
+      </div>
       <button
-        onClick={() => onSave({ title, bio, location, phone, contactEmail, accentColor, background, avatarShape })}
+        onClick={() => onSave({ title, bio, location, phone, contactEmail, accentColor, background, avatarShape, pageFont })}
         className="btn btn-primary btn-sm"
         disabled={saving}
         style={{ justifyContent: "center" }}
@@ -2287,6 +2377,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
   const [scope, setScope] = useState<"page" | "all">("page");
   const [selectedPageId, setSelectedPageId] = useState<number | null>(pages[0]?.id ?? null);
   const [days, setDays] = useState<number>(30);
+  const [graphSeries, setGraphSeries] = useState<"views" | "clicks" | "leads">("views");
 
   const { data: analytics, isLoading } = useQuery({
     queryKey: ["/api/pages", selectedPageId, "analytics", days],
@@ -2302,10 +2393,15 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
 
   const page = pages.find((p: any) => p.id === selectedPageId) || pages[0];
 
-  // Build chart data
-  const chartData = (analytics?.dailyViews ?? []).map((d: { date: string; count: number }) => ({
+  // Build chart data (merged series)
+  const dailyViews = analytics?.dailyViews ?? [];
+  const dailyClicks = analytics?.dailyClicks ?? [];
+  const dailyLeads = analytics?.dailyLeads ?? [];
+  const chartData = dailyViews.map((d: { date: string; count: number }, i: number) => ({
     date: new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
     Views: d.count,
+    Clicks: (dailyClicks[i] as any)?.count ?? 0,
+    Leads: (dailyLeads[i] as any)?.count ?? 0,
   }));
 
   return (
@@ -2366,10 +2462,25 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
             ))}
           </div>
 
-          {/* Views chart */}
+          {/* Views/Clicks/Leads chart with dropdown */}
           {chartData.length > 0 && (
             <div className="card" style={{ padding: "1.25rem" }}>
-              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "1.25rem" }}>Page views — last {days} days</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+                <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>
+                  {graphSeries === "views" ? "Page views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — last {days} days
+                </div>
+                <select
+                  value={graphSeries}
+                  onChange={e => setGraphSeries(e.target.value as any)}
+                  className="input"
+                  style={{ fontSize: 11, width: "auto", padding: "0.25rem 0.5rem", height: "auto" }}
+                  data-testid="select-analytics-graph-series"
+                >
+                  <option value="views">Views</option>
+                  <option value="clicks">Clicks</option>
+                  <option value="leads">Leads</option>
+                </select>
+              </div>
               <ResponsiveContainer width="100%" height={200}>
                 <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -24 }}>
                   <defs>
@@ -2386,7 +2497,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                     labelStyle={{ fontWeight: 700, color: "var(--color-text)" }}
                     itemStyle={{ color: "#e06b1a" }}
                   />
-                  <Area type="monotone" dataKey="Views" stroke="#e06b1a" strokeWidth={2} fill="url(#viewsGradFull)" dot={false} activeDot={{ r: 4, fill: "#e06b1a" }} />
+                  <Area type="monotone" dataKey={graphSeries === "views" ? "Views" : graphSeries === "clicks" ? "Clicks" : "Leads"} stroke="#e06b1a" strokeWidth={2} fill="url(#viewsGradFull)" dot={false} activeDot={{ r: 4, fill: "#e06b1a" }} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -2395,22 +2506,21 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
             {/* Top links */}
             <div className="card" style={{ padding: "1.25rem" }}>
-              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "1rem" }}>Top links by clicks</div>
-              {(analytics.topLinks || []).length === 0 ? (
-                <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No clicks yet. Share your page to start.</div>
-              ) : (
-                (analytics.topLinks || []).map((link: any) => (
-                  <div key={link.id} style={{ marginBottom: "0.875rem" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 2 }}>
-                      <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" }}>{link.label}</span>
-                      <span style={{ fontWeight: 700 }}>{link.clickCount}</span>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>Top Interactions</div>
+              {(() => {
+                const interactions = analytics.topInteractions ?? analytics.topLinks ?? [];
+                if (interactions.length === 0) return <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No interactions yet.</div>;
+                const max = interactions[0]?.total ?? interactions[0]?.clickCount ?? 1;
+                return interactions.map((item: any) => (
+                  <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.75rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 2, gap: "0.5rem" }}>
+                      <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Interaction"}</span>
+                      <span style={{ fontWeight: 700 }}>{item.total ?? item.clickCount}</span>
                     </div>
-                    <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${analytics.topLinks[0]?.clickCount > 0 ? Math.round(link.clickCount / analytics.topLinks[0].clickCount * 100) : 0}%` }} />
-                    </div>
+                    <div className="progress-bar"><div className="progress-fill" style={{ width: `${max > 0 ? Math.round(((item.total ?? item.clickCount) / max) * 100) : 0}%` }} /></div>
                   </div>
-                ))
-              )}
+                ));
+              })()}
             </div>
 
             {/* Device split + export */}
@@ -2436,9 +2546,10 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                   <div style={{ textAlign: "center", padding: "1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No location data yet.</div>
                 ) : (
                   (analytics.topCountries || []).map((c: any) => {
-                    const code = (c.country || "").toUpperCase();
+                    const code = (c.country || "").trim().toUpperCase();
+                    // Convert ISO-3166-1 alpha-2 code to flag emoji using regional indicator symbols
                     const flag = code.length === 2
-                      ? String.fromCodePoint(...[...code].map(ch => 127397 + ch.charCodeAt(0)))
+                      ? String.fromCodePoint(127397 + code.charCodeAt(0), 127397 + code.charCodeAt(1))
                       : "🌍";
                     return (
                       <div key={code || "unknown"} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid var(--color-divider)" }}>
@@ -2627,6 +2738,199 @@ function LeadDetailModal({ lead, onClose, onStatusChange, onNotesSave, onConvert
 }
 
 // --- Leads Panel ---
+// ─── Block Analysis Panel (General 9) ───────────────────────────────────────
+function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageId: number | null }) {
+  const [selectedPageId, setSelectedPageId] = useState<number | null>(activePageId ?? pages[0]?.id ?? null);
+  const [days, setDays] = useState(30);
+
+  const { data: analytics, isLoading } = useQuery({
+    queryKey: ["/api/pages", selectedPageId, "block-analytics", days],
+    queryFn: async () => {
+      if (!selectedPageId) return null;
+      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/block-analytics?days=${days}`);
+      return res.json();
+    },
+    enabled: !!selectedPageId,
+    staleTime: 30000,
+  });
+
+  const pageBlocks: any[] = (() => {
+    const page = pages.find((p: any) => p.id === selectedPageId);
+    if (!page) return [];
+    try { return JSON.parse(page.blocks || "[]"); } catch { return []; }
+  })();
+
+  const archivedIds: string[] = (() => {
+    const page = pages.find((p: any) => p.id === selectedPageId);
+    if (!page) return [];
+    try { return JSON.parse(page.archivedBlockIds || "[]"); } catch { return []; }
+  })();
+
+  const archiveMutation = useMutation({
+    mutationFn: async (blockId: string) => {
+      const page = pages.find((p: any) => p.id === selectedPageId);
+      if (!page) throw new Error("No page");
+      const existing: string[] = (() => { try { return JSON.parse(page.archivedBlockIds || "[]"); } catch { return []; } })();
+      const updated = existing.includes(blockId) ? existing.filter((id: string) => id !== blockId) : [...existing, blockId];
+      const res = await apiRequest("PATCH", `/api/pages/${selectedPageId}`, { archivedBlockIds: JSON.stringify(updated) });
+      if (!res.ok) throw new Error("Failed to archive");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+    },
+  });
+
+  const blockLabel = (block: any) => block.title || block.label || block.question || block.type || "Block";
+  const blockTypeIcon: Record<string, string> = {
+    button: "🔗", text: "📝", image: "🖼️", video: "🎥", faq: "❓", poll: "📊",
+    countdown: "⏱️", "lead-form": "📋", social: "🌐", testimonial: "💬", html: "💻",
+  };
+
+  const periodEvents: any[] = analytics?.periodEvents ?? [];
+  const allTimeBlocks: any[] = analytics?.allTimeBlocks ?? [];
+
+  // Aggregate per-block stats
+  const blockStats: Map<string, { count: number; eventTypes: Record<string, number> }> = new Map();
+  for (const e of periodEvents) {
+    const bid = e.blockId || e.block_id;
+    if (!bid) continue;
+    if (!blockStats.has(bid)) blockStats.set(bid, { count: 0, eventTypes: {} });
+    const s = blockStats.get(bid)!;
+    s.count++;
+    const et = e.eventType || e.type || "view";
+    s.eventTypes[et] = (s.eventTypes[et] || 0) + 1;
+  }
+
+  const liveBlocks = pageBlocks.filter((b: any) => !archivedIds.includes(b.id));
+  const archivedBlocks = pageBlocks.filter((b: any) => archivedIds.includes(b.id));
+
+  const totalInteractions = periodEvents.length;
+
+  return (
+    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "0.75rem" }}>
+        <div>
+          <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>Block Analysis</h1>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginTop: "0.25rem" }}>Interaction tracking per content block</p>
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          {pages.length > 1 && (
+            <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
+              {pages.map((p: any) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            </select>
+          )}
+          <select value={days} onChange={e => setDays(Number(e.target.value))} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
+            {[7, 14, 30, 90].map(d => <option key={d} value={d}>Last {d} days</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1.5rem" }}>
+        {[
+          { label: "Total interactions", value: totalInteractions },
+          { label: "Live blocks", value: liveBlocks.length },
+          { label: "Archived blocks", value: archivedBlocks.length },
+          { label: "Active blocks", value: Array.from(blockStats.keys()).length },
+        ].map(card => (
+          <div key={card.label} className="card" style={{ padding: "1rem", textAlign: "center" }}>
+            <div style={{ fontSize: "var(--text-xl)", fontWeight: 800, color: "var(--color-primary)", fontFamily: "Cabinet Grotesk, sans-serif" }}>{card.value}</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: "0.25rem" }}>{card.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {[0, 1, 2].map(i => <div key={i} className="skeleton" style={{ height: 60, borderRadius: "var(--radius-md)" }} />)}
+        </div>
+      ) : (
+        <>
+          {/* Live blocks */}
+          <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
+            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>
+              Live blocks ({liveBlocks.length})
+            </h2>
+            {liveBlocks.length === 0 ? (
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No live blocks on this page.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {liveBlocks.map((block: any) => {
+                  const stats = blockStats.get(block.id) ?? { count: 0, eventTypes: {} };
+                  const pct = totalInteractions > 0 ? Math.round((stats.count / totalInteractions) * 100) : 0;
+                  return (
+                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
+                      <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                          <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{blockLabel(block)}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: stats.count > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, marginLeft: "0.5rem" }}>{stats.count} interactions ({pct}%)</span>
+                        </div>
+                        <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${pct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
+                        </div>
+                        {Object.keys(stats.eventTypes).length > 0 && (
+                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
+                            {Object.entries(stats.eventTypes).map(([et, cnt]) => (
+                              <span key={et} style={{ fontSize: 10, padding: "1px 5px", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 4, color: "var(--color-text-muted)" }}>{et}: {cnt}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => archiveMutation.mutate(block.id)}
+                        disabled={archiveMutation.isPending}
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: 11, flexShrink: 0 }}
+                        title="Archive block"
+                      >
+                        Archive
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Archived blocks */}
+          {archivedBlocks.length > 0 && (
+            <div className="card" style={{ padding: "1.25rem" }}>
+              <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>
+                Archived blocks ({archivedBlocks.length})
+              </h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {archivedBlocks.map((block: any) => {
+                  const stats = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
+                  return (
+                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.7 }}>
+                      <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
+                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{stats.count ?? 0} lifetime interactions</div>
+                      </div>
+                      <button
+                        onClick={() => archiveMutation.mutate(block.id)}
+                        disabled={archiveMutation.isPending}
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: 11, flexShrink: 0 }}
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function LeadsPanel({ pages }: { pages: any[] }) {
   const [selectedPageId, setSelectedPageId] = useState<number | null>(pages[0]?.id ?? null);
   const [selectedLead, setSelectedLead] = useState<any | null>(null);
@@ -2635,6 +2939,9 @@ function LeadsPanel({ pages }: { pages: any[] }) {
   // Filter state
   const [filterCategory, setFilterCategory] = useState("name");
   const [filterText, setFilterText] = useState("");
+  // Sort state
+  const [leadSortBy, setLeadSortBy] = useState<"name" | "email" | "source" | "status" | "createdAt">("createdAt");
+  const [leadSortDir, setLeadSortDir] = useState<"asc" | "desc">("desc");
 
   const { data: leads, isLoading } = useQuery({
     queryKey: ["/api/pages", selectedPageId, "leads"],
@@ -2750,7 +3057,14 @@ function LeadsPanel({ pages }: { pages: any[] }) {
     ...customFieldKeys.map(k => ({ value: `custom:${k}`, label: k })),
   ];
 
-  const filteredLeads = filterText.trim() === "" ? (leads || []) : (leads || []).filter((l: any) => {
+  const toggleLeadSort = (col: typeof leadSortBy) => {
+    if (leadSortBy === col) setLeadSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setLeadSortBy(col); setLeadSortDir("asc"); }
+  };
+  const leadSortArrow = (col: typeof leadSortBy) => leadSortBy === col ? (leadSortDir === "asc" ? " ↑" : " ↓") : "";
+
+  const filteredLeads = (() => {
+    const base = filterText.trim() === "" ? (leads || []) : (leads || []).filter((l: any) => {
     const q = filterText.trim().toLowerCase();
     if (filterCategory.startsWith("custom:")) {
       const key = filterCategory.slice(7);
@@ -2761,7 +3075,13 @@ function LeadsPanel({ pages }: { pages: any[] }) {
     }
     const val = String((l as any)[filterCategory] ?? "").toLowerCase();
     return val.includes(q);
-  });
+    });
+    return [...base].sort((a: any, b: any) => {
+      const av = String(a[leadSortBy] ?? "").toLowerCase();
+      const bv = String(b[leadSortBy] ?? "").toLowerCase();
+      return leadSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+  })();
 
   const exportCSV = () => {
     if (!leads?.length) return;
@@ -2911,8 +3231,19 @@ function LeadsPanel({ pages }: { pages: any[] }) {
             <table className="leads-table" style={{ width: "100%", fontSize: "var(--text-sm)" }}>
               <thead>
                 <tr style={{ background: "var(--color-surface-offset)" }}>
-                  {["Name", "Email", "Message", "Source", "Status", "Date", ""].map(h => (
-                    <th key={h} style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, fontSize: "var(--text-xs)", color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", borderBottom: "1px solid var(--color-border)", whiteSpace: "nowrap" }}>{h}</th>
+                  {([
+                    { label: "Name", col: "name" },
+                    { label: "Email", col: "email" },
+                    { label: "Message", col: null },
+                    { label: "Source", col: "source" },
+                    { label: "Status", col: "status" },
+                    { label: "Date", col: "createdAt" },
+                    { label: "", col: null },
+                  ] as { label: string; col: "name" | "email" | "source" | "status" | "createdAt" | null }[]).map(h => (
+                    <th key={h.label} onClick={h.col ? () => toggleLeadSort(h.col!) : undefined}
+                      style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, fontSize: "var(--text-xs)", color: h.col ? "var(--color-text)" : "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", borderBottom: "1px solid var(--color-border)", whiteSpace: "nowrap", cursor: h.col ? "pointer" : "default", userSelect: "none" }}>
+                      {h.label}{h.col ? leadSortArrow(h.col) : ""}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -3119,6 +3450,15 @@ function ContactsPanel() {
   });
 
   const [editingActivityId, setEditingActivityId] = useState<number | null>(null);
+  // Sort state for contacts table
+  const [contactSortBy, setContactSortBy] = useState<"name" | "email" | "company" | "source" | "createdAt">("createdAt");
+  const [contactSortDir, setContactSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleContactSort = (col: typeof contactSortBy) => {
+    if (contactSortBy === col) setContactSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setContactSortBy(col); setContactSortDir("asc"); }
+  };
+  const contactSortArrow = (col: typeof contactSortBy) => contactSortBy === col ? (contactSortDir === "asc" ? " ↑" : " ↓") : "";
 
   // Derive custom field keys from all contacts (from lead forms)
   const contactCustomFieldKeys: string[] = [];
@@ -3141,20 +3481,34 @@ function ContactsPanel() {
     ...contactCustomFieldKeys.map(k => ({ value: `custom:${k}`, label: k })),
   ];
 
-  const filtered = (contacts || []).filter((c: any) => {
-    const activeFilter = filterText.trim();
-    if (!activeFilter) return true;
-    const q = activeFilter.toLowerCase();
-    if (filterCategory.startsWith("custom:")) {
-      const key = filterCategory.slice(7);
-      try {
-        const cf = typeof c.customFields === "string" ? JSON.parse(c.customFields) : c.customFields;
-        return cf && String(cf[key] ?? "").toLowerCase().includes(q);
-      } catch { return false; }
-    }
-    const val = String((c as any)[filterCategory] ?? "").toLowerCase();
-    return val.includes(q);
-  });
+  const filtered = (() => {
+    const base = (contacts || []).filter((c: any) => {
+      const activeFilter = filterText.trim();
+      if (!activeFilter) return true;
+      const q = activeFilter.toLowerCase();
+      if (filterCategory.startsWith("custom:")) {
+        const key = filterCategory.slice(7);
+        try {
+          const cf = typeof c.customFields === "string" ? JSON.parse(c.customFields) : c.customFields;
+          return cf && String(cf[key] ?? "").toLowerCase().includes(q);
+        } catch { return false; }
+      }
+      const val = String((c as any)[filterCategory] ?? "").toLowerCase();
+      return val.includes(q);
+    });
+    // General 8: contacts with live follow-ups (not done) rise to top sorted by soonest date
+    const withLive = base.filter((c: any) => c.followUpDate && !c.followUpDone);
+    const withoutLive = base.filter((c: any) => !c.followUpDate || c.followUpDone);
+    const sortFn = (a: any, b: any) => {
+      const av = String(a[contactSortBy] ?? "").toLowerCase();
+      const bv = String(b[contactSortBy] ?? "").toLowerCase();
+      return contactSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    };
+    const liveByDate = [...withLive].sort((a: any, b: any) =>
+      new Date(a.followUpDate).getTime() - new Date(b.followUpDate).getTime()
+    );
+    return [...liveByDate, ...withoutLive.sort(sortFn)];
+  })();
 
   const overdueContacts = (contacts || []).filter((c: any) =>
     c.followUpDate && !c.followUpDone &&
@@ -3261,11 +3615,18 @@ function ContactsPanel() {
           <table className="leads-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--text-sm)" }}>
             <thead>
               <tr style={{ background: "var(--color-surface-offset)", borderBottom: "1px solid var(--color-divider)" }}>
-                <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: 700, fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: 0.5 }}>Name</th>
-                <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: 700, fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: 0.5 }}>Email</th>
-                <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: 700, fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: 0.5 }}>Company</th>
-                <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: 700, fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: 0.5 }}>Source</th>
-                <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: 700, fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: 0.5 }}>Created</th>
+                {([
+                  { label: "Name", col: "name" },
+                  { label: "Email", col: "email" },
+                  { label: "Company", col: "company" },
+                  { label: "Source", col: "source" },
+                  { label: "Created", col: "createdAt" },
+                ] as { label: string; col: "name" | "email" | "company" | "source" | "createdAt" }[]).map(h => (
+                  <th key={h.label} onClick={() => toggleContactSort(h.col)}
+                    style={{ padding: "0.75rem", textAlign: "left", fontWeight: 700, fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: 0.5, cursor: "pointer", userSelect: "none" }}>
+                    {h.label}{contactSortArrow(h.col)}
+                  </th>
+                ))}
                 <th style={{ padding: "0.75rem", width: 100 }}></th>
               </tr>
             </thead>
@@ -3614,6 +3975,23 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
   const [emailOnNewLead, setEmailOnNewLead] = useState(false);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
   const [notifMsg, setNotifMsg] = useState("");
+  // Newsletter opt-in (General 11) — persisted to server
+  const [newsletterOptin, setNewsletterOptin] = useState<boolean>(!!user?.newsletterOptin);
+  const [newsletterMsg, setNewsletterMsg] = useState("");
+
+  const newsletterMutation = useMutation({
+    mutationFn: async (val: boolean) => {
+      const res = await apiRequest("PATCH", "/api/account/profile", { newsletterOptin: val });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    onSuccess: (_data, val) => {
+      setNewsletterOptin(val);
+      setNewsletterMsg(val ? "Subscribed to newsletter!" : "Unsubscribed.");
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      setTimeout(() => setNewsletterMsg(""), 2500);
+    },
+  });
   // Page visibility toggles
   const [pageVisibilityMsg, setPageVisibilityMsg] = useState<Record<number, string>>({});
 
@@ -3878,6 +4256,30 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
         </div>
         {notifMsg && <p style={{ fontSize: 12, color: "var(--color-success)", fontWeight: 600, marginTop: "0.75rem" }}>✓ {notifMsg}</p>}
         <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: "0.75rem" }}>Email delivery requires your email to be confirmed. Coming soon.</p>
+        {/* Newsletter opt-in — General 11 */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--color-divider)" }}>
+          <div>
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>Linkbay newsletter</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-faint)" }}>Product updates, tips and feature announcements.</div>
+          </div>
+          <div
+            onClick={() => newsletterMutation.mutate(!newsletterOptin)}
+            style={{
+              width: 44, height: 24, borderRadius: 999, cursor: "pointer",
+              background: newsletterOptin ? "var(--color-primary)" : "var(--color-surface-offset)",
+              border: `1.5px solid ${newsletterOptin ? "var(--color-primary)" : "var(--color-border)"}`,
+              position: "relative", transition: "background 0.15s", flexShrink: 0,
+            }}
+            data-testid="toggle-newsletter-optin"
+          >
+            <div style={{
+              position: "absolute", top: 2, left: newsletterOptin ? 22 : 2,
+              width: 18, height: 18, borderRadius: "50%", background: "#fff",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.15s",
+            }} />
+          </div>
+        </div>
+        {newsletterMsg && <p style={{ fontSize: 12, color: "var(--color-success)", fontWeight: 600, marginTop: "0.5rem" }}>✓ {newsletterMsg}</p>}
       </div>
 
       {/* Danger zone */}
@@ -3989,6 +4391,7 @@ export default function DashboardPage() {
     },
     enabled: !!user && pages.length > 0,
     staleTime: 60_000,
+    refetchInterval: 30_000,
   });
 
   const newLeadsCount = leadsData?.newCount ?? 0;
@@ -4028,6 +4431,7 @@ export default function DashboardPage() {
       case "overview": return <OverviewPanel pages={pages} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
       case "editor": return <EditorPanel pages={pages} activePageId={activePageId} />;
       case "analytics": return <AnalyticsPanel pages={pages} activePageId={activePageId} setActivePageId={setActivePageId} />;
+      case "blocks": return <BlockAnalysisPanel pages={pages} activePageId={activePageId} />;
       case "leads": return <LeadsPanel pages={pages} />;
       case "contacts": return <ContactsPanel />;
       case "settings": return <SettingsPanel user={user} pages={pages} onLogout={async () => { await logout(); navigate("/"); }} />;
@@ -4134,7 +4538,7 @@ export default function DashboardPage() {
               {!sidebarCollapsed && <span className="nav-label-desktop">{item.label}</span>}
               <span className="nav-label-mobile">{item.label}</span>
               {/* New leads notification dot */}
-              {item.id === "leads" && newLeadsCount > 0 && activeNav !== "leads" && (
+              {item.id === "leads" && newLeadsCount > 0 && (
                 <span style={{
                   position: "absolute", right: sidebarCollapsed ? 4 : 8, top: sidebarCollapsed ? 4 : "50%", transform: sidebarCollapsed ? "none" : "translateY(-50%)",
                   width: 18, height: 18, borderRadius: "50%", background: "var(--color-error)",

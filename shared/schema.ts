@@ -63,6 +63,8 @@ export const pages = sqliteTable("pages", {
   background: text("background").notNull().default("none"),
   avatarShape: text("avatar_shape").notNull().default("circle"),  // "circle" | "rounded"
   textColor: text("text_color").default("auto"),        // "auto" | "light" | "dark"
+  pageFont: text("page_font").default("inter"),          // font key
+  archivedBlockIds: text("archived_block_ids").default("[]"), // JSON array of archived block ids
   blocks: text("blocks").notNull().default("[]"),       // JSON array of block objects
   published: integer("published", { mode: "boolean" }).notNull().default(false),
   viewCount: integer("view_count").notNull().default(0),
@@ -130,12 +132,14 @@ export type PollVote = typeof pollVotes.$inferSelect;
 export const pageEvents = sqliteTable("page_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   pageId: integer("page_id").notNull(),
-  type: text("type").notNull(),     // "view" | "link_click" | "lead_submit"
+  type: text("type").notNull(),     // "view" | "link_click" | "lead_submit" | "block_interact" | "poll_vote" | "faq_expand" | "video_play"
   linkId: integer("link_id"),
   referrer: text("referrer"),
   device: text("device"),
   visitorId: text("visitor_id"),   // Hashed IP for unique visitor tracking
   country: text("country"),         // ISO country code (e.g. 'US', 'GB')
+  blockId: text("block_id"),        // block.id (string) for block-level tracking
+  blockType: text("block_type"),    // block.type for block-level tracking
   createdAt: text("created_at").notNull().default(""),
 });
 export const insertPageEventSchema = createInsertSchema(pageEvents).omit({ id: true, createdAt: true });

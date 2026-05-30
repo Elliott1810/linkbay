@@ -130,6 +130,15 @@ try { sqlite.exec("ALTER TABLE contacts ADD COLUMN follow_up_date TEXT"); } catc
 try { sqlite.exec("ALTER TABLE contacts ADD COLUMN follow_up_note TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE contacts ADD COLUMN follow_up_done INTEGER DEFAULT 0"); } catch {}
 try { sqlite.exec("ALTER TABLE users ADD COLUMN force_logout INTEGER DEFAULT 0"); } catch {}
+// Sprint: block interaction tracking
+try { sqlite.exec("ALTER TABLE page_events ADD COLUMN block_id TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE page_events ADD COLUMN block_type TEXT"); } catch {}
+// Sprint: page font selection
+try { sqlite.exec("ALTER TABLE pages ADD COLUMN page_font TEXT DEFAULT 'inter'"); } catch {}
+// Sprint: newsletter opt-in
+try { sqlite.exec("ALTER TABLE users ADD COLUMN newsletter_optin INTEGER DEFAULT 0"); } catch {}
+// Sprint: archived block IDs (JSON array stored per page)
+try { sqlite.exec("ALTER TABLE pages ADD COLUMN archived_block_ids TEXT DEFAULT '[]'"); } catch {}
 
 // Contacts table (idempotent)
 sqlite.exec(`

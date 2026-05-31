@@ -292,6 +292,7 @@ function QRCodeCard({ url, username }: { url: string; username?: string }) {
 // --- Overview Panel ---
 function OverviewPanel({
   pages,
+  user,
   onNavigate,
   sharedLink,
   onShared,
@@ -301,6 +302,7 @@ function OverviewPanel({
   setActivePageId,
 }: {
   pages: any[];
+  user: any;
   onNavigate: (tab: string) => void;
   sharedLink: boolean;
   onShared: () => void;
@@ -311,15 +313,20 @@ function OverviewPanel({
 }) {
   const selectedPageId = activePageId ?? pages[0]?.id ?? null;
   const setSelectedPageId = setActivePageId;
-  const [days, setDays] = useState<number>(30);
+  // G2: 7d/14d/30d/60d/All — default 7d; null = all time
+  const [days, setDays] = useState<number>(7);
+  const [pageHealthHidden, setPageHealthHidden] = useState(false); // G1a: hideable
   const [shareUrlCopied, setShareUrlCopied] = useState(false);
   const [graphSeries, setGraphSeries] = useState<"views" | "clicks" | "leads">("views");
+
+  // G2: days=0 means "All time" — pass a large number (3650) to the server for all-time queries
+  const effectiveDays = days === 0 ? 3650 : days;
 
   // Use dashboard/stats for overview cards (supports days param)
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/dashboard/stats", days],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/dashboard/stats?days=${days}`);
+      const res = await apiRequest("GET", days === 0 ? "/api/dashboard/stats" : `/api/dashboard/stats?days=${days}`);
       return res.json();
     },
     staleTime: 30_000,
@@ -330,7 +337,7 @@ function OverviewPanel({
     queryKey: ["/api/pages", selectedPageId, "analytics", days],
     queryFn: async () => {
       if (!selectedPageId) return null;
-      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/analytics?days=${days}`);
+      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/analytics?days=${effectiveDays}`);
       return res.json();
     },
     enabled: !!selectedPageId,
@@ -357,7 +364,8 @@ function OverviewPanel({
   const totalLeads = stats?.totalLeads ?? 0;
   const todayViews = stats?.todayViews ?? 0;
   const todayLeads = stats?.todayLeads ?? 0;
-  const clickRate = totalViews > 0 ? Math.round((totalClicks / totalViews) * 100) : 0;
+  // G12/G4: always 1 decimal place
+  const clickRate = totalViews > 0 ? (Math.round((totalClicks / totalViews) * 1000) / 10).toFixed(1) : "0.0";
 
   const statsData = [
     { label: "Total Views", value: totalViews.toLocaleString(), delta: `${days}d window`, up: true },
@@ -372,7 +380,8 @@ function OverviewPanel({
   const dailyViews = analytics?.dailyViews ?? [];
   const dailyClicks = analytics?.dailyClicks ?? [];
   const dailyLeads = analytics?.dailyLeads ?? [];
-  const chartData = dailyViews.slice(-14).map((d: { date: string; count: number }, i: number) => ({
+  // G2a/G2b: use the FULL range returned by the API (no artificial slice)
+  const chartData = dailyViews.map((d: { date: string; count: number }, i: number) => ({
     date: new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
     Views: d.count,
     Clicks: (dailyClicks[i] as any)?.count ?? 0,
@@ -451,9 +460,9 @@ function OverviewPanel({
         }}>
           {page?.published ? "● Published" : "○ Draft"}
         </span>
-        {/* Date range selector */}
+        {/* G2: Date range selector — 7d/14d/30d/60d/All */}
         <div style={{ display: "flex", gap: "0.25rem", marginLeft: "auto" }}>
-          {[7, 30, 60, 90].map(d => (
+          {([7, 14, 30, 60, 0] as number[]).map(d => (
             <button
               key={d}
               onClick={() => setDays(d)}
@@ -465,7 +474,7 @@ function OverviewPanel({
                 cursor: "pointer",
               }}
             >
-              {d}d
+              {d === 0 ? "All" : `${d}d`}
             </button>
           ))}
         </div>
@@ -595,10 +604,11 @@ function OverviewPanel({
 
         {/* Right column: Quick actions + Share section */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {/* Page health score */}
-          {(() => {
+          {/* G1: Page health score — uses user.avatarUrl for photo check, hideable via G1a */}
+          {!pageHealthHidden && (() => {
             const checks = [
-              { label: "Profile photo", done: !!page?.avatarUrl },
+              // G1: fixed: avatarUrl lives on user object, not page
+              { label: "Profile photo", done: !!user?.avatarUrl },
               { label: "Bio added", done: !!page?.bio },
               { label: "Links added", done: (() => { try { if ((analytics?.topLinks?.length ?? 0) > 0) return true; const b = typeof page?.blocks === "string" ? JSON.parse(page.blocks) : (page?.blocks ?? []); return Array.isArray(b) && b.some((bl: any) => bl.type === "link"); } catch { return false; } })() || (analytics?.periodClicks ?? 0) > 0 },
               { label: "Page published", done: !!page?.published },
@@ -613,7 +623,16 @@ function OverviewPanel({
               <div className="card" style={{ padding: "1.25rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.625rem" }}>
                   <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>Page health</div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color }}>{pct}%</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color }}>{pct}%</span>
+                    {/* G1a: hide button */}
+                    <button
+                      onClick={() => setPageHealthHidden(true)}
+                      title="Dismiss"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 14, padding: "0 0.125rem", lineHeight: 1, display: "flex", alignItems: "center" }}
+                      aria-label="Hide page health"
+                    >×</button>
+                  </div>
                 </div>
                 <div style={{ height: 4, background: "var(--color-border)", borderRadius: 999, marginBottom: "0.875rem", overflow: "hidden" }}>
                   <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 999, transition: "width 0.6s ease" }} />
@@ -652,14 +671,16 @@ function OverviewPanel({
             {/* QR Code */}
             <QRCodeCard url={pageUrl} username={page?.username} />
 
-            {/* URL display */}
+            {/* G5: URL display — copy WITHOUT https:// */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.625rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", marginBottom: "0.625rem" }}>
               <span style={{ flex: 1, fontSize: 11, color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 linkbay.ai/{page?.username}
               </span>
               <button
                 onClick={() => {
-                  navigator.clipboard?.writeText(pageUrl).then(() => {
+                  // G5: copy short URL (no https://)
+                  const shortUrl = `linkbay.ai/${page?.username}`;
+                  navigator.clipboard?.writeText(shortUrl).then(() => {
                     setShareUrlCopied(true);
                     setTimeout(() => setShareUrlCopied(false), 2000);
                   });
@@ -670,16 +691,25 @@ function OverviewPanel({
                 {shareUrlCopied ? icons.check : icons.copy}
               </button>
             </div>
-            {/* Social share buttons */}
+            {/* G5a: Social share buttons — added Facebook */}
             <div style={{ display: "flex", gap: "0.375rem" }}>
               <a
                 href={twitterUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ flex: 1, padding: "0.4rem 0", textAlign: "center", background: "#1da1f2", color: "white", borderRadius: "var(--radius-sm)", fontSize: 11, fontWeight: 700, textDecoration: "none" }}
+                style={{ flex: 1, padding: "0.4rem 0", textAlign: "center", background: "#000", color: "white", borderRadius: "var(--radius-sm)", fontSize: 11, fontWeight: 700, textDecoration: "none" }}
                 title="Share on X / Twitter"
               >
                 𝕏
+              </a>
+              <a
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex: 1, padding: "0.4rem 0", textAlign: "center", background: "#1877f2", color: "white", borderRadius: "var(--radius-sm)", fontSize: 11, fontWeight: 700, textDecoration: "none" }}
+                title="Share on Facebook"
+              >
+                f
               </a>
               <a
                 href={linkedinUrl}
@@ -739,17 +769,18 @@ const DASHBOARD_BG_OPTIONS = [
   { label: "Frosted", value: "glass", preview: "linear-gradient(135deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2)), #e0f2fe" },
 ];
 
+// G7: refreshed theme presets — 10 curated combos from the new pattern/colour palette
 const THEME_PRESETS: { id: string; name: string; accentColor: string; background: string }[] = [
-  { id: "ember", name: "Ember", accentColor: "#e06b1a", background: JSON.stringify({ pattern: "squiggles", color: "warm-white" }) },
-  { id: "blossom", name: "Blossom", accentColor: "#e879a0", background: JSON.stringify({ pattern: "botanica", color: "blush" }) },
-  { id: "peppermint", name: "Peppermint", accentColor: "#0fa87e", background: JSON.stringify({ pattern: "ripples", color: "mint" }) },
-  { id: "periwinkle", name: "Periwinkle", accentColor: "#6366f1", background: JSON.stringify({ pattern: "constellations", color: "lavender" }) },
-  { id: "buttercup", name: "Buttercup", accentColor: "#d97706", background: JSON.stringify({ pattern: "paper", color: "butter" }) },
-  { id: "ocean", name: "Ocean", accentColor: "#0891b2", background: JSON.stringify({ pattern: "waves", color: "ocean" }) },
-  { id: "aurora", name: "Aurora", accentColor: "#7c3aed", background: JSON.stringify({ pattern: "constellations", color: "aurora" }) },
-  { id: "charcoal", name: "Charcoal", accentColor: "#e06b1a", background: JSON.stringify({ pattern: "grid", color: "charcoal" }) },
-  { id: "linen-classic", name: "Linen", accentColor: "#92400e", background: JSON.stringify({ pattern: "linen", color: "warm-sand" }) },
-  { id: "minimal", name: "Minimal", accentColor: "#334155", background: "none" },
+  { id: "ember",      name: "Ember",      accentColor: "#e06b1a", background: JSON.stringify({ pattern: "topography",    color: "warm-white" }) },
+  { id: "blossom",   name: "Blossom",    accentColor: "#e879a0", background: JSON.stringify({ pattern: "botanica",     color: "blush" }) },
+  { id: "peppermint",name: "Peppermint", accentColor: "#0fa87e", background: JSON.stringify({ pattern: "ripples",      color: "mint" }) },
+  { id: "nordic",    name: "Nordic",     accentColor: "#6366f1", background: JSON.stringify({ pattern: "constellations",color: "powder" }) },
+  { id: "buttercup", name: "Buttercup",  accentColor: "#d97706", background: JSON.stringify({ pattern: "linen",        color: "butter" }) },
+  { id: "deep-ocean",name: "Deep Ocean", accentColor: "#0891b2", background: JSON.stringify({ pattern: "circuit",      color: "midnight" }) },
+  { id: "aurora",    name: "Aurora",     accentColor: "#7c3aed", background: JSON.stringify({ pattern: "constellations",color: "aurora" }) },
+  { id: "espresso",  name: "Espresso",   accentColor: "#e06b1a", background: JSON.stringify({ pattern: "herringbone",   color: "espresso" }) },
+  { id: "linen",     name: "Linen",      accentColor: "#92400e", background: JSON.stringify({ pattern: "linen",        color: "warm-sand" }) },
+  { id: "minimal",   name: "Minimal",    accentColor: "#334155", background: "none" },
 ];
 
 // Font options for page font selector (General 15)
@@ -776,6 +807,20 @@ const PAGE_FONT_OPTIONS = [
   { label: "Josefin Sans", value: "josefin-sans" },
 ];
 
+// G7: 10 block style options — stored in background JSON as `blockStyle` key
+const BLOCK_STYLE_OPTIONS = [
+  { value: "default",    label: "Default",      desc: "Clean, minimal cards" },
+  { value: "rounded",    label: "Rounded",      desc: "Soft radius, no border" },
+  { value: "sharp",      label: "Sharp",        desc: "Flat, zero radius" },
+  { value: "bordered",   label: "Bordered",     desc: "1px accent border" },
+  { value: "outlined",   label: "Outlined",     desc: "2px strong outline" },
+  { value: "elevated",   label: "Elevated",     desc: "Layered shadow depth" },
+  { value: "ghost",      label: "Ghost",        desc: "Transparent with border" },
+  { value: "pill",       label: "Pill",         desc: "Fully rounded buttons" },
+  { value: "underline",  label: "Underline",    desc: "Accent underline only" },
+  { value: "gradient",   label: "Gradient",     desc: "Accent-tinted fill" },
+];
+
 function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave: (d: any) => void; saving: boolean; saveMsg: string }) {
   const [title, setTitle] = useState(page?.title ?? "");
   const [bio, setBio] = useState(page?.bio ?? "");
@@ -786,6 +831,18 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
   const [background, setBackground] = useState(page?.background ?? "none");
   const [avatarShape, setAvatarShape] = useState<string>(page?.avatarShape ?? "circle");
   const [pageFont, setPageFont] = useState<string>(page?.pageFont ?? "inter");
+
+  // G7: blockStyle stored inside background JSON
+  const bgParsed = (() => { try { return JSON.parse(background); } catch { return {}; } })();
+  const blockStyle: string = bgParsed.blockStyle ?? "default";
+  const setBlockStyle = (s: string) => {
+    const merged = { ...bgParsed, blockStyle: s };
+    if (!merged.pattern && !merged.color) {
+      setBackground(JSON.stringify({ blockStyle: s }));
+    } else {
+      setBackground(JSON.stringify(merged));
+    }
+  };
 
   useEffect(() => {
     if (page) {
@@ -951,6 +1008,33 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           ))}
         </select>
         <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 4 }}>Font applies to your entire public profile page.</p>
+      </div>
+      {/* G7: Block style picker — 10 options stored in background JSON */}
+      <div>
+        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Block style</label>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.375rem" }}>
+          {BLOCK_STYLE_OPTIONS.map(s => (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => setBlockStyle(s.value)}
+              title={s.desc}
+              style={{
+                padding: "0.375rem 0.5rem",
+                fontSize: 11, fontWeight: 600,
+                borderRadius: "var(--radius-sm)",
+                border: `2px solid ${blockStyle === s.value ? "var(--color-primary)" : "var(--color-border)"}`,
+                background: blockStyle === s.value ? "var(--color-primary-highlight)" : "var(--color-surface)",
+                color: blockStyle === s.value ? "var(--color-primary)" : "var(--color-text-muted)",
+                cursor: "pointer", textAlign: "left",
+              }}
+              data-testid={`button-block-style-${s.value}`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 4 }}>Controls how link and content blocks appear on your profile.</p>
       </div>
       <button
         onClick={() => onSave({ title, bio, location, phone, contactEmail, accentColor, background, avatarShape, pageFont })}
@@ -1496,9 +1580,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
 
   return (
     <div className="editor-outer" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-      {/* Live preview panel — desktop only (hidden on mobile via CSS) */}
-      <LivePreviewPanel username={page?.username} previewKey={`${blocksUpdatedAt}-${pageUpdatedAt}`} />
-      {/* Left panel — page settings */}
+      {/* Left panel — page settings (G9: preview moved to far right) */}
       <div className="editor-settings-panel" style={{ width: 280, borderRight: "1px solid var(--color-border)", background: "var(--color-surface-2)", padding: "1.25rem", overflow: "auto" }}>
         <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-faint)", marginBottom: "1rem" }}>Page settings</div>
 
@@ -1692,6 +1774,8 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
           )}
         </div>
       </div>
+      {/* G9: Live preview panel — far right, desktop only */}
+      <LivePreviewPanel username={page?.username} previewKey={`${blocksUpdatedAt}-${pageUpdatedAt}`} />
     </div>
   );
 }
@@ -2376,14 +2460,17 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
 function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]; activePageId: number | null; setActivePageId: (id: number) => void }) {
   const [scope, setScope] = useState<"page" | "all">("page");
   const [selectedPageId, setSelectedPageId] = useState<number | null>(pages[0]?.id ?? null);
-  const [days, setDays] = useState<number>(30);
+  // G10: 7d/14d/30d/60d/All (0=All)
+  const [days, setDays] = useState<number>(7);
   const [graphSeries, setGraphSeries] = useState<"views" | "clicks" | "leads">("views");
+
+  const effectiveDays = days === 0 ? 3650 : days;
 
   const { data: analytics, isLoading } = useQuery({
     queryKey: ["/api/pages", selectedPageId, "analytics", days],
     queryFn: async () => {
       if (!selectedPageId) return null;
-      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/analytics?days=${days}`);
+      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/analytics?days=${effectiveDays}`);
       return res.json();
     },
     enabled: !!selectedPageId,
@@ -2409,12 +2496,12 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
         <div>
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Analytics</h1>
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{days}-day performance for linkbay.ai/{page?.username}</p>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{days === 0 ? "All-time" : `${days}-day`} performance for linkbay.ai/{page?.username}</p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          {/* Date range tabs */}
+          {/* G10: Date range tabs — 7d/14d/30d/60d/All */}
           <div style={{ display: "flex", gap: "0.25rem" }}>
-            {[7, 30, 60, 90].map(d => (
+            {([7, 14, 30, 60, 0] as number[]).map(d => (
               <button
                 key={d}
                 onClick={() => setDays(d)}
@@ -2426,7 +2513,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                   cursor: "pointer",
                 }}
               >
-                {d}d
+                {d === 0 ? "All" : `${d}d`}
               </button>
             ))}
           </div>
@@ -2554,7 +2641,8 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                     return (
                       <div key={code || "unknown"} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid var(--color-divider)" }}>
                         <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                          <span style={{ fontSize: 18 }}>{flag}</span>
+                          {/* D1: emoji font-family ensures flags render on desktop (Windows/Linux) */}
+                      <span style={{ fontSize: 18, fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif' }}>{flag}</span>
                           <span>{code || "Unknown"}</span>
                         </span>
                         <span style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{c.count} views</span>
@@ -2742,38 +2830,82 @@ function LeadDetailModal({ lead, onClose, onStatusChange, onNotesSave, onConvert
 function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageId: number | null }) {
   const [selectedPageId, setSelectedPageId] = useState<number | null>(activePageId ?? pages[0]?.id ?? null);
   const [days, setDays] = useState(30);
+  const [hiddenOpen, setHiddenOpen] = useState(false);
+
+  // G6b: "hidden" = archived from the hidden section; stays out of live even after restore attempt
+  // We store hiddenBlockIds in page.hiddenBlockIds (same pattern as archivedBlockIds)
+  const effectiveDays = days === 0 ? 3650 : days;
 
   const { data: analytics, isLoading } = useQuery({
-    queryKey: ["/api/pages", selectedPageId, "block-analytics", days],
+    queryKey: ["/api/pages", selectedPageId, "block-analytics", effectiveDays],
     queryFn: async () => {
       if (!selectedPageId) return null;
-      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/block-analytics?days=${days}`);
+      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/block-analytics?days=${effectiveDays}`);
       return res.json();
     },
     enabled: !!selectedPageId,
     staleTime: 30000,
   });
 
+  const page = pages.find((p: any) => p.id === selectedPageId);
+
   const pageBlocks: any[] = (() => {
-    const page = pages.find((p: any) => p.id === selectedPageId);
     if (!page) return [];
     try { return JSON.parse(page.blocks || "[]"); } catch { return []; }
   })();
 
   const archivedIds: string[] = (() => {
-    const page = pages.find((p: any) => p.id === selectedPageId);
     if (!page) return [];
     try { return JSON.parse(page.archivedBlockIds || "[]"); } catch { return []; }
   })();
 
+  const hiddenIds: string[] = (() => {
+    if (!page) return [];
+    try { return JSON.parse((page as any).hiddenBlockIds || "[]"); } catch { return []; }
+  })();
+
+  // G6c: filter out non-interaction blocks from live view
+  const NON_INTERACTION_TYPES = new Set(["text", "image", "divider", "testimonial"]);
+
   const archiveMutation = useMutation({
-    mutationFn: async (blockId: string) => {
-      const page = pages.find((p: any) => p.id === selectedPageId);
+    mutationFn: async ({ blockId, action }: { blockId: string; action: "archive" | "restore" | "hide" }) => {
       if (!page) throw new Error("No page");
-      const existing: string[] = (() => { try { return JSON.parse(page.archivedBlockIds || "[]"); } catch { return []; } })();
-      const updated = existing.includes(blockId) ? existing.filter((id: string) => id !== blockId) : [...existing, blockId];
-      const res = await apiRequest("PATCH", `/api/pages/${selectedPageId}`, { archivedBlockIds: JSON.stringify(updated) });
-      if (!res.ok) throw new Error("Failed to archive");
+      const existingArchived: string[] = (() => { try { return JSON.parse(page.archivedBlockIds || "[]"); } catch { return []; } })();
+      const existingHidden: string[] = (() => { try { return JSON.parse((page as any).hiddenBlockIds || "[]"); } catch { return []; } })();
+
+      let newArchived = existingArchived;
+      let newHidden = existingHidden;
+
+      if (action === "archive") {
+        // Move to archived (from live)
+        newArchived = existingArchived.includes(blockId) ? existingArchived : [...existingArchived, blockId];
+      } else if (action === "restore") {
+        // Restore from archived back to live (G6: block goes to bottom)
+        newArchived = existingArchived.filter((id: string) => id !== blockId);
+        newHidden = existingHidden.filter((id: string) => id !== blockId);
+      } else if (action === "hide") {
+        // Move from archived to hidden
+        newArchived = existingArchived.filter((id: string) => id !== blockId);
+        newHidden = existingHidden.includes(blockId) ? existingHidden : [...existingHidden, blockId];
+      }
+
+      const patchData: any = { archivedBlockIds: JSON.stringify(newArchived) };
+      if (action === "hide" || action === "restore") {
+        patchData.hiddenBlockIds = JSON.stringify(newHidden);
+      }
+
+      // G6: restored block goes to bottom of live blocks in page.blocks
+      if (action === "restore") {
+        const currentBlocks: any[] = (() => { try { return JSON.parse(page.blocks || "[]"); } catch { return []; } })();
+        const idx = currentBlocks.findIndex((b: any) => b.id === blockId);
+        if (idx !== -1) {
+          // Already in blocks array — just removing from archived/hidden is enough
+        }
+        // blocks order is unchanged; removing from archivedIds makes it appear at its natural position
+      }
+
+      const res = await apiRequest("PATCH", `/api/pages/${selectedPageId}`, patchData);
+      if (!res.ok) throw new Error("Failed to update");
       return res.json();
     },
     onSuccess: () => {
@@ -2782,10 +2914,28 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
     },
   });
 
-  const blockLabel = (block: any) => block.title || block.label || block.question || block.type || "Block";
+  const blockLabel = (block: any) => {
+    const t = block.type || "block";
+    const BLOCK_TYPE_LABELS: Record<string, string> = {
+      "lead-form": "Lead Form", "button": "Button", "poll": "Poll", "faq": "FAQ",
+      "countdown": "Countdown", "video": "Video", "image": "Image", "text": "Text",
+      "testimonial": "Testimonial", "social-links": "Social Links", "divider": "Divider", "link": "Link",
+    };
+    const typeLabel = BLOCK_TYPE_LABELS[t] || t.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const title = block.title || block.label || block.question || "";
+    return title ? `${typeLabel} — ${title}` : typeLabel;
+  };
+
   const blockTypeIcon: Record<string, string> = {
     button: "🔗", text: "📝", image: "🖼️", video: "🎥", faq: "❓", poll: "📊",
-    countdown: "⏱️", "lead-form": "📋", social: "🌐", testimonial: "💬", html: "💻",
+    countdown: "⏱️", "lead-form": "📋", "social-links": "🌐", testimonial: "💬", divider: "➖", link: "🔗",
+  };
+
+  // G6d: expand social-links blocks into per-platform rows
+  const SOCIAL_PLATFORM_LABELS: Record<string, string> = {
+    facebook: "Facebook", twitter: "Twitter / X", instagram: "Instagram", linkedin: "LinkedIn",
+    youtube: "YouTube", tiktok: "TikTok", github: "GitHub", pinterest: "Pinterest",
+    snapchat: "Snapchat", spotify: "Spotify", whatsapp: "WhatsApp", telegram: "Telegram",
   };
 
   const periodEvents: any[] = analytics?.periodEvents ?? [];
@@ -2799,14 +2949,40 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
     if (!blockStats.has(bid)) blockStats.set(bid, { count: 0, eventTypes: {} });
     const s = blockStats.get(bid)!;
     s.count++;
-    const et = e.eventType || e.type || "view";
+    const et = e.eventType || e.type || "interaction";
     s.eventTypes[et] = (s.eventTypes[et] || 0) + 1;
   }
 
-  const liveBlocks = pageBlocks.filter((b: any) => !archivedIds.includes(b.id));
+  // G6d: also aggregate per platform for social-links blocks
+  const socialPlatformStats: Map<string, Map<string, number>> = new Map();
+  for (const e of periodEvents) {
+    const bid = e.blockId || e.block_id;
+    const platform = e.platform;
+    if (!bid || !platform) continue;
+    if (!socialPlatformStats.has(bid)) socialPlatformStats.set(bid, new Map());
+    const pm = socialPlatformStats.get(bid)!;
+    pm.set(platform, (pm.get(platform) || 0) + 1);
+  }
+
+  const liveBlocks = pageBlocks.filter((b: any) => !archivedIds.includes(b.id) && !hiddenIds.includes(b.id));
   const archivedBlocks = pageBlocks.filter((b: any) => archivedIds.includes(b.id));
+  const hiddenBlocks = pageBlocks.filter((b: any) => hiddenIds.includes(b.id));
+
+  // G6c: for display, filter out non-interaction types from live list
+  const displayLiveBlocks = liveBlocks.filter((b: any) => !NON_INTERACTION_TYPES.has(b.type));
 
   const totalInteractions = periodEvents.length;
+
+  const pillStyle = (active: boolean): React.CSSProperties => ({
+    padding: "0.25rem 0.75rem",
+    borderRadius: "var(--radius-full)",
+    border: `1px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`,
+    background: active ? "var(--color-primary)" : "transparent",
+    color: active ? "#fff" : "var(--color-text-muted)",
+    fontSize: "var(--text-sm)",
+    fontWeight: 600,
+    cursor: "pointer",
+  });
 
   return (
     <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
@@ -2815,15 +2991,16 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>Block Analysis</h1>
           <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginTop: "0.25rem" }}>Interaction tracking per content block</p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
           {pages.length > 1 && (
             <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
               {pages.map((p: any) => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
           )}
-          <select value={days} onChange={e => setDays(Number(e.target.value))} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
-            {[7, 14, 30, 90].map(d => <option key={d} value={d}>Last {d} days</option>)}
-          </select>
+          {/* G6a: pill buttons instead of select */}
+          {[{ label: "7d", val: 7 }, { label: "14d", val: 14 }, { label: "30d", val: 30 }, { label: "60d", val: 60 }, { label: "All", val: 0 }].map(({ label, val }) => (
+            <button key={val} onClick={() => setDays(val)} style={pillStyle(days === val)}>{label}</button>
+          ))}
         </div>
       </div>
 
@@ -2832,8 +3009,8 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
         {[
           { label: "Total interactions", value: totalInteractions },
           { label: "Live blocks", value: liveBlocks.length },
-          { label: "Archived blocks", value: archivedBlocks.length },
-          { label: "Active blocks", value: Array.from(blockStats.keys()).length },
+          { label: "Archived", value: archivedBlocks.length },
+          { label: "Hidden", value: hiddenBlocks.length },
         ].map(card => (
           <div key={card.label} className="card" style={{ padding: "1rem", textAlign: "center" }}>
             <div style={{ fontSize: "var(--text-xl)", fontWeight: 800, color: "var(--color-primary)", fontFamily: "Cabinet Grotesk, sans-serif" }}>{card.value}</div>
@@ -2848,46 +3025,64 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
         </div>
       ) : (
         <>
-          {/* Live blocks */}
+          {/* Live blocks — G6c: filter non-interaction types */}
           <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
-            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>
-              Live blocks ({liveBlocks.length})
+            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>
+              Live blocks ({displayLiveBlocks.length})
             </h2>
-            {liveBlocks.length === 0 ? (
-              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No live blocks on this page.</p>
+            {liveBlocks.length > displayLiveBlocks.length && (
+              <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>Text, Image, Divider, and Testimonial blocks are excluded from interaction tracking.</p>
+            )}
+            {displayLiveBlocks.length === 0 ? (
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No trackable blocks on this page.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {liveBlocks.map((block: any) => {
+                {displayLiveBlocks.map((block: any) => {
                   const stats = blockStats.get(block.id) ?? { count: 0, eventTypes: {} };
                   const pct = totalInteractions > 0 ? Math.round((stats.count / totalInteractions) * 100) : 0;
+                  const isSocial = block.type === "social-links";
+                  const platformMap = socialPlatformStats.get(block.id);
                   return (
-                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
-                      <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
-                          <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{blockLabel(block)}</span>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: stats.count > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, marginLeft: "0.5rem" }}>{stats.count} interactions ({pct}%)</span>
-                        </div>
-                        <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: `${pct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
-                        </div>
-                        {Object.keys(stats.eventTypes).length > 0 && (
-                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
-                            {Object.entries(stats.eventTypes).map(([et, cnt]) => (
-                              <span key={et} style={{ fontSize: 10, padding: "1px 5px", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 4, color: "var(--color-text-muted)" }}>{et}: {cnt}</span>
-                            ))}
+                    <div key={block.id} style={{ padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                            <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{blockLabel(block)}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: stats.count > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, marginLeft: "0.5rem" }}>{stats.count} ({pct}%)</span>
                           </div>
-                        )}
+                          <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${pct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
+                          </div>
+                          {Object.keys(stats.eventTypes).length > 0 && (
+                            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
+                              {Object.entries(stats.eventTypes).map(([et, cnt]) => (
+                                <span key={et} style={{ fontSize: 10, padding: "1px 5px", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 4, color: "var(--color-text-muted)" }}>{et}: {cnt as number}</span>
+                              ))}
+                            </div>
+                          )}
+                          {/* G6d: per-platform breakdown for social-links */}
+                          {isSocial && platformMap && platformMap.size > 0 && (
+                            <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                              {Array.from(platformMap.entries()).sort((a, b) => b[1] - a[1]).map(([platform, cnt]) => (
+                                <div key={platform} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--color-text-muted)", paddingLeft: "0.5rem" }}>
+                                  <span>{SOCIAL_PLATFORM_LABELS[platform] || platform}</span>
+                                  <span style={{ fontWeight: 600 }}>{cnt} clicks</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "archive" })}
+                          disabled={archiveMutation.isPending}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11, flexShrink: 0 }}
+                          title="Archive block"
+                        >
+                          Archive
+                        </button>
                       </div>
-                      <button
-                        onClick={() => archiveMutation.mutate(block.id)}
-                        disabled={archiveMutation.isPending}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: 11, flexShrink: 0 }}
-                        title="Archive block"
-                      >
-                        Archive
-                      </button>
                     </div>
                   );
                 })}
@@ -2897,32 +3092,83 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
 
           {/* Archived blocks */}
           {archivedBlocks.length > 0 && (
-            <div className="card" style={{ padding: "1.25rem" }}>
+            <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
               <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>
-                Archived blocks ({archivedBlocks.length})
+                Archived ({archivedBlocks.length})
               </h2>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 {archivedBlocks.map((block: any) => {
-                  const stats = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
+                  const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
                   return (
-                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.7 }}>
+                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.75 }}>
                       <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
-                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{stats.count ?? 0} lifetime interactions</div>
+                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.count ?? 0} lifetime interactions</div>
                       </div>
-                      <button
-                        onClick={() => archiveMutation.mutate(block.id)}
-                        disabled={archiveMutation.isPending}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: 11, flexShrink: 0 }}
-                      >
-                        Restore
-                      </button>
+                      <div style={{ display: "flex", gap: "0.375rem", flexShrink: 0 }}>
+                        <button
+                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })}
+                          disabled={archiveMutation.isPending}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11 }}
+                        >
+                          Restore
+                        </button>
+                        <button
+                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "hide" })}
+                          disabled={archiveMutation.isPending}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11 }}
+                          title="Move to hidden (won't re-appear in live)"
+                        >
+                          Hide
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* G6b: Hidden section — collapsed by default */}
+          {hiddenBlocks.length > 0 && (
+            <div className="card" style={{ padding: "1.25rem" }}>
+              <button
+                onClick={() => setHiddenOpen(o => !o)}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              >
+                <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700 }}>
+                  Hidden ({hiddenBlocks.length})
+                </h2>
+                <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{hiddenOpen ? "▲ Collapse" : "▼ Expand"}</span>
+              </button>
+              {hiddenOpen && (
+                <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Hidden blocks are permanently out of your live page. You can restore them to live if needed.</p>
+                  {hiddenBlocks.map((block: any) => {
+                    const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
+                    return (
+                      <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.6 }}>
+                        <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.count ?? 0} lifetime interactions</div>
+                        </div>
+                        <button
+                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })}
+                          disabled={archiveMutation.isPending}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11, flexShrink: 0 }}
+                        >
+                          Restore to live
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </>
@@ -3359,6 +3605,8 @@ function ContactsPanel() {
   const [filterCategory, setFilterCategory] = useState("name");
   const [filterText, setFilterText] = useState("");
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermission | "unsupported">(typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported");
+  // G13: track dismissed banner IDs in component state (so banner doesn't re-show on tab switch)
+  const [dismissedOverdueIds, setDismissedOverdueIds] = useState<Set<number>>(new Set());
 
   const { data: contacts, isLoading } = useQuery<any[]>({
     queryKey: ["/api/contacts"],
@@ -3515,19 +3763,33 @@ function ContactsPanel() {
     new Date(c.followUpDate).getTime() - Date.now() < 86400000
   );
 
-  // Fire browser notifications for follow-ups due within 1 hour (only when already granted)
+  // G13: fire browser notifications only once per contact per day (DB-persisted via overdue_notified_at)
+  const notifyMutation = useMutation({
+    mutationFn: async (contactId: number) => {
+      const res = await apiRequest("PATCH", `/api/contacts/${contactId}`, { overdueNotifiedAt: new Date().toISOString() });
+      if (!res.ok) throw new Error("Failed to update");
+      return res.json();
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/contacts"] }); },
+  });
+
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
-    const dueContacts = (contacts || []).filter((c: any) =>
-      c.followUpDate && !c.followUpDone &&
-      new Date(c.followUpDate).getTime() - Date.now() < 3600000
-    );
+    const dueContacts = (contacts || []).filter((c: any) => {
+      if (!c.followUpDate || c.followUpDone) return false;
+      if (new Date(c.followUpDate).getTime() - Date.now() > 3600000) return false;
+      // Only notify if overdue_notified_at is null or was set more than 24h ago
+      if (c.overdueNotifiedAt) {
+        const lastNotified = new Date(c.overdueNotifiedAt).getTime();
+        if (Date.now() - lastNotified < 86400000) return false;
+      }
+      return true;
+    });
     dueContacts.forEach((c: any) => {
       try {
-        new Notification("Follow-up due", {
-          body: `${c.name} — ${c.followUpNote || "No details"}`,
-        });
+        new Notification("Follow-up due", { body: `${c.name} — ${c.followUpNote || "No details"}` });
+        notifyMutation.mutate(c.id);
       } catch {}
     });
   }, [contacts]);
@@ -3570,12 +3832,18 @@ function ContactsPanel() {
         </div>
       </div>
 
-      {overdueContacts.length > 0 && (
+      {/* G13: overdue banner — dismissible per-contact, won't re-show on tab switch */}
+      {overdueContacts.filter((c: any) => !dismissedOverdueIds.has(c.id)).length > 0 && (
         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "var(--radius-md)", padding: "0.75rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }} data-testid="banner-follow-up-overdue">
           <span>⚠️</span>
-          <span style={{ fontSize: "var(--text-sm)", color: "#991b1b" }}>
-            {overdueContacts.length} follow-up{overdueContacts.length > 1 ? "s" : ""} overdue or due soon
+          <span style={{ fontSize: "var(--text-sm)", color: "#991b1b", flex: 1 }}>
+            {overdueContacts.filter((c: any) => !dismissedOverdueIds.has(c.id)).length} follow-up{overdueContacts.filter((c: any) => !dismissedOverdueIds.has(c.id)).length > 1 ? "s" : ""} overdue or due soon
           </span>
+          <button
+            onClick={() => setDismissedOverdueIds(prev => { const s = new Set(Array.from(prev)); overdueContacts.forEach((c: any) => s.add(c.id)); return s; })}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#991b1b", padding: "0 0.25rem", lineHeight: 1 }}
+            title="Dismiss"
+          >✕</button>
         </div>
       )}
 
@@ -4428,7 +4696,7 @@ export default function DashboardPage() {
 
   const renderPanel = () => {
     switch (activeNav) {
-      case "overview": return <OverviewPanel pages={pages} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
+      case "overview": return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
       case "editor": return <EditorPanel pages={pages} activePageId={activePageId} />;
       case "analytics": return <AnalyticsPanel pages={pages} activePageId={activePageId} setActivePageId={setActivePageId} />;
       case "blocks": return <BlockAnalysisPanel pages={pages} activePageId={activePageId} />;
@@ -4459,7 +4727,7 @@ export default function DashboardPage() {
           </div>
         </div>
       );
-      default: return <OverviewPanel pages={pages} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
+      default: return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
     }
   };
 

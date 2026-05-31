@@ -788,7 +788,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         periodViews: views,
         periodClicks: clicks,
         periodLeads: formLeads,
-        clickRate: views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0,
+        clickRate: views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0, // G12: always 1dp
         uniqueVisitors,
         repeatVisitors,
         devices,
@@ -799,28 +799,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         dailyLeads,
         bestDay,
         // Top interactions: merge link clicks (by linkId→block) with block-level events
+        // G3: build a blockTitle lookup from the page's blocks JSON so we show real titles
         topInteractions: (() => {
-          const interMap = new Map<string, { id: string; label: string; type: string; count: number; isLink: boolean; linkId?: number }>();
+          // Build blockId → { title, type } map from page.blocks JSON
+          const blockMeta = new Map<string, { title: string; type: string }>();
+          try {
+            const rawBlocks: any[] = JSON.parse((page as any)?.blocks || "[]");
+            const BLOCK_TYPE_LABELS: Record<string, string> = {
+              "lead-form": "Lead Form", "button": "Button", "poll": "Poll", "faq": "FAQ",
+              "countdown": "Countdown", "video": "Video", "image": "Image", "text": "Text",
+              "testimonial": "Testimonial", "social-links": "Social Links", "divider": "Divider",
+            };
+            for (const b of rawBlocks) {
+              const typeLabel = BLOCK_TYPE_LABELS[b.type] || (b.type ? b.type.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "Block");
+              const title = b.title || b.label || b.question || "";
+              const displayLabel = title ? `${typeLabel} — ${title}` : typeLabel;
+              blockMeta.set(b.id, { title: displayLabel, type: typeLabel });
+            }
+          } catch {}
+
+          const interMap = new Map<string, { id: string; label: string; type: string; total: number; isLink: boolean; linkId?: number }>();
           // Link clicks
           for (const link of links) {
             if (link.clickCount > 0) {
-              interMap.set(`link-${link.id}`, { id: `link-${link.id}`, label: link.label || link.url, type: "link", count: link.clickCount, isLink: true, linkId: link.id });
+              interMap.set(`link-${link.id}`, { id: `link-${link.id}`, label: link.label || link.url, type: "link", total: link.clickCount, isLink: true, linkId: link.id });
             }
           }
           // Block events (poll votes, FAQ expands, video plays, etc.)
-          const blockEventMap = new Map<string, { label: string; type: string; count: number }>();
+          const blockEventMap = new Map<string, { label: string; type: string; total: number }>();
           for (const e of events) {
             const bid = (e as any).blockId ?? (e as any).block_id;
             const btype = (e as any).blockType ?? (e as any).block_type;
             if (!bid) continue;
             const key = `block-${bid}`;
-            if (!blockEventMap.has(key)) blockEventMap.set(key, { label: btype || "block", type: btype || "block", count: 0 });
-            blockEventMap.get(key)!.count++;
+            const meta = blockMeta.get(bid);
+            const label = meta?.title || (btype ? btype.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "Block");
+            if (!blockEventMap.has(key)) blockEventMap.set(key, { label, type: meta?.type || btype || "block", total: 0 });
+            blockEventMap.get(key)!.total++;
           }
           blockEventMap.forEach((v, k) => {
-            interMap.set(k, { id: k, label: v.label, type: v.type, count: v.count, isLink: false });
+            interMap.set(k, { id: k, label: v.label, type: v.type, total: v.total, isLink: false });
           });
-          return Array.from(interMap.values()).sort((a, b) => b.count - a.count).slice(0, 8);
+          return Array.from(interMap.values()).sort((a, b) => b.total - a.total).slice(0, 8);
         })(),
         events: events.slice(-200),
       });
@@ -1492,18 +1512,21 @@ function filterTable(input,tbodyId){
   </div>
 
   <div class="section">
-    <h2>Recent connections (last 30 days — top 20)</h2>
-    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search connections by visitor ID, country, device…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
+    <h2>Recent connections (in-memory log — last 20 unique IPs)</h2>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search by IP, email, device, browser…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
     <table>
-      <thead><tr><th>Visitor ID</th><th>Country</th><th>Device</th><th>When</th></tr></thead>
+      <thead><tr><th>IP Address</th><th>Logged-in as</th><th>Device</th><th>Browser</th><th>Location</th><th>Path</th><th>When</th></tr></thead>
       <tbody id="tbody-connections">
-        ${recentConnEvents.map(e => `
+        ${ipsWithGeo.length ? ipsWithGeo.map(e => `
           <tr>
-            <td><code style="font-family:ui-monospace,monospace;font-size:11px">${escHtml((e.visitor_id||"").slice(0,16))}…</code></td>
-            <td class="ts">${escHtml(e.country || "Unknown")}</td>
-            <td class="ts">${escHtml(e.device || "—")}</td>
-            <td class="ts">${ago(e.created_at)}</td>
-          </tr>`).join("") || '<tr><td colspan="4" class="ts" style="text-align:center;padding:1rem">No connections in last 30 days</td></tr>'}
+            <td><code style="font-family:ui-monospace,monospace;font-size:11px">${escHtml(e.ip)}</code></td>
+            <td class="email">${escHtml(e.userEmail || "—")}</td>
+            <td class="ts">${escHtml(parseDevice(e.userAgent))}</td>
+            <td class="ts">${escHtml(parseBrowser(e.userAgent))}</td>
+            <td class="ts">${escHtml(e.location || "—")}</td>
+            <td class="ts" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.path)}</td>
+            <td class="ts">${ago(e.timestamp)}</td>
+          </tr>`).join("") : '<tr><td colspan="7" class="ts" style="text-align:center;padding:1rem">No connections logged yet (resets on restart)</td></tr>'}
       </tbody>
     </table>
   </div>

@@ -65,6 +65,7 @@ export const pages = sqliteTable("pages", {
   textColor: text("text_color").default("auto"),        // "auto" | "light" | "dark"
   pageFont: text("page_font").default("inter"),          // font key
   archivedBlockIds: text("archived_block_ids").default("[]"), // JSON array of archived block ids
+  hiddenBlockIds: text("hidden_block_ids").default("[]"),    // G6b: JSON array of permanently hidden block ids
   blocks: text("blocks").notNull().default("[]"),       // JSON array of block objects
   published: integer("published", { mode: "boolean" }).notNull().default(false),
   viewCount: integer("view_count").notNull().default(0),
@@ -163,6 +164,7 @@ export const contacts = sqliteTable("contacts", {
   followUpDate: text("follow_up_date"),
   followUpNote: text("follow_up_note"),
   followUpDone: integer("follow_up_done").default(0),
+  overdueNotifiedAt: text("overdue_notified_at"),
   createdAt: text("created_at").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(""),
 });

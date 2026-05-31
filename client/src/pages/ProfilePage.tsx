@@ -782,6 +782,9 @@ export default function ProfilePage() {
                   objectFit: "cover",
                   margin: "0 auto 1rem",
                   display: "block",
+                  flexShrink: 0,
+                  minWidth: 0,
+                  maxWidth: "100%",
                   border: "3px solid var(--color-surface)",
                   boxShadow: "var(--shadow-md)"
                 }}
@@ -816,8 +819,9 @@ export default function ProfilePage() {
 
           {page.location && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", marginBottom: "0.5rem" }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-faint)" }}>{page.location}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: autoTextMuted, flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              {/* G14: use autoTextMuted (luminance-aware) instead of --color-text-faint so it reads on any bg */}
+              <span style={{ fontSize: "var(--text-xs)", color: autoTextMuted, textShadow: "0 1px 3px rgba(0,0,0,0.18)" }}>{page.location}</span>
             </div>
           )}
 

@@ -978,9 +978,9 @@ a, button, [role="button"] {
     align-items: stretch !important;
   }
 
-  /* Nav label visibility */
+  /* Nav label visibility — M1: hide labels entirely on very narrow screens so 8 tabs fit */
   .nav-label-desktop { display: none !important; }
-  .nav-label-mobile { display: block !important; font-size: 9px !important; line-height: 1 !important; }
+  .nav-label-mobile { display: none !important; }
 
   /* ─── Fix 3: Each tab button — scrollable, equal min-width ─── */
   .dashboard-sidebar .sidebar-nav {
@@ -992,18 +992,18 @@ a, button, [role="button"] {
 
   .dashboard-sidebar .sidebar-nav-item {
     flex: 1 1 0 !important;         /* share space equally */
-    min-width: 44px !important;     /* reduced to fit 8 tabs on 375px screen */
-    max-width: 72px !important;
+    min-width: 36px !important;     /* M1: smaller min-width, no labels needed */
+    max-width: 56px !important;
     flex-direction: column !important;
     justify-content: center !important;
     align-items: center !important;
-    padding: 4px 2px 3px !important;
+    padding: 6px 2px 6px !important;
     font-size: 9px !important;
     font-weight: 600 !important;
-    gap: 2px !important;
+    gap: 0 !important;
     border-radius: 0 !important;
     border-left: none !important;
-    height: 58px !important;
+    height: 48px !important;
     overflow: visible !important;  /* allow badge to show above */
     letter-spacing: 0 !important;
     position: relative !important;
@@ -1272,10 +1272,11 @@ a, button, [role="button"] {
   .editor-outer {
     max-height: 100% !important;
   }
-  /* Editor settings panel sticky top must clear mobile context bar */
+  /* M2: Editor settings panel — must not overlap the dashboard header/tab bar above it */
   .editor-settings-panel {
     top: 0 !important;
-    z-index: 5 !important;
+    z-index: 1 !important;  /* below dashboard header (z-index: 100) */
+    position: relative !important;
   }
 
   /* ─── Mobile 4: Ensure badge parent containers don't clip the dot ─── */

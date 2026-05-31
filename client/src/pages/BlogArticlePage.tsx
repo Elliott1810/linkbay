@@ -102,7 +102,9 @@ const allSlugs = Object.keys(articles);
 
 export default function BlogArticlePage() {
   const { slug } = useParams<{ slug: string }>();
-  const article = articles[slug || ""] || articles["linktree-alternatives-recruiters"];
+  // G15: on direct URL load, wouter may have the slug in the pathname even if useParams returns undefined
+  const resolvedSlug = slug || (typeof window !== "undefined" ? window.location.pathname.split("/blog/")[1]?.split("/")[0] : "") || "";
+  const article = articles[resolvedSlug] || articles["linktree-alternatives-recruiters"];
 
   const relatedArticles = (article.related || []).slice(0, 3).map((s: string) => ({
     slug: s,

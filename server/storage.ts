@@ -139,6 +139,7 @@ try { sqlite.exec("ALTER TABLE pages ADD COLUMN page_font TEXT DEFAULT 'inter'")
 try { sqlite.exec("ALTER TABLE users ADD COLUMN newsletter_optin INTEGER DEFAULT 0"); } catch {}
 // Sprint: archived block IDs (JSON array stored per page)
 try { sqlite.exec("ALTER TABLE pages ADD COLUMN archived_block_ids TEXT DEFAULT '[]'"); } catch {}
+try { sqlite.exec("ALTER TABLE pages ADD COLUMN hidden_block_ids TEXT DEFAULT '[]'"); } catch {}
 
 // Contacts table (idempotent)
 sqlite.exec(`
@@ -579,3 +580,6 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+// Sprint migrations
+try { (sqlite as any).exec("ALTER TABLE contacts ADD COLUMN overdue_notified_at TEXT"); } catch {}

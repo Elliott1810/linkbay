@@ -89,73 +89,64 @@ const BACKGROUND_OPTIONS = [
 
 // Pattern options (no colour — applied on top of a base colour, semi-transparent so the
 // base colour shows through). Goal 1a/1b.
+// G7: exactly 20 patterns (legacy values still rendered via svgPatternUri fallbacks)
 export const PATTERN_OPTIONS = [
-  { label: "None", value: "none" },
-  // Conceptual & organic
-  { label: "Rainfall", value: "rainfall" },
-  { label: "Botanica", value: "botanica" },
-  { label: "Constellations", value: "constellations" },
-  { label: "Ripples", value: "ripples" },
-  { label: "Topography", value: "topography" },
+  { label: "None",          value: "none" },
+  // Organic / nature
+  { label: "Topography",    value: "topography" },
+  { label: "Botanica",      value: "botanica" },
+  { label: "Constellations",value: "constellations" },
+  { label: "Ripples",       value: "ripples" },
   // Textural
-  { label: "Linen", value: "linen" },
-  { label: "Paper", value: "paper" },
-  { label: "Brushed", value: "brushed" },
-  { label: "Grain", value: "grain" },
-  // Structural & architectural
-  { label: "Blueprint", value: "blueprint" },
-  { label: "Isometric", value: "isometric" },
-  { label: "Terrazzo", value: "terrazzo" },
-  { label: "Herringbone", value: "herringbone" },
-  { label: "Art Deco", value: "art-deco" },
-  // Playful & expressive
-  { label: "Confetti", value: "confetti" },
-  { label: "Bubbles", value: "bubbles" },
-  { label: "Squiggles", value: "squiggles" },
-  { label: "Patchwork", value: "patchwork" },
-  { label: "Circuit", value: "circuit" },
-  { label: "Mosaic", value: "mosaic" },
-  // Legacy values still supported (for existing pages)
-  { label: "Dots", value: "dots" },
-  { label: "Grid", value: "grid" },
-  { label: "Diagonal", value: "diagonal" },
-  { label: "Chevron", value: "chevron" },
-  { label: "Crosshatch", value: "crosshatch" },
-  { label: "Hexagons", value: "hexagons" },
-  { label: "Diamonds", value: "diamonds" },
-  { label: "Waves", value: "waves" },
-  { label: "Zigzag", value: "zigzag" },
+  { label: "Linen",         value: "linen" },
+  { label: "Paper",         value: "paper" },
+  { label: "Grain",         value: "grain" },
+  // Structural
+  { label: "Circuit",       value: "circuit" },
+  { label: "Herringbone",   value: "herringbone" },
+  { label: "Art Deco",      value: "art-deco" },
+  { label: "Blueprint",     value: "blueprint" },
+  { label: "Isometric",     value: "isometric" },
+  { label: "Terrazzo",      value: "terrazzo" },
+  // Playful
+  { label: "Squiggles",     value: "squiggles" },
+  { label: "Confetti",      value: "confetti" },
+  { label: "Bubbles",       value: "bubbles" },
+  { label: "Mosaic",        value: "mosaic" },
+  { label: "Patchwork",     value: "patchwork" },
+  // Classic
+  { label: "Waves",         value: "waves" },
+  { label: "Dots",          value: "dots" },
 ];
 
 // Colour options for page background (paired with a pattern)
 // 20 options: mix of professional neutrals, rich darks, and creative gradients
 // All chosen so body text remains readable with good contrast.
+// G7: exactly 19 named colours + custom RGB (handled by colour picker below)
 export const COLOR_OPTIONS = [
-  // --- Neutrals ---
-  { label: "Cream", value: "warm-white", preview: "#fef9f4" },
-  { label: "Parchment", value: "warm-sand", preview: "#f5e6c8" },
-  { label: "Stone", value: "stone", preview: "#e7e5e4" },
-  // --- Pastels (new) ---
-  { label: "Mint", value: "mint", preview: "#d1fae5" },
-  { label: "Lavender", value: "lavender", preview: "#ede9fe" },
-  { label: "Butter", value: "butter", preview: "#fef9c3" },
-  { label: "Powder", value: "powder", preview: "#dbeafe" },
-  { label: "Blush", value: "blush", preview: "#fce7f3" },
-  // --- Rich Darks ---
-  { label: "Charcoal", value: "charcoal", preview: "#1e293b" },
-  { label: "Midnight", value: "midnight", preview: "#0f172a" },
-  { label: "Deep Navy", value: "midnight-blue", preview: "#1e3a5f" },
-  { label: "Espresso", value: "espresso", preview: "#2c1a0e" },
-  { label: "Aubergine", value: "deep-purple", preview: "#2d1b69" },
-  // --- Warm Gradients ---
-  { label: "Peach", value: "rose", preview: "linear-gradient(135deg, #ffe4e6, #fecdd3)" },
-  { label: "Sunset", value: "sunset", preview: "linear-gradient(135deg, #f97316 0%, #ec4899 50%, #8b5cf6 100%)" },
-  // --- Cool Gradients ---
-  { label: "Sky", value: "cool-blue", preview: "linear-gradient(135deg, #dbeafe, #bfdbfe)" },
-  { label: "Ocean", value: "ocean", preview: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)" },
-  { label: "Sage", value: "sage", preview: "linear-gradient(135deg, #d1fae5, #a7f3d0)" },
-  { label: "Aurora", value: "aurora", preview: "linear-gradient(135deg, #a855f7 0%, #06b6d4 50%, #10b981 100%)" },
-  { label: "Frosted", value: "glass", preview: "linear-gradient(135deg, rgba(255,255,255,0.55), rgba(241,245,249,0.35)), #f1f5f9" },
+  // --- Neutrals (4) ---
+  { label: "Cream",      value: "warm-white",    preview: "#fef9f4" },
+  { label: "Parchment",  value: "warm-sand",     preview: "#f5e6c8" },
+  { label: "Stone",      value: "stone",         preview: "#e7e5e4" },
+  { label: "Butter",     value: "butter",        preview: "#fef9c3" },
+  // --- Pastels (4) ---
+  { label: "Mint",       value: "mint",          preview: "#d1fae5" },
+  { label: "Lavender",   value: "lavender",      preview: "#ede9fe" },
+  { label: "Powder",     value: "powder",        preview: "#dbeafe" },
+  { label: "Blush",      value: "blush",         preview: "#fce7f3" },
+  // --- Rich Darks (5) ---
+  { label: "Charcoal",   value: "charcoal",      preview: "#1e293b" },
+  { label: "Midnight",   value: "midnight",      preview: "#0f172a" },
+  { label: "Deep Navy",  value: "midnight-blue", preview: "#1e3a5f" },
+  { label: "Espresso",   value: "espresso",      preview: "#2c1a0e" },
+  { label: "Aubergine",  value: "deep-purple",   preview: "#2d1b69" },
+  // --- Gradients (6) ---
+  { label: "Peach",      value: "rose",          preview: "linear-gradient(135deg, #ffe4e6, #fecdd3)" },
+  { label: "Sunset",     value: "sunset",        preview: "linear-gradient(135deg, #f97316 0%, #ec4899 50%, #8b5cf6 100%)" },
+  { label: "Sky",        value: "cool-blue",     preview: "linear-gradient(135deg, #dbeafe, #bfdbfe)" },
+  { label: "Ocean",      value: "ocean",         preview: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)" },
+  { label: "Sage",       value: "sage",          preview: "linear-gradient(135deg, #d1fae5, #a7f3d0)" },
+  { label: "Aurora",     value: "aurora",        preview: "linear-gradient(135deg, #a855f7 0%, #06b6d4 50%, #10b981 100%)" },
 ];
 
 function colorToCss(c: string): { bg?: string; bgColor?: string; text?: string } {

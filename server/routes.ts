@@ -1966,13 +1966,38 @@ export function registerLicenceRoutes(app: Express) {
 
       // Sanitise inputs
       const safe = (s: string) => String(s || "").slice(0, 200).replace(/[<>{}\\]/g, "");
-      const name     = safe(answers.name);
-      const tagline  = safe(answers.tagline);
-      const goal     = safe(answers.goal);
-      const industry = safe(answers.industry);
-      const style    = safe(answers.style);
+      const name       = safe(answers.name);
+      const tagline    = safe(answers.tagline);
+      const goal       = safe(answers.goal);
+      const industry   = safe(answers.industry);
+      const style      = safe(answers.style);
+      const colorMood  = safe(answers.colorMood  || "");
+      const fontStyle  = safe(answers.fontStyle   || "");
+      const blockStyle = safe(answers.blockStyle  || "");
+      const blockGoal  = safe(answers.blockGoal   || ""); // for recommender
 
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      // Map human colour mood → concrete choices
+      const colorMoodMap: Record<string, { background: string; accentColor: string }> = {
+        "Warm & energetic":   { background: "bg-ember",    accentColor: "#e06b1a" },
+        "Cool & professional":{ background: "bg-glacier",  accentColor: "#0891b2" },
+        "Dark & dramatic":    { background: "bg-midnight", accentColor: "#7c3aed" },
+        "Light & minimal":    { background: "bg-ivory",    accentColor: "#334155" },
+        "Natural & earthy":   { background: "bg-sand",     accentColor: "#059669" },
+        "Bold & creative":    { background: "bg-lava",     accentColor: "#e11d48" },
+      };
+
+      const fontStyleMap: Record<string, string> = {
+        "Clean & modern":     "inter",
+        "Bold & editorial":   "cabinet-grotesk",
+        "Friendly & rounded": "general-sans",
+        "Elegant & serif":    "playfair",
+        "Technical & sharp":  "space-grotesk",
+      };
+
+      const colorHint   = colorMoodMap[colorMood];
+      const fontHint    = fontStyleMap[fontStyle];
 
       const systemPrompt = `You are a page builder assistant for Linkbay, a link-in-bio platform.
 Your ONLY job is to output a single valid JSON object for a Linkbay page.
@@ -1984,7 +2009,7 @@ Output schema:
   "background": string,  // one of: none, bg-aurora, bg-blush, bg-dusk, bg-ember, bg-fog, bg-forest, bg-glacier, bg-haze, bg-ivory, bg-lava, bg-midnight, bg-mint, bg-mocha, bg-ocean, bg-peach, bg-plum, bg-rose, bg-sand, bg-slate, bg-twilight
   "accentColor": string, // hex colour matching the brand
   "fontFamily": string,  // one of: inter, cabinet-grotesk, general-sans, playfair, space-grotesk
-  "blocks": Block[]      // 4-8 blocks
+  "blocks": Block[]      // 3-6 blocks
 }
 
 Block types and their field shapes:
@@ -1993,23 +2018,30 @@ Block types and their field shapes:
 - socials:   { id, type:"socials",   links:[{platform:"instagram",url:"https://..."}, ...] }
 - lead_form: { id, type:"lead_form", title:"...", description:"...", buttonText:"..." }
 - video:     { id, type:"video",     url:"https://youtube.com/...", title:"..." }
-- countdown: { id, type:"countdown", title:"...", targetDate:"2025-12-31" }
+- countdown: { id, type:"countdown", title:"...", targetDate:"2026-12-31" }
 - poll:      { id, type:"poll",      question:"...", options:["Option A","Option B"] }
 
 Rules:
 - Use a UUID-style string for each block id (e.g. "blk-1", "blk-2")
-- Choose background and accentColor to match the user's style and industry
-- Pre-fill all content with realistic, specific text based on the user's answers
-- Include at minimum: one text block (bio/tagline), 2-3 link blocks, one socials block
-- If goal is lead generation, include a lead_form block
+- ALWAYS respect the background and accentColor hints if provided — only override if no hint given
+- ALWAYS respect the fontFamily hint if provided — only choose yourself if no hint given
+- Pre-fill ALL content with realistic, specific text based on the user's name, tagline, industry, and goal — never use placeholder text like "Your Name" or "your link here"
+- Include at minimum: one text block (bio/tagline with their actual name/brand), 2-3 link blocks, one socials block
+- If goal includes lead generation or getting clients, include a lead_form block with their specific service in the title
+- If goal includes content, community or audience, include a poll block
+- If goal mentions an event or launch, include a countdown block
+- If recommending a single block (blockGoal provided), return exactly 1 block that best achieves that goal, plus a socials block if not already on page
 - Output ONLY the JSON object, nothing else`;
 
       const userPrompt = `Build a Linkbay page for:
 - Name/Brand: ${name}
 - What they do: ${tagline}
-- Page goal: ${goal}
+- Page goal: ${goal}${blockGoal ? `\n- Specific block goal: ${blockGoal}` : ""}
 - Industry: ${industry}
-- Preferred style: ${style}`;
+- Preferred style: ${style}
+${ colorHint  ? `- Background: ${colorHint.background} (use exactly this)\n- Accent colour: ${colorHint.accentColor} (use exactly this)` : `- Colour mood: ${colorMood || "match to industry"}` }
+${ fontHint   ? `- Font: ${fontHint} (use exactly this)` : `- Font style: ${fontStyle || "match to industry"}` }
+- Block style preference: ${blockStyle || "standard"}`;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",

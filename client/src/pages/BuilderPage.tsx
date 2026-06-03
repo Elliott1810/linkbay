@@ -515,6 +515,7 @@ function AISuggestionsStep({
     };
     fetch("/api/ai/generate-page", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         answers: {
@@ -527,15 +528,16 @@ function AISuggestionsStep({
       }),
     })
       .then(async res => {
-        const data = await res.json();
         if (cancelled) return;
-        if (!res.ok || data.error) { setAiError(data.error || "AI service returned an error. Please try again."); setAiStatus("error"); return; }
+        let data: any;
+        try { data = await res.json(); } catch { setAiError(`AI service error (HTTP ${res.status}). Please try again.`); setAiStatus("error"); return; }
+        if (!res.ok || data.error) { setAiError(data.error || `AI service error (${res.status}). Please try again.`); setAiStatus("error"); return; }
         const { links, blocks } = mapAiBlocks(data.blocks || []);
         setAiResult({ links, blocks, background: data.background, accentColor: data.accentColor });
         setAiStatus("done");
       })
-      .catch(() => {
-        if (!cancelled) { setAiError("Could not reach AI service. Please check your connection and try again."); setAiStatus("error"); }
+      .catch((err) => {
+        if (!cancelled) { setAiError(`Could not reach AI service: ${err?.message || "network error"}. Please try again.`); setAiStatus("error"); }
       });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps

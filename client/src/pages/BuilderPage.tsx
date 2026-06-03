@@ -513,25 +513,29 @@ function AISuggestionsStep({
       agency: "Showcase services and get leads",
       other: "Share links and connect with people",
     };
-    apiRequest("POST", "/api/ai/generate-page", {
-      answers: {
-        name: state.name,
-        tagline: `${roleLabel} — ${useCaseGoals[state.useCase] || "Professional"}`,
-        goal: useCaseGoals[state.useCase] || "Share links and connect",
-        industry: roleLabel,
-        style: "clean, modern, professional",
-      },
+    fetch("/api/ai/generate-page", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        answers: {
+          name: state.name,
+          tagline: `${roleLabel} — ${useCaseGoals[state.useCase] || "Professional"}`,
+          goal: useCaseGoals[state.useCase] || "Share links and connect",
+          industry: roleLabel,
+          style: "clean, modern, professional",
+        },
+      }),
     })
-      .then(res => res.json())
-      .then((data: any) => {
+      .then(async res => {
+        const data = await res.json();
         if (cancelled) return;
-        if (data.error) { setAiError(data.error); setAiStatus("error"); return; }
+        if (!res.ok || data.error) { setAiError(data.error || "AI service returned an error. Please try again."); setAiStatus("error"); return; }
         const { links, blocks } = mapAiBlocks(data.blocks || []);
         setAiResult({ links, blocks, background: data.background, accentColor: data.accentColor });
         setAiStatus("done");
       })
       .catch(() => {
-        if (!cancelled) { setAiError("Could not reach AI service."); setAiStatus("error"); }
+        if (!cancelled) { setAiError("Could not reach AI service. Please check your connection and try again."); setAiStatus("error"); }
       });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps

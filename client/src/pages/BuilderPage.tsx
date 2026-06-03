@@ -497,10 +497,13 @@ function AISuggestionsStep({
   const [aiStatus, setAiStatus] = useState<"loading" | "done" | "error">("loading");
   const [aiResult, setAiResult] = useState<{ links: PageLink[]; blocks: Block[]; background?: string; accentColor?: string } | null>(null);
   const [aiError, setAiError] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
 
-  // Fetch AI suggestions on mount
+  // Fetch AI suggestions on mount and on retry
   useEffect(() => {
     let cancelled = false;
+    setAiStatus("loading");
+    setAiError("");
     const useCaseGoals: Record<string, string> = {
       consultant: "Get consulting clients and showcase expertise",
       creator: "Grow audience and share content",
@@ -532,7 +535,7 @@ function AISuggestionsStep({
       });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [retryCount]);
 
   const applyAndContinue = () => {
     if (!aiResult) return;
@@ -581,7 +584,7 @@ function AISuggestionsStep({
         </p>
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} data-testid="button-skip-suggestions">Start blank</button>
-          <button type="button" onClick={() => { setAiStatus("loading"); setAiError(""); }} className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }}>Retry</button>
+          <button type="button" onClick={() => setRetryCount(c => c + 1)} className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }}>Retry</button>
         </div>
       </div>
     );

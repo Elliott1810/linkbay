@@ -5,7 +5,7 @@ import { apiRequest, queryClient, resolveMediaUrl } from "@/lib/queryClient";
 import { useTheme, useAuth } from "@/App";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { backgroundToCss, parseBackground, PATTERN_OPTIONS, COLOR_OPTIONS } from "./BuilderPage";
+import { BACKGROUND_OPTIONS } from "./BuilderPage";
 import { QRCodeSVG } from "qrcode.react";
 
 // --- Icons ---
@@ -292,6 +292,7 @@ function QRCodeCard({ url, username }: { url: string; username?: string }) {
 // --- Overview Panel ---
 function OverviewPanel({
   pages,
+  user,
   onNavigate,
   sharedLink,
   onShared,
@@ -301,6 +302,7 @@ function OverviewPanel({
   setActivePageId,
 }: {
   pages: any[];
+  user: any;
   onNavigate: (tab: string) => void;
   sharedLink: boolean;
   onShared: () => void;
@@ -311,15 +313,20 @@ function OverviewPanel({
 }) {
   const selectedPageId = activePageId ?? pages[0]?.id ?? null;
   const setSelectedPageId = setActivePageId;
-  const [days, setDays] = useState<number>(30);
+  // G2: 7d/14d/30d/60d/All — default 7d; null = all time
+  const [days, setDays] = useState<number>(7);
+  const [pageHealthHidden, setPageHealthHidden] = useState(false); // G1a: hideable
   const [shareUrlCopied, setShareUrlCopied] = useState(false);
   const [graphSeries, setGraphSeries] = useState<"views" | "clicks" | "leads">("views");
+
+  // G2: days=0 means "All time" — pass a large number (3650) to the server for all-time queries
+  const effectiveDays = days === 0 ? 3650 : days;
 
   // Use dashboard/stats for overview cards (supports days param)
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/dashboard/stats", days],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/dashboard/stats?days=${days}`);
+      const res = await apiRequest("GET", days === 0 ? "/api/dashboard/stats" : `/api/dashboard/stats?days=${days}`);
       return res.json();
     },
     staleTime: 30_000,
@@ -330,7 +337,7 @@ function OverviewPanel({
     queryKey: ["/api/pages", selectedPageId, "analytics", days],
     queryFn: async () => {
       if (!selectedPageId) return null;
-      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/analytics?days=${days}`);
+      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/analytics?days=${effectiveDays}`);
       return res.json();
     },
     enabled: !!selectedPageId,
@@ -357,13 +364,16 @@ function OverviewPanel({
   const totalLeads = stats?.totalLeads ?? 0;
   const todayViews = stats?.todayViews ?? 0;
   const todayLeads = stats?.todayLeads ?? 0;
-  const clickRate = totalViews > 0 ? Math.round((totalClicks / totalViews) * 100) : 0;
+  // G12/G4: always 1 decimal place
+  const clickRate = totalViews > 0 ? (Math.round((totalClicks / totalViews) * 1000) / 10).toFixed(1) : "0.0";
 
+  // G3a: 'All Time' label when days=0
+  const periodLabel = days === 0 ? "All time" : `${days}d window`;
   const statsData = [
-    { label: "Total Views", value: totalViews.toLocaleString(), delta: `${days}d window`, up: true },
-    { label: "Total Clicks", value: totalClicks.toLocaleString(), delta: `${days}d window`, up: true },
-    { label: "Click Rate", value: `${clickRate}%`, delta: `${days}d average`, up: true },
-    { label: "Total Leads", value: totalLeads.toLocaleString(), delta: `${days}d window`, up: true },
+    { label: "Total Views", value: totalViews.toLocaleString(), delta: periodLabel, up: true },
+    { label: "Total Clicks", value: totalClicks.toLocaleString(), delta: periodLabel, up: true },
+    { label: "Click Rate", value: `${clickRate}%`, delta: days === 0 ? "All time avg" : `${days}d average`, up: true },
+    { label: "Total Leads", value: totalLeads.toLocaleString(), delta: periodLabel, up: true },
   ];
 
   const topLinks = analytics?.topLinks ?? [];
@@ -372,7 +382,8 @@ function OverviewPanel({
   const dailyViews = analytics?.dailyViews ?? [];
   const dailyClicks = analytics?.dailyClicks ?? [];
   const dailyLeads = analytics?.dailyLeads ?? [];
-  const chartData = dailyViews.slice(-14).map((d: { date: string; count: number }, i: number) => ({
+  // G2a/G2b: use the FULL range returned by the API (no artificial slice)
+  const chartData = dailyViews.map((d: { date: string; count: number }, i: number) => ({
     date: new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
     Views: d.count,
     Clicks: (dailyClicks[i] as any)?.count ?? 0,
@@ -451,9 +462,9 @@ function OverviewPanel({
         }}>
           {page?.published ? "● Published" : "○ Draft"}
         </span>
-        {/* Date range selector */}
+        {/* G2: Date range selector — 7d/14d/30d/60d/All */}
         <div style={{ display: "flex", gap: "0.25rem", marginLeft: "auto" }}>
-          {[7, 30, 60, 90].map(d => (
+          {([7, 14, 30, 60, 0] as number[]).map(d => (
             <button
               key={d}
               onClick={() => setDays(d)}
@@ -465,7 +476,7 @@ function OverviewPanel({
                 cursor: "pointer",
               }}
             >
-              {d}d
+              {d === 0 ? "All" : `${d}d`}
             </button>
           ))}
         </div>
@@ -525,7 +536,7 @@ function OverviewPanel({
         <div className="card" style={{ padding: "1.25rem", marginBottom: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
             <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>
-              {graphSeries === "views" ? "Views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — last {Math.min(14, days)} days
+              {graphSeries === "views" ? "Views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — {days === 0 ? "all time" : `last ${days} days`}
             </div>
             <select
               value={graphSeries}
@@ -574,19 +585,37 @@ function OverviewPanel({
               </div>
             );
             const liveBlockIds = (() => { try { return new Set((JSON.parse(page?.blocks || "[]") as any[]).map((b: any) => b.id)); } catch { return new Set(); } })();
-            const max = interactions[0]?.total ?? 1;
+            const max = Math.max(...interactions.map((i: any) => i.total ?? i.clickCount ?? 0), 1);
             return interactions.map((item: any) => {
               const isLive = !item.blockId || liveBlockIds.has(item.blockId);
+              const total = item.total ?? item.clickCount ?? 0;
+              const views = item.views ?? 0;
+              const interCount = item.interactions ?? total;
+              const viewPct = max > 0 ? Math.round((views / max) * 100) : 0;
+              const interPct = max > 0 ? Math.round((interCount / max) * 100) : 0;
               return (
-                <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.75rem" }}>
+                <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: "0.25rem", gap: "0.5rem" }}>
                     <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Link"}</span>
                     {!isLive && <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>past</span>}
-                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{item.total ?? item.clickCount} ×</span>
+                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{total} ×</span>
                   </div>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${max > 0 ? Math.round(((item.total ?? item.clickCount) / max) * 100) : 0}%`, background: isLive ? undefined : "var(--color-text-faint)" }} />
-                  </div>
+                  {/* G4b/4c: dual progress bars — views (amber) + interactions (orange) */}
+                  {item.isLink ? (
+                    <div className="progress-bar"><div className="progress-fill" style={{ width: `${interPct}%`, background: isLive ? "var(--color-primary)" : "var(--color-text-faint)" }} /></div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)", marginBottom: 2 }}>
+                        <span>Views: {views}</span><span>Interactions: {interCount}</span>
+                      </div>
+                      <div className="progress-bar" style={{ marginBottom: 2 }}>
+                        <div className="progress-fill" style={{ width: `${viewPct}%`, background: "#f59e0b" }} />
+                      </div>
+                      <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${interPct}%`, background: isLive ? "var(--color-primary)" : "var(--color-text-faint)" }} />
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             });
@@ -595,10 +624,11 @@ function OverviewPanel({
 
         {/* Right column: Quick actions + Share section */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {/* Page health score */}
-          {(() => {
+          {/* G1: Page health score — uses user.avatarUrl for photo check, hideable via G1a */}
+          {!pageHealthHidden && (() => {
             const checks = [
-              { label: "Profile photo", done: !!page?.avatarUrl },
+              // G1: fixed: avatarUrl lives on user object, not page
+              { label: "Profile photo", done: !!user?.avatarUrl },
               { label: "Bio added", done: !!page?.bio },
               { label: "Links added", done: (() => { try { if ((analytics?.topLinks?.length ?? 0) > 0) return true; const b = typeof page?.blocks === "string" ? JSON.parse(page.blocks) : (page?.blocks ?? []); return Array.isArray(b) && b.some((bl: any) => bl.type === "link"); } catch { return false; } })() || (analytics?.periodClicks ?? 0) > 0 },
               { label: "Page published", done: !!page?.published },
@@ -613,7 +643,16 @@ function OverviewPanel({
               <div className="card" style={{ padding: "1.25rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.625rem" }}>
                   <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>Page health</div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color }}>{pct}%</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color }}>{pct}%</span>
+                    {/* G1a: hide button */}
+                    <button
+                      onClick={() => setPageHealthHidden(true)}
+                      title="Dismiss"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 14, padding: "0 0.125rem", lineHeight: 1, display: "flex", alignItems: "center" }}
+                      aria-label="Hide page health"
+                    >×</button>
+                  </div>
                 </div>
                 <div style={{ height: 4, background: "var(--color-border)", borderRadius: 999, marginBottom: "0.875rem", overflow: "hidden" }}>
                   <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 999, transition: "width 0.6s ease" }} />
@@ -652,14 +691,16 @@ function OverviewPanel({
             {/* QR Code */}
             <QRCodeCard url={pageUrl} username={page?.username} />
 
-            {/* URL display */}
+            {/* G5: URL display — copy WITHOUT https:// */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.625rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", marginBottom: "0.625rem" }}>
               <span style={{ flex: 1, fontSize: 11, color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 linkbay.ai/{page?.username}
               </span>
               <button
                 onClick={() => {
-                  navigator.clipboard?.writeText(pageUrl).then(() => {
+                  // G5: copy short URL (no https://)
+                  const shortUrl = `linkbay.ai/${page?.username}`;
+                  navigator.clipboard?.writeText(shortUrl).then(() => {
                     setShareUrlCopied(true);
                     setTimeout(() => setShareUrlCopied(false), 2000);
                   });
@@ -670,16 +711,25 @@ function OverviewPanel({
                 {shareUrlCopied ? icons.check : icons.copy}
               </button>
             </div>
-            {/* Social share buttons */}
+            {/* G5a: Social share buttons — added Facebook */}
             <div style={{ display: "flex", gap: "0.375rem" }}>
               <a
                 href={twitterUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ flex: 1, padding: "0.4rem 0", textAlign: "center", background: "#1da1f2", color: "white", borderRadius: "var(--radius-sm)", fontSize: 11, fontWeight: 700, textDecoration: "none" }}
+                style={{ flex: 1, padding: "0.4rem 0", textAlign: "center", background: "#000", color: "white", borderRadius: "var(--radius-sm)", fontSize: 11, fontWeight: 700, textDecoration: "none" }}
                 title="Share on X / Twitter"
               >
                 𝕏
+              </a>
+              <a
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex: 1, padding: "0.4rem 0", textAlign: "center", background: "#1877f2", color: "white", borderRadius: "var(--radius-sm)", fontSize: 11, fontWeight: 700, textDecoration: "none" }}
+                title="Share on Facebook"
+              >
+                f
               </a>
               <a
                 href={linkedinUrl}
@@ -739,19 +789,6 @@ const DASHBOARD_BG_OPTIONS = [
   { label: "Frosted", value: "glass", preview: "linear-gradient(135deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2)), #e0f2fe" },
 ];
 
-const THEME_PRESETS: { id: string; name: string; accentColor: string; background: string }[] = [
-  { id: "ember", name: "Ember", accentColor: "#e06b1a", background: JSON.stringify({ pattern: "squiggles", color: "warm-white" }) },
-  { id: "blossom", name: "Blossom", accentColor: "#e879a0", background: JSON.stringify({ pattern: "botanica", color: "blush" }) },
-  { id: "peppermint", name: "Peppermint", accentColor: "#0fa87e", background: JSON.stringify({ pattern: "ripples", color: "mint" }) },
-  { id: "periwinkle", name: "Periwinkle", accentColor: "#6366f1", background: JSON.stringify({ pattern: "constellations", color: "lavender" }) },
-  { id: "buttercup", name: "Buttercup", accentColor: "#d97706", background: JSON.stringify({ pattern: "paper", color: "butter" }) },
-  { id: "ocean", name: "Ocean", accentColor: "#0891b2", background: JSON.stringify({ pattern: "waves", color: "ocean" }) },
-  { id: "aurora", name: "Aurora", accentColor: "#7c3aed", background: JSON.stringify({ pattern: "constellations", color: "aurora" }) },
-  { id: "charcoal", name: "Charcoal", accentColor: "#e06b1a", background: JSON.stringify({ pattern: "grid", color: "charcoal" }) },
-  { id: "linen-classic", name: "Linen", accentColor: "#92400e", background: JSON.stringify({ pattern: "linen", color: "warm-sand" }) },
-  { id: "minimal", name: "Minimal", accentColor: "#334155", background: "none" },
-];
-
 // Font options for page font selector (General 15)
 const PAGE_FONT_OPTIONS = [
   { label: "Inter (default)", value: "inter" },
@@ -776,6 +813,20 @@ const PAGE_FONT_OPTIONS = [
   { label: "Josefin Sans", value: "josefin-sans" },
 ];
 
+// G7: 10 block style options — stored in background JSON as `blockStyle` key
+const BLOCK_STYLE_OPTIONS = [
+  { value: "default",    label: "Default",      desc: "Clean, minimal cards" },
+  { value: "rounded",    label: "Rounded",      desc: "Soft radius, no border" },
+  { value: "sharp",      label: "Sharp",        desc: "Flat, zero radius" },
+  { value: "bordered",   label: "Bordered",     desc: "1px accent border" },
+  { value: "outlined",   label: "Outlined",     desc: "2px strong outline" },
+  { value: "elevated",   label: "Elevated",     desc: "Layered shadow depth" },
+  { value: "ghost",      label: "Ghost",        desc: "Transparent with border" },
+  { value: "pill",       label: "Pill",         desc: "Fully rounded buttons" },
+  { value: "underline",  label: "Underline",    desc: "Accent underline only" },
+  { value: "gradient",   label: "Gradient",     desc: "Accent-tinted fill" },
+];
+
 function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave: (d: any) => void; saving: boolean; saveMsg: string }) {
   const [title, setTitle] = useState(page?.title ?? "");
   const [bio, setBio] = useState(page?.bio ?? "");
@@ -786,6 +837,18 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
   const [background, setBackground] = useState(page?.background ?? "none");
   const [avatarShape, setAvatarShape] = useState<string>(page?.avatarShape ?? "circle");
   const [pageFont, setPageFont] = useState<string>(page?.pageFont ?? "inter");
+
+  // G7: blockStyle stored inside background JSON
+  const bgParsed = (() => { try { return JSON.parse(background); } catch { return {}; } })();
+  const blockStyle: string = bgParsed.blockStyle ?? "default";
+  const setBlockStyle = (s: string) => {
+    const merged = { ...bgParsed, blockStyle: s };
+    if (!merged.pattern && !merged.color) {
+      setBackground(JSON.stringify({ blockStyle: s }));
+    } else {
+      setBackground(JSON.stringify(merged));
+    }
+  };
 
   useEffect(() => {
     if (page) {
@@ -834,78 +897,40 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ width: 24, height: 24, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0 }} />
         </div>
       </div>
-      {(() => {
-        const current = parseBackground(background);
-        const setBg = (next: Partial<{ pattern: string; color: string }>) => {
-          const merged = { ...current, ...next };
-          if (merged.pattern === "none" && merged.color === "none") {
-            setBackground("none");
-          } else {
-            setBackground(JSON.stringify(merged));
-          }
-        };
-        return (
-          <>
-            <div>
-              <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background pattern</label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
-                {PATTERN_OPTIONS.map(p => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setBg({ pattern: p.value })}
-                    title={p.label}
-                    style={{
-                      height: 44,
-                      borderRadius: "var(--radius-sm)",
-                      border: `2px solid ${current.pattern === p.value ? "var(--color-text)" : "var(--color-border)"}`,
-                      cursor: "pointer",
-                      overflow: "hidden",
-                      ...backgroundToCss(JSON.stringify({ pattern: p.value, color: "none" })),
-                      display: "flex",
-                      alignItems: "flex-end",
-                      justifyContent: "center",
-                      padding: "2px",
-                    }}
-                    data-testid={`button-dash-pattern-${p.value}`}
-                  >
-                    <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.45)", color: "#fff", padding: "1px 4px", borderRadius: 2, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{p.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ marginTop: "0.75rem" }}>
-              <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background colour</label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
-                {COLOR_OPTIONS.map(co => (
-                  <button
-                    key={co.value}
-                    type="button"
-                    onClick={() => setBg({ color: co.value })}
-                    title={co.label}
-                    style={{
-                      height: 44,
-                      borderRadius: "var(--radius-sm)",
-                      border: `2px solid ${current.color === co.value ? "var(--color-text)" : "var(--color-border)"}`,
-                      cursor: "pointer",
-                      background: co.preview,
-                      display: "flex",
-                      alignItems: "flex-end",
-                      justifyContent: "center",
-                      padding: "2px",
-                      overflow: "hidden",
-                    }}
-                    data-testid={`button-dash-color-${co.value}`}
-                  >
-                    <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.45)", color: "#fff", padding: "1px 4px", borderRadius: 2, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{co.label}</span>
-                  </button>
-                ))}
-              </div>
-              <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 6 }}>Mix a pattern with a colour for unique backgrounds.</p>
-            </div>
-          </>
-        );
-      })()}
+      {/* ─── Background picker — 20 CSS gradient swatches ─── */}
+      <div>
+        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background</label>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
+          {BACKGROUND_OPTIONS.map(opt => {
+            const isActive = background === opt.value || (!background && opt.value === "none");
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setBackground(opt.value)}
+                title={opt.label}
+                data-testid={`button-dash-bg-${opt.value}`}
+                style={{
+                  height: 44,
+                  borderRadius: "var(--radius-sm)",
+                  border: `2px solid ${isActive ? "var(--color-primary)" : "var(--color-border)"}`,
+                  cursor: "pointer",
+                  overflow: "hidden",
+                  background: opt.preview,
+                  backgroundSize: "cover",
+                  display: "flex",
+                  alignItems: "flex-end",
+                  justifyContent: "center",
+                  padding: "2px",
+                  boxShadow: isActive ? "0 0 0 2px var(--amber-subtle, rgba(224,107,26,0.2))" : undefined,
+                }}
+              >
+                <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.55)", color: "#fff", padding: "1px 4px", borderRadius: 2, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Profile picture shape</label>
         <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -919,24 +944,7 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           ))}
         </div>
       </div>
-      <div>
-        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Theme presets</label>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: "0.375rem" }}>
-          {THEME_PRESETS.map(t => {
-            const isActive = accentColor === t.accentColor && background === t.background;
-            return (
-              <button key={t.id} type="button"
-                onClick={() => { setAccentColor(t.accentColor); setBackground(t.background); }}
-                style={{ padding: "0.5rem", fontSize: 12, fontWeight: 600, borderRadius: "var(--radius-sm)", border: `2px solid ${isActive ? "var(--color-text)" : "var(--color-border)"}`, background: "var(--color-surface)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
-                data-testid={`theme-preset-${t.id}`}
-              >
-                <span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: t.accentColor, flexShrink: 0 }} />
-                {t.name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Page font</label>
         <select
@@ -951,6 +959,33 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           ))}
         </select>
         <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 4 }}>Font applies to your entire public profile page.</p>
+      </div>
+      {/* G7: Block style picker — 10 options stored in background JSON */}
+      <div>
+        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Block style</label>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.375rem" }}>
+          {BLOCK_STYLE_OPTIONS.map(s => (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => setBlockStyle(s.value)}
+              title={s.desc}
+              style={{
+                padding: "0.375rem 0.5rem",
+                fontSize: 11, fontWeight: 600,
+                borderRadius: "var(--radius-sm)",
+                border: `2px solid ${blockStyle === s.value ? "var(--color-primary)" : "var(--color-border)"}`,
+                background: blockStyle === s.value ? "var(--color-primary-highlight)" : "var(--color-surface)",
+                color: blockStyle === s.value ? "var(--color-primary)" : "var(--color-text-muted)",
+                cursor: "pointer", textAlign: "left",
+              }}
+              data-testid={`button-block-style-${s.value}`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 4 }}>Controls how link and content blocks appear on your profile.</p>
       </div>
       <button
         onClick={() => onSave({ title, bio, location, phone, contactEmail, accentColor, background, avatarShape, pageFont })}
@@ -1390,6 +1425,10 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
   const [editValues, setEditValues] = useState<any>({});
   // Mobile editor tab state (mobile-only). On desktop both panels are shown together.
   const [editorTab, setEditorTab] = useState<"blocks" | "add">("blocks");
+  // AI Wizard
+  const [aiWizardOpen, setAiWizardOpen] = useState(false);
+  const { data: licenceDataEditor } = useLicence();
+  const editorTier: "free" | "pro" | "business" = (licenceDataEditor as any)?.tier ?? "free";
 
   const page = pages.find((p: any) => p.id === selectedPageId) || pages[0];
 
@@ -1496,9 +1535,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
 
   return (
     <div className="editor-outer" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-      {/* Live preview panel — desktop only (hidden on mobile via CSS) */}
-      <LivePreviewPanel username={page?.username} previewKey={`${blocksUpdatedAt}-${pageUpdatedAt}`} />
-      {/* Left panel — page settings */}
+      {/* Left panel — page settings (G9: preview moved to far right) */}
       <div className="editor-settings-panel" style={{ width: 280, borderRight: "1px solid var(--color-border)", background: "var(--color-surface-2)", padding: "1.25rem", overflow: "auto" }}>
         <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-faint)", marginBottom: "1rem" }}>Page settings</div>
 
@@ -1545,6 +1582,44 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
         <Link href={`/${page?.username}`} className="btn btn-secondary" style={{ width: "100%", justifyContent: "center", fontSize: "var(--text-xs)" }} data-testid="link-preview-page">
           {icons.external} Preview page
         </Link>
+
+        <div style={{ height: 1, background: "var(--color-divider)", margin: "1.25rem 0" }} />
+
+        {/* AI Generate button */}
+        <button
+          className="btn btn-primary"
+          style={{ width: "100%", justifyContent: "center", fontSize: "var(--text-xs)", gap: "0.375rem" }}
+          onClick={() => {
+            if (editorTier === "free") {
+              alert("Upgrade to Pro to use AI page generation.");
+              return;
+            }
+            setAiWizardOpen(true);
+          }}
+          data-testid="button-ai-generate"
+          title={editorTier === "free" ? "Pro feature — upgrade to use AI" : "Generate page with AI"}
+        >
+          ✨ Generate with AI
+          {editorTier === "free" && <span style={{ fontSize: 9, padding: "0.1rem 0.35rem", background: "rgba(255,255,255,0.2)", borderRadius: 999, fontWeight: 700 }}>PRO</span>}
+        </button>
+
+        {aiWizardOpen && (
+          <AIWizardModal
+            onClose={() => setAiWizardOpen(false)}
+            onApply={async (data: any) => {
+              try {
+                const updateData: any = {};
+                if (data.background) updateData.background = data.background;
+                if (data.accentColor) updateData.accentColor = data.accentColor;
+                if (data.title) updateData.title = data.title;
+                if (data.bio) updateData.bio = data.bio;
+                if (data.blocks) updateData.blocks = JSON.stringify(data.blocks);
+                await savePageMutation.mutateAsync(updateData);
+                setAiWizardOpen(false);
+              } catch {}
+            }}
+          />
+        )}
       </div>
 
       {/* Right panel — link editor + blocks */}
@@ -1692,6 +1767,8 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
           )}
         </div>
       </div>
+      {/* G9: Live preview panel — far right, desktop only */}
+      <LivePreviewPanel username={page?.username} previewKey={`${blocksUpdatedAt}-${pageUpdatedAt}`} />
     </div>
   );
 }
@@ -2376,14 +2453,17 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
 function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]; activePageId: number | null; setActivePageId: (id: number) => void }) {
   const [scope, setScope] = useState<"page" | "all">("page");
   const [selectedPageId, setSelectedPageId] = useState<number | null>(pages[0]?.id ?? null);
-  const [days, setDays] = useState<number>(30);
+  // G10: 7d/14d/30d/60d/All (0=All)
+  const [days, setDays] = useState<number>(7);
   const [graphSeries, setGraphSeries] = useState<"views" | "clicks" | "leads">("views");
+
+  const effectiveDays = days === 0 ? 3650 : days;
 
   const { data: analytics, isLoading } = useQuery({
     queryKey: ["/api/pages", selectedPageId, "analytics", days],
     queryFn: async () => {
       if (!selectedPageId) return null;
-      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/analytics?days=${days}`);
+      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/analytics?days=${effectiveDays}`);
       return res.json();
     },
     enabled: !!selectedPageId,
@@ -2409,24 +2489,24 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
         <div>
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Analytics</h1>
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{days}-day performance for linkbay.ai/{page?.username}</p>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{days === 0 ? "All-time" : `${days}-day`} performance for linkbay.ai/{page?.username}</p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          {/* Date range tabs */}
+          {/* G10: Date range tabs — 7d/14d/30d/60d/All */}
           <div style={{ display: "flex", gap: "0.25rem" }}>
-            {[7, 30, 60, 90].map(d => (
+            {([7, 14, 30, 60, 0] as number[]).map(d => (
               <button
                 key={d}
                 onClick={() => setDays(d)}
                 style={{
-                  padding: "0.3rem 0.75rem", borderRadius: "var(--radius-md)", fontSize: 12, fontWeight: 600,
-                  border: `1px solid ${days === d ? "var(--color-primary)" : "var(--color-border)"}`,
+                  padding: "0.25rem 0.625rem", borderRadius: "var(--radius-md)", fontSize: 11, fontWeight: 600,
+                  border: `1px solid ${days === d ? "var(--color-primary)" : "transparent"}`,
                   background: days === d ? "var(--color-primary-highlight)" : "var(--color-surface-offset)",
                   color: days === d ? "var(--color-primary)" : "var(--color-text-faint)",
                   cursor: "pointer",
                 }}
               >
-                {d}d
+                {d === 0 ? "All" : `${d}d`}
               </button>
             ))}
           </div>
@@ -2448,12 +2528,13 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
           <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
             {[
               { label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0" },
-              { label: `Views (${days}d)`, value: analytics.periodViews?.toLocaleString() ?? "0" },
-              { label: `Clicks (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0" },
+              { label: days === 0 ? "Views (ALL TIME)" : `Views (${days}d)`, value: analytics.periodViews?.toLocaleString() ?? "0" },
+              { label: days === 0 ? "Clicks (ALL TIME)" : `Clicks (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0" },
               { label: "Click rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%" },
               { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString() },
               { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString() },
               { label: "Best day", value: analytics.bestDay ? `${analytics.bestDay.count} views (${analytics.bestDay.label})` : "No data" },
+              { label: days === 0 ? "Avg views (ALL TIME)" : `Avg views (${days}d)`, value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—" },
             ].map(s => (
               <div key={s.label} className="stat-card">
                 <div className="stat-label">{s.label}</div>
@@ -2503,7 +2584,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+          <div className="analytics-detail-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
             {/* Top links */}
             <div className="card" style={{ padding: "1.25rem" }}>
               <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>Top Interactions</div>
@@ -2554,7 +2635,8 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                     return (
                       <div key={code || "unknown"} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid var(--color-divider)" }}>
                         <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                          <span style={{ fontSize: 18 }}>{flag}</span>
+                          {/* D1: emoji font-family ensures flags render on desktop (Windows/Linux) */}
+                      <span style={{ fontSize: 18, fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif' }}>{flag}</span>
                           <span>{code || "Unknown"}</span>
                         </span>
                         <span style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{c.count} views</span>
@@ -2742,38 +2824,82 @@ function LeadDetailModal({ lead, onClose, onStatusChange, onNotesSave, onConvert
 function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageId: number | null }) {
   const [selectedPageId, setSelectedPageId] = useState<number | null>(activePageId ?? pages[0]?.id ?? null);
   const [days, setDays] = useState(30);
+  const [hiddenOpen, setHiddenOpen] = useState(false);
+
+  // G6b: "hidden" = archived from the hidden section; stays out of live even after restore attempt
+  // We store hiddenBlockIds in page.hiddenBlockIds (same pattern as archivedBlockIds)
+  const effectiveDays = days === 0 ? 3650 : days;
 
   const { data: analytics, isLoading } = useQuery({
-    queryKey: ["/api/pages", selectedPageId, "block-analytics", days],
+    queryKey: ["/api/pages", selectedPageId, "block-analytics", effectiveDays],
     queryFn: async () => {
       if (!selectedPageId) return null;
-      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/block-analytics?days=${days}`);
+      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/block-analytics?days=${effectiveDays}`);
       return res.json();
     },
     enabled: !!selectedPageId,
     staleTime: 30000,
   });
 
+  const page = pages.find((p: any) => p.id === selectedPageId);
+
   const pageBlocks: any[] = (() => {
-    const page = pages.find((p: any) => p.id === selectedPageId);
     if (!page) return [];
     try { return JSON.parse(page.blocks || "[]"); } catch { return []; }
   })();
 
   const archivedIds: string[] = (() => {
-    const page = pages.find((p: any) => p.id === selectedPageId);
     if (!page) return [];
     try { return JSON.parse(page.archivedBlockIds || "[]"); } catch { return []; }
   })();
 
+  const hiddenIds: string[] = (() => {
+    if (!page) return [];
+    try { return JSON.parse((page as any).hiddenBlockIds || "[]"); } catch { return []; }
+  })();
+
+  // G6c: filter out non-interaction blocks from live view
+  const NON_INTERACTION_TYPES = new Set(["text", "image", "divider", "testimonial"]);
+
   const archiveMutation = useMutation({
-    mutationFn: async (blockId: string) => {
-      const page = pages.find((p: any) => p.id === selectedPageId);
+    mutationFn: async ({ blockId, action }: { blockId: string; action: "archive" | "restore" | "hide" }) => {
       if (!page) throw new Error("No page");
-      const existing: string[] = (() => { try { return JSON.parse(page.archivedBlockIds || "[]"); } catch { return []; } })();
-      const updated = existing.includes(blockId) ? existing.filter((id: string) => id !== blockId) : [...existing, blockId];
-      const res = await apiRequest("PATCH", `/api/pages/${selectedPageId}`, { archivedBlockIds: JSON.stringify(updated) });
-      if (!res.ok) throw new Error("Failed to archive");
+      const existingArchived: string[] = (() => { try { return JSON.parse(page.archivedBlockIds || "[]"); } catch { return []; } })();
+      const existingHidden: string[] = (() => { try { return JSON.parse((page as any).hiddenBlockIds || "[]"); } catch { return []; } })();
+
+      let newArchived = existingArchived;
+      let newHidden = existingHidden;
+
+      if (action === "archive") {
+        // Move to archived (from live)
+        newArchived = existingArchived.includes(blockId) ? existingArchived : [...existingArchived, blockId];
+      } else if (action === "restore") {
+        // Restore from archived back to live (G6: block goes to bottom)
+        newArchived = existingArchived.filter((id: string) => id !== blockId);
+        newHidden = existingHidden.filter((id: string) => id !== blockId);
+      } else if (action === "hide") {
+        // Move from archived to hidden
+        newArchived = existingArchived.filter((id: string) => id !== blockId);
+        newHidden = existingHidden.includes(blockId) ? existingHidden : [...existingHidden, blockId];
+      }
+
+      const patchData: any = { archivedBlockIds: JSON.stringify(newArchived) };
+      if (action === "hide" || action === "restore") {
+        patchData.hiddenBlockIds = JSON.stringify(newHidden);
+      }
+
+      // G6: restored block goes to bottom of live blocks in page.blocks
+      if (action === "restore") {
+        const currentBlocks: any[] = (() => { try { return JSON.parse(page.blocks || "[]"); } catch { return []; } })();
+        const idx = currentBlocks.findIndex((b: any) => b.id === blockId);
+        if (idx !== -1) {
+          // Already in blocks array — just removing from archived/hidden is enough
+        }
+        // blocks order is unchanged; removing from archivedIds makes it appear at its natural position
+      }
+
+      const res = await apiRequest("PATCH", `/api/pages/${selectedPageId}`, patchData);
+      if (!res.ok) throw new Error("Failed to update");
       return res.json();
     },
     onSuccess: () => {
@@ -2782,10 +2908,28 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
     },
   });
 
-  const blockLabel = (block: any) => block.title || block.label || block.question || block.type || "Block";
+  const blockLabel = (block: any) => {
+    const t = block.type || "block";
+    const BLOCK_TYPE_LABELS: Record<string, string> = {
+      "lead-form": "Lead Form", "button": "Button", "poll": "Poll", "faq": "FAQ",
+      "countdown": "Countdown", "video": "Video", "image": "Image", "text": "Text",
+      "testimonial": "Testimonial", "social-links": "Social Links", "divider": "Divider", "link": "Link",
+    };
+    const typeLabel = BLOCK_TYPE_LABELS[t] || t.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const title = block.title || block.label || block.question || "";
+    return title ? `${typeLabel} — ${title}` : typeLabel;
+  };
+
   const blockTypeIcon: Record<string, string> = {
     button: "🔗", text: "📝", image: "🖼️", video: "🎥", faq: "❓", poll: "📊",
-    countdown: "⏱️", "lead-form": "📋", social: "🌐", testimonial: "💬", html: "💻",
+    countdown: "⏱️", "lead-form": "📋", "social-links": "🌐", testimonial: "💬", divider: "➖", link: "🔗",
+  };
+
+  // G6d: expand social-links blocks into per-platform rows
+  const SOCIAL_PLATFORM_LABELS: Record<string, string> = {
+    facebook: "Facebook", twitter: "Twitter / X", instagram: "Instagram", linkedin: "LinkedIn",
+    youtube: "YouTube", tiktok: "TikTok", github: "GitHub", pinterest: "Pinterest",
+    snapchat: "Snapchat", spotify: "Spotify", whatsapp: "WhatsApp", telegram: "Telegram",
   };
 
   const periodEvents: any[] = analytics?.periodEvents ?? [];
@@ -2799,14 +2943,41 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
     if (!blockStats.has(bid)) blockStats.set(bid, { count: 0, eventTypes: {} });
     const s = blockStats.get(bid)!;
     s.count++;
-    const et = e.eventType || e.type || "view";
+    const et = e.eventType || e.type || "interaction";
     s.eventTypes[et] = (s.eventTypes[et] || 0) + 1;
   }
 
-  const liveBlocks = pageBlocks.filter((b: any) => !archivedIds.includes(b.id));
+  // G6d: also aggregate per platform for social-links blocks
+  const socialPlatformStats: Map<string, Map<string, number>> = new Map();
+  for (const e of periodEvents) {
+    const bid = e.blockId || e.block_id;
+    const platform = e.platform;
+    if (!bid || !platform) continue;
+    if (!socialPlatformStats.has(bid)) socialPlatformStats.set(bid, new Map());
+    const pm = socialPlatformStats.get(bid)!;
+    pm.set(platform, (pm.get(platform) || 0) + 1);
+  }
+
+  const liveBlocks = pageBlocks.filter((b: any) => !archivedIds.includes(b.id) && !hiddenIds.includes(b.id));
   const archivedBlocks = pageBlocks.filter((b: any) => archivedIds.includes(b.id));
+  const hiddenBlocks = pageBlocks.filter((b: any) => hiddenIds.includes(b.id));
+
+  // G6c: for display, filter out non-interaction types from live list
+  const displayLiveBlocks = liveBlocks.filter((b: any) => !NON_INTERACTION_TYPES.has(b.type));
 
   const totalInteractions = periodEvents.length;
+
+  // G5: unified pill style — matches Overview and Analytics panels exactly
+  const pillStyle = (active: boolean): React.CSSProperties => ({
+    padding: "0.25rem 0.625rem",
+    borderRadius: "var(--radius-md)",
+    border: `1px solid ${active ? "var(--color-primary)" : "transparent"}`,
+    background: active ? "var(--color-primary-highlight)" : "var(--color-surface-offset)",
+    color: active ? "var(--color-primary)" : "var(--color-text-faint)",
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: "pointer",
+  });
 
   return (
     <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
@@ -2815,15 +2986,16 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>Block Analysis</h1>
           <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginTop: "0.25rem" }}>Interaction tracking per content block</p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
           {pages.length > 1 && (
             <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
               {pages.map((p: any) => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
           )}
-          <select value={days} onChange={e => setDays(Number(e.target.value))} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
-            {[7, 14, 30, 90].map(d => <option key={d} value={d}>Last {d} days</option>)}
-          </select>
+          {/* G6a: pill buttons instead of select */}
+          {[{ label: "7d", val: 7 }, { label: "14d", val: 14 }, { label: "30d", val: 30 }, { label: "60d", val: 60 }, { label: "All", val: 0 }].map(({ label, val }) => (
+            <button key={val} onClick={() => setDays(val)} style={pillStyle(days === val)}>{label}</button>
+          ))}
         </div>
       </div>
 
@@ -2832,8 +3004,8 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
         {[
           { label: "Total interactions", value: totalInteractions },
           { label: "Live blocks", value: liveBlocks.length },
-          { label: "Archived blocks", value: archivedBlocks.length },
-          { label: "Active blocks", value: Array.from(blockStats.keys()).length },
+          { label: "Archived", value: archivedBlocks.length },
+          { label: "Hidden", value: hiddenBlocks.length },
         ].map(card => (
           <div key={card.label} className="card" style={{ padding: "1rem", textAlign: "center" }}>
             <div style={{ fontSize: "var(--text-xl)", fontWeight: 800, color: "var(--color-primary)", fontFamily: "Cabinet Grotesk, sans-serif" }}>{card.value}</div>
@@ -2848,46 +3020,78 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
         </div>
       ) : (
         <>
-          {/* Live blocks */}
+          {/* Live blocks — G6c: filter non-interaction types */}
           <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
-            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>
-              Live blocks ({liveBlocks.length})
+            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>
+              Live blocks ({displayLiveBlocks.length})
             </h2>
-            {liveBlocks.length === 0 ? (
-              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No live blocks on this page.</p>
+            {liveBlocks.length > displayLiveBlocks.length && (
+              <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>Text, Image, Divider, and Testimonial blocks are excluded from interaction tracking.</p>
+            )}
+            {displayLiveBlocks.length === 0 ? (
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No trackable blocks on this page.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {liveBlocks.map((block: any) => {
+                {displayLiveBlocks.map((block: any) => {
                   const stats = blockStats.get(block.id) ?? { count: 0, eventTypes: {} };
                   const pct = totalInteractions > 0 ? Math.round((stats.count / totalInteractions) * 100) : 0;
+                  const isSocial = block.type === "social-links";
+                  const platformMap = socialPlatformStats.get(block.id);
                   return (
-                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
-                      <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
-                          <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{blockLabel(block)}</span>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: stats.count > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, marginLeft: "0.5rem" }}>{stats.count} interactions ({pct}%)</span>
-                        </div>
-                        <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: `${pct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
-                        </div>
-                        {Object.keys(stats.eventTypes).length > 0 && (
-                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
-                            {Object.entries(stats.eventTypes).map(([et, cnt]) => (
-                              <span key={et} style={{ fontSize: 10, padding: "1px 5px", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 4, color: "var(--color-text-muted)" }}>{et}: {cnt}</span>
-                            ))}
+                    <div key={block.id} style={{ padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                            <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{blockLabel(block)}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: stats.count > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, marginLeft: "0.5rem" }}>{stats.count} ({pct}%)</span>
                           </div>
-                        )}
+                          {/* G6: teal Views bar + amber Interactions bar */}
+                          {(() => {
+                            const viewCount = stats.eventTypes["view"] ?? 0;
+                            const interCount2 = stats.count - viewCount;
+                            const maxCount = Math.max(...Array.from(blockStats.values()).map(s => s.count), 1);
+                            const vPct = Math.round((viewCount / maxCount) * 100);
+                            const iPct = Math.round((interCount2 / maxCount) * 100);
+                            return (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 3 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)" }}>
+                                  <span>Views</span><span style={{ fontWeight: 600 }}>{viewCount}</span>
+                                </div>
+                                <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${vPct}%`, background: "#0891b2", borderRadius: 999, transition: "width 0.4s" }} />
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)" }}>
+                                  <span>Interactions</span><span style={{ fontWeight: 600 }}>{interCount2}</span>
+                                </div>
+                                <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${iPct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          {/* G6d: per-platform breakdown for social-links */}
+                          {isSocial && platformMap && platformMap.size > 0 && (
+                            <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                              {Array.from(platformMap.entries()).sort((a, b) => b[1] - a[1]).map(([platform, cnt]) => (
+                                <div key={platform} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--color-text-muted)", paddingLeft: "0.5rem" }}>
+                                  <span>{SOCIAL_PLATFORM_LABELS[platform] || platform}</span>
+                                  <span style={{ fontWeight: 600 }}>{cnt} clicks</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "archive" })}
+                          disabled={archiveMutation.isPending}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11, flexShrink: 0 }}
+                          title="Archive block"
+                        >
+                          Archive
+                        </button>
                       </div>
-                      <button
-                        onClick={() => archiveMutation.mutate(block.id)}
-                        disabled={archiveMutation.isPending}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: 11, flexShrink: 0 }}
-                        title="Archive block"
-                      >
-                        Archive
-                      </button>
                     </div>
                   );
                 })}
@@ -2897,32 +3101,83 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
 
           {/* Archived blocks */}
           {archivedBlocks.length > 0 && (
-            <div className="card" style={{ padding: "1.25rem" }}>
+            <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
               <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>
-                Archived blocks ({archivedBlocks.length})
+                Archived ({archivedBlocks.length})
               </h2>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 {archivedBlocks.map((block: any) => {
-                  const stats = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
+                  const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
                   return (
-                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.7 }}>
+                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.75 }}>
                       <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
-                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{stats.count ?? 0} lifetime interactions</div>
+                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.count ?? 0} lifetime interactions</div>
                       </div>
-                      <button
-                        onClick={() => archiveMutation.mutate(block.id)}
-                        disabled={archiveMutation.isPending}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: 11, flexShrink: 0 }}
-                      >
-                        Restore
-                      </button>
+                      <div style={{ display: "flex", gap: "0.375rem", flexShrink: 0 }}>
+                        <button
+                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })}
+                          disabled={archiveMutation.isPending}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11 }}
+                        >
+                          Restore
+                        </button>
+                        <button
+                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "hide" })}
+                          disabled={archiveMutation.isPending}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11 }}
+                          title="Move to hidden (won't re-appear in live)"
+                        >
+                          Hide
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* G6b: Hidden section — collapsed by default */}
+          {hiddenBlocks.length > 0 && (
+            <div className="card" style={{ padding: "1.25rem" }}>
+              <button
+                onClick={() => setHiddenOpen(o => !o)}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              >
+                <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700 }}>
+                  Hidden ({hiddenBlocks.length})
+                </h2>
+                <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{hiddenOpen ? "▲ Collapse" : "▼ Expand"}</span>
+              </button>
+              {hiddenOpen && (
+                <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Hidden blocks are permanently out of your live page. You can restore them to live if needed.</p>
+                  {hiddenBlocks.map((block: any) => {
+                    const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
+                    return (
+                      <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.6 }}>
+                        <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.count ?? 0} lifetime interactions</div>
+                        </div>
+                        <button
+                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })}
+                          disabled={archiveMutation.isPending}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11, flexShrink: 0 }}
+                        >
+                          Restore to live
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </>
@@ -3359,6 +3614,8 @@ function ContactsPanel() {
   const [filterCategory, setFilterCategory] = useState("name");
   const [filterText, setFilterText] = useState("");
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermission | "unsupported">(typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported");
+  // G13: track dismissed banner IDs in component state (so banner doesn't re-show on tab switch)
+  const [dismissedOverdueIds, setDismissedOverdueIds] = useState<Set<number>>(new Set());
 
   const { data: contacts, isLoading } = useQuery<any[]>({
     queryKey: ["/api/contacts"],
@@ -3515,19 +3772,33 @@ function ContactsPanel() {
     new Date(c.followUpDate).getTime() - Date.now() < 86400000
   );
 
-  // Fire browser notifications for follow-ups due within 1 hour (only when already granted)
+  // G13: fire browser notifications only once per contact per day (DB-persisted via overdue_notified_at)
+  const notifyMutation = useMutation({
+    mutationFn: async (contactId: number) => {
+      const res = await apiRequest("PATCH", `/api/contacts/${contactId}`, { overdueNotifiedAt: new Date().toISOString() });
+      if (!res.ok) throw new Error("Failed to update");
+      return res.json();
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/contacts"] }); },
+  });
+
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
-    const dueContacts = (contacts || []).filter((c: any) =>
-      c.followUpDate && !c.followUpDone &&
-      new Date(c.followUpDate).getTime() - Date.now() < 3600000
-    );
+    const dueContacts = (contacts || []).filter((c: any) => {
+      if (!c.followUpDate || c.followUpDone) return false;
+      if (new Date(c.followUpDate).getTime() - Date.now() > 3600000) return false;
+      // Only notify if overdue_notified_at is null or was set more than 24h ago
+      if (c.overdueNotifiedAt) {
+        const lastNotified = new Date(c.overdueNotifiedAt).getTime();
+        if (Date.now() - lastNotified < 86400000) return false;
+      }
+      return true;
+    });
     dueContacts.forEach((c: any) => {
       try {
-        new Notification("Follow-up due", {
-          body: `${c.name} — ${c.followUpNote || "No details"}`,
-        });
+        new Notification("Follow-up due", { body: `${c.name} — ${c.followUpNote || "No details"}` });
+        notifyMutation.mutate(c.id);
       } catch {}
     });
   }, [contacts]);
@@ -3570,12 +3841,18 @@ function ContactsPanel() {
         </div>
       </div>
 
-      {overdueContacts.length > 0 && (
+      {/* G13: overdue banner — dismissible per-contact, won't re-show on tab switch */}
+      {overdueContacts.filter((c: any) => !dismissedOverdueIds.has(c.id)).length > 0 && (
         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "var(--radius-md)", padding: "0.75rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }} data-testid="banner-follow-up-overdue">
           <span>⚠️</span>
-          <span style={{ fontSize: "var(--text-sm)", color: "#991b1b" }}>
-            {overdueContacts.length} follow-up{overdueContacts.length > 1 ? "s" : ""} overdue or due soon
+          <span style={{ fontSize: "var(--text-sm)", color: "#991b1b", flex: 1 }}>
+            {overdueContacts.filter((c: any) => !dismissedOverdueIds.has(c.id)).length} follow-up{overdueContacts.filter((c: any) => !dismissedOverdueIds.has(c.id)).length > 1 ? "s" : ""} overdue or due soon
           </span>
+          <button
+            onClick={() => setDismissedOverdueIds(prev => { const s = new Set(Array.from(prev)); overdueContacts.forEach((c: any) => s.add(c.id)); return s; })}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#991b1b", padding: "0 0.25rem", lineHeight: 1 }}
+            title="Dismiss"
+          >✕</button>
         </div>
       )}
 
@@ -3774,17 +4051,7 @@ function ContactsPanel() {
                     </button>
                   ) : null}
                   {detail.contact.followUpDone ? (
-                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                      <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>✓ Marked done</span>
-                      <button
-                        type="button"
-                        onClick={() => updateMutation.mutate({ id: detail.contact.id, data: { followUpDone: false } })}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: 11 }}
-                      >
-                        Unmark
-                      </button>
-                    </div>
+                    <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>✓ Follow-up marked done</span>
                   ) : null}
                 </div>
 
@@ -4341,15 +4608,365 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
 }
 
 // --- Main Dashboard ---
+// ────────────────────────────────────────────────────────────────────────
+// useLicence hook
+// ────────────────────────────────────────────────────────────────────────
+function useLicence() {
+  return useQuery({
+    queryKey: ["/api/me/licence"],
+    queryFn: () => apiRequest("GET", "/api/me/licence").then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// UpgradeModal
+// ────────────────────────────────────────────────────────────────────────
+function UpgradeModal({ onClose, onBilling }: { onClose: () => void; onBilling: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
+      <div style={{ background: "var(--color-surface)", borderRadius: "var(--radius-xl)", padding: "2rem", maxWidth: 480, width: "100%", boxShadow: "0 24px 64px rgba(0,0,0,0.24)" }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>Upgrade your plan</h2>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Unlock more pages, analytics, contacts and AI features.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+          {([
+            { tier: "Pro", price: "£5", period: "/mo", color: "#e06b1a", features: ["3 pages", "Unlimited blocks", "Analytics", "Contacts", "AI builder"] },
+            { tier: "Business", price: "£20", period: "/mo", color: "#0891b2", features: ["Unlimited pages", "Unlimited blocks", "Analytics", "Contacts", "AI builder"] },
+          ] as const).map(plan => (
+            <div key={plan.tier} style={{ border: `2px solid ${plan.color}`, borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: plan.color, marginBottom: "0.25rem" }}>{plan.tier}</div>
+              <div style={{ fontSize: "var(--text-2xl)", fontWeight: 800, lineHeight: 1 }}>{plan.price}<span style={{ fontSize: 13, fontWeight: 400, color: "var(--color-text-muted)" }}>{plan.period}</span></div>
+              <ul style={{ listStyle: "none", padding: 0, margin: "0.75rem 0 0", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                {plan.features.map(f => <li key={f} style={{ fontSize: 12, color: "var(--color-text-muted)" }}>✓ {f}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={onBilling}>View plans</button>
+          <button className="btn btn-secondary" onClick={onClose}>Maybe later</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// BillingPanel
+// ────────────────────────────────────────────────────────────────────────
+function BillingPanel() {
+  const { data: lic, isLoading } = useLicence();
+  const [annual, setAnnual] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Success banner from Stripe redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("billing") === "success") {
+      setToast("✓ Payment successful! Your plan has been upgraded.");
+      queryClient.invalidateQueries({ queryKey: ["/api/me/licence"] });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  const checkoutMutation = useMutation({
+    mutationFn: (priceId: string) =>
+      apiRequest("POST", "/api/stripe/create-checkout", { priceId }).then(r => r.json()),
+    onSuccess: (data) => { if (data.url) window.location.href = data.url; },
+    onError: () => setToast("⚠️ Could not start checkout. Please try again."),
+  });
+
+  const portalMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/stripe/create-portal", {}).then(r => r.json()),
+    onSuccess: (data) => { if (data.url) window.location.href = data.url; },
+    onError: () => setToast("⚠️ Could not open billing portal."),
+  });
+
+  const plans = [
+    {
+      id: "free",
+      name: "Free",
+      monthlyPrice: 0,
+      annualPrice: 0,
+      color: "var(--color-text-muted)",
+      features: ["1 page", "5 content blocks", "Basic profile"],
+      priceIdMonthly: "",
+      priceIdAnnual: "",
+    },
+    {
+      id: "pro",
+      name: "Pro",
+      monthlyPrice: 5,
+      annualPrice: 4,
+      color: "#e06b1a",
+      features: ["3 pages", "Unlimited blocks", "Analytics", "Contacts", "AI page builder", "Priority support"],
+      priceIdMonthly: lic?.priceIds?.proMonthly || "",
+      priceIdAnnual: lic?.priceIds?.proAnnual || "",
+    },
+    {
+      id: "business",
+      name: "Business",
+      monthlyPrice: 20,
+      annualPrice: 16,
+      color: "#0891b2",
+      features: ["Unlimited pages", "Unlimited blocks", "Analytics", "Contacts", "AI page builder", "Custom domain", "Priority support"],
+      priceIdMonthly: lic?.priceIds?.businessMonthly || "",
+      priceIdAnnual: lic?.priceIds?.businessAnnual || "",
+    },
+  ];
+
+  const currentTier = lic?.tier || "free";
+
+  return (
+    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto", maxWidth: 720 }}>
+      {toast && (
+        <div style={{ background: "var(--color-success-subtle, #d1fae5)", border: "1px solid var(--color-success, #10b981)", borderRadius: "var(--radius-md)", padding: "0.75rem 1rem", marginBottom: "1.25rem", fontSize: "var(--text-sm)", color: "var(--color-success, #065f46)" }}>
+          {toast}
+          <button onClick={() => setToast(null)} style={{ float: "right", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>×</button>
+        </div>
+      )}
+
+      <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "1.5rem" }}>Billing</h1>
+
+      {/* Current plan */}
+      {!isLoading && (
+        <div className="card" style={{ padding: "1.25rem", marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.25rem" }}>Current plan</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ padding: "0.2rem 0.6rem", borderRadius: "var(--radius-full)", fontSize: 11, fontWeight: 700, background: currentTier === "free" ? "var(--color-surface-offset)" : currentTier === "pro" ? "rgba(224,107,26,0.15)" : "rgba(8,145,178,0.15)", color: currentTier === "free" ? "var(--color-text-muted)" : currentTier === "pro" ? "#e06b1a" : "#0891b2", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                {currentTier}
+              </span>
+              {lic?.expiry && (
+                <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>Renews {new Date(lic.expiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+              )}
+            </div>
+          </div>
+          {currentTier !== "free" && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => portalMutation.mutate()}
+              disabled={portalMutation.isPending}
+            >
+              {portalMutation.isPending ? "Loading…" : "Manage subscription"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Monthly / Annual toggle */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
+        <button onClick={() => setAnnual(false)} style={{ padding: "0.25rem 0.625rem", borderRadius: "var(--radius-md)", fontSize: 11, fontWeight: 600, border: `1px solid ${!annual ? "var(--color-primary)" : "transparent"}`, background: !annual ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: !annual ? "var(--color-primary)" : "var(--color-text-faint)", cursor: "pointer" }}>Monthly</button>
+        <button onClick={() => setAnnual(true)}  style={{ padding: "0.25rem 0.625rem", borderRadius: "var(--radius-md)", fontSize: 11, fontWeight: 600, border: `1px solid ${annual  ? "var(--color-primary)" : "transparent"}`, background: annual  ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: annual  ? "var(--color-primary)" : "var(--color-text-faint)", cursor: "pointer" }}>Annual</button>
+        {annual && <span style={{ fontSize: 11, fontWeight: 600, color: "#10b981", background: "rgba(16,185,129,0.12)", padding: "0.2rem 0.5rem", borderRadius: "var(--radius-md)" }}>Save 20%</span>}
+      </div>
+
+      {/* Plan cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
+        {plans.map(plan => {
+          const isCurrent = currentTier === plan.id;
+          const price = annual ? plan.annualPrice : plan.monthlyPrice;
+          const priceId = annual ? plan.priceIdAnnual : plan.priceIdMonthly;
+          const isLoading2 = checkoutMutation.isPending && checkoutMutation.variables === priceId;
+          return (
+            <div key={plan.id} style={{ border: `2px solid ${isCurrent ? plan.color : "var(--color-border)"}`, borderRadius: "var(--radius-xl)", padding: "1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem", background: isCurrent ? `color-mix(in srgb, ${plan.color} 6%, var(--color-surface))` : "var(--color-surface)" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: plan.color, textTransform: "uppercase", letterSpacing: "0.06em" }}>{plan.name}</div>
+              <div style={{ fontSize: "var(--text-2xl)", fontWeight: 800, lineHeight: 1 }}>
+                {price === 0 ? "Free" : `£${price}`}
+                {price > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: "var(--color-text-muted)" }}>{annual ? "/mo, billed annually" : "/mo"}</span>}
+              </div>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                {plan.features.map(f => <li key={f} style={{ fontSize: 12, color: "var(--color-text-muted)" }}><span style={{ color: plan.color }}>✓</span> {f}</li>)}
+              </ul>
+              <div style={{ marginTop: "auto" }}>
+                {isCurrent ? (
+                  <div style={{ textAlign: "center", fontSize: 12, fontWeight: 600, color: plan.color, padding: "0.5rem" }}>Current plan</div>
+                ) : plan.id === "free" ? (
+                  <button className="btn btn-secondary btn-sm" style={{ width: "100%" }} onClick={() => portalMutation.mutate()} disabled={currentTier === "free"}>Downgrade</button>
+                ) : (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ width: "100%", background: plan.color, borderColor: plan.color }}
+                    onClick={() => priceId && checkoutMutation.mutate(priceId)}
+                    disabled={checkoutMutation.isPending || !priceId}
+                  >
+                    {isLoading2 ? "Loading…" : "Upgrade"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Feature comparison table */}
+      <div className="card" style={{ padding: "1.25rem", overflow: "auto" }}>
+        <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "1rem" }}>Feature comparison</div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: "0.5rem", color: "var(--color-text-muted)", fontWeight: 600 }}>Feature</th>
+              {["Free", "Pro", "Business"].map(t => <th key={t} style={{ textAlign: "center", padding: "0.5rem", color: "var(--color-text-muted)", fontWeight: 600 }}>{t}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {([
+              ["Pages", "1", "3", "Unlimited"],
+              ["Content blocks", "5", "Unlimited", "Unlimited"],
+              ["Analytics", "✕", "✓", "✓"],
+              ["Contacts", "✕", "✓", "✓"],
+              ["AI page builder", "✕", "✓", "✓"],
+              ["Custom domain", "✕", "✕", "✓"],
+              ["Priority support", "✕", "✓", "✓"],
+            ] as [string, string, string, string][]).map(([feature, free, pro, biz], i) => (
+              <tr key={feature} style={{ background: i % 2 === 0 ? "var(--color-surface-offset)" : undefined }}>
+                <td style={{ padding: "0.5rem" }}>{feature}</td>
+                {[free, pro, biz].map((v, j) => <td key={j} style={{ textAlign: "center", padding: "0.5rem", color: v === "✕" ? "var(--color-text-faint)" : v === "✓" ? "#10b981" : "var(--color-text)" }}>{v}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// AIWizardModal
+// ────────────────────────────────────────────────────────────────────────
+function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (page: any) => void }) {
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState({ name: "", tagline: "", goal: "", industry: "", style: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const questions = [
+    { key: "name",     label: "What's your name or brand?",         type: "text",   placeholder: "e.g. Sarah Johnson or Bloom Studio" },
+    { key: "tagline", label: "What do you do in one sentence?",      type: "text",   placeholder: "e.g. I help small businesses grow on social media" },
+    { key: "goal",    label: "What's the main goal of your page?",   type: "select", options: ["Get more followers", "Sell products or services", "Capture leads", "Share content", "Other"] },
+    { key: "industry",label: "What industry are you in?",            type: "select", options: ["Creator / Influencer", "Fitness & Health", "Business & Consulting", "Music & Arts", "Retail & E-commerce", "Tech & Software", "Other"] },
+    { key: "style",   label: "What style feels right?",              type: "pills",  options: ["Minimal", "Bold", "Professional", "Playful"] },
+  ];
+
+  const currentQ = questions[step];
+  const totalSteps = questions.length;
+  const canNext = answers[currentQ.key as keyof typeof answers].trim().length > 0;
+
+  async function handleGenerate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiRequest("POST", "/api/ai/generate-page", { answers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Generation failed");
+      onApply(data);
+    } catch (e: any) {
+      setError(e.message || "Something went wrong. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
+      <div style={{ background: "var(--color-surface)", borderRadius: "var(--radius-xl)", padding: "2rem", maxWidth: 460, width: "100%", boxShadow: "0 24px 64px rgba(0,0,0,0.24)" }} onClick={e => e.stopPropagation()}>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "2rem 0" }}>
+            <div style={{ fontSize: 40, marginBottom: "1rem", animation: "spin 1.5s linear infinite", display: "inline-block" }}>✨</div>
+            <div style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>Building your page…</div>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>AI is generating blocks tailored to your brand</div>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-faint)", marginBottom: "0.25rem" }}>Step {step + 1} of {totalSteps}</div>
+                <h2 style={{ fontSize: "var(--text-base)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", margin: 0 }}>{currentQ.label}</h2>
+              </div>
+              <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 20, lineHeight: 1 }}>×</button>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.5rem" }}>
+              <div style={{ height: "100%", width: `${((step + 1) / totalSteps) * 100}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.3s" }} />
+            </div>
+
+            {/* Input */}
+            {currentQ.type === "text" && (
+              <input
+                autoFocus
+                value={answers[currentQ.key as keyof typeof answers]}
+                onChange={e => setAnswers(a => ({ ...a, [currentQ.key]: e.target.value }))}
+                onKeyDown={e => { if (e.key === "Enter" && canNext) step < totalSteps - 1 ? setStep(s => s + 1) : handleGenerate(); }}
+                placeholder={currentQ.placeholder}
+                style={{ width: "100%", padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: "var(--text-sm)", marginBottom: "1.5rem", boxSizing: "border-box" }}
+              />
+            )}
+            {currentQ.type === "select" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
+                {currentQ.options!.map(opt => (
+                  <button key={opt} onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt }))} style={{ padding: "0.625rem 1rem", borderRadius: "var(--radius-md)", border: `1px solid ${answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-border)"}`, background: answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary-highlight)" : "var(--color-bg)", color: answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: 500, cursor: "pointer", textAlign: "left" }}>{opt}</button>
+                ))}
+              </div>
+            )}
+            {currentQ.type === "pills" && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1.5rem" }}>
+                {currentQ.options!.map(opt => (
+                  <button key={opt} onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt }))} style={{ padding: "0.5rem 1rem", borderRadius: "var(--radius-full)", border: `1px solid ${answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-border)"}`, background: answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-bg)", color: answers[currentQ.key as keyof typeof answers] === opt ? "#fff" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: 600, cursor: "pointer" }}>{opt}</button>
+                ))}
+              </div>
+            )}
+
+            {error && <div style={{ fontSize: 13, color: "var(--color-error, #dc2626)", marginBottom: "1rem", padding: "0.5rem", background: "rgba(220,38,38,0.08)", borderRadius: "var(--radius-sm)" }}>{error}</div>}
+
+            {/* Navigation */}
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => step > 0 ? setStep(s => s - 1) : onClose()} style={{ visibility: step === 0 ? "hidden" : "visible" }}>Back</button>
+              {step < totalSteps - 1 ? (
+                <button className="btn btn-primary btn-sm" onClick={() => setStep(s => s + 1)} disabled={!canNext}>Next</button>
+              ) : (
+                <button className="btn btn-primary btn-sm" onClick={handleGenerate} disabled={!canNext}>✨ Build my page</button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [activeNav, setActiveNav] = useState("overview");
   const [activePageId, setActivePageId] = useState<number | null>(null);
   const [newPageWizardOpen, setNewPageWizardOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const { user, pages, isLoading, logout, refetch } = useAuth();
+  const { data: licence } = useLicence();
   const [, navigate] = useLocation();
+
+  const licenceTier: "free" | "pro" | "business" = (licence as any)?.tier ?? "free";
+  const TIER_LIMITS_CLIENT = {
+    free:     { pages: 1,        analytics: false, contacts: false },
+    pro:      { pages: 3,        analytics: true,  contacts: true  },
+    business: { pages: Infinity, analytics: true,  contacts: true  },
+  } as const;
+  const tierLimits = TIER_LIMITS_CLIENT[licenceTier];
 
   // Goal 7: onboarding state driven by API
   const sharedLink = !!(user as any)?.onboardingSharedLink;
@@ -4428,38 +5045,41 @@ export default function DashboardPage() {
 
   const renderPanel = () => {
     switch (activeNav) {
-      case "overview": return <OverviewPanel pages={pages} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
+      case "overview": return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
       case "editor": return <EditorPanel pages={pages} activePageId={activePageId} />;
-      case "analytics": return <AnalyticsPanel pages={pages} activePageId={activePageId} setActivePageId={setActivePageId} />;
+      case "analytics": return tierLimits.analytics
+        ? <AnalyticsPanel pages={pages} activePageId={activePageId} setActivePageId={setActivePageId} />
+        : (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "3rem 2rem" }}>
+            <div style={{ textAlign: "center", maxWidth: 360 }}>
+              <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📊</div>
+              <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>Analytics — Pro feature</h2>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginBottom: "1.5rem" }}>Upgrade to Pro to unlock detailed page analytics, click rates, unique visitors, and conversion insights.</p>
+              <button className="btn btn-primary" style={{ justifyContent: "center" }} onClick={() => { setActiveNav("billing"); }}>
+                Upgrade to Pro →
+              </button>
+            </div>
+          </div>
+        );
       case "blocks": return <BlockAnalysisPanel pages={pages} activePageId={activePageId} />;
       case "leads": return <LeadsPanel pages={pages} />;
-      case "contacts": return <ContactsPanel />;
-      case "settings": return <SettingsPanel user={user} pages={pages} onLogout={async () => { await logout(); navigate("/"); }} />;
-      case "billing": return (
-        <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
-          <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "1.5rem" }}>Billing</h1>
-          <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-              <div>
-                <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>Current plan</div>
-                <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>Free tier — upgrade for custom domain, analytics, and AI features</div>
-              </div>
-              <span className="badge badge-primary">Free</span>
+      case "contacts": return tierLimits.contacts
+        ? <ContactsPanel />
+        : (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "3rem 2rem" }}>
+            <div style={{ textAlign: "center", maxWidth: 360 }}>
+              <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>👥</div>
+              <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>Contacts — Pro feature</h2>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginBottom: "1.5rem" }}>Upgrade to Pro to manage your contacts CRM, see full lead history, and export contact data.</p>
+              <button className="btn btn-primary" style={{ justifyContent: "center" }} onClick={() => { setActiveNav("billing"); }}>
+                Upgrade to Pro →
+              </button>
             </div>
-            <Link href="/pricing" className="btn btn-primary btn-sm">Upgrade to Pro →</Link>
           </div>
-          <div className="card" style={{ padding: "1.5rem" }}>
-            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>Pro — £9/mo</h2>
-            {["Custom domain", "Unlimited pages", "Advanced analytics", "AI conversion tips", "Priority support"].map(f => (
-              <div key={f} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0", borderBottom: "1px solid var(--color-divider)", fontSize: "var(--text-sm)" }}>
-                <span style={{ color: "var(--color-success)" }}>✓</span> {f}
-              </div>
-            ))}
-            <Link href="/pricing" className="btn btn-primary" style={{ marginTop: "1.25rem", justifyContent: "center" }}>Get Pro</Link>
-          </div>
-        </div>
-      );
-      default: return <OverviewPanel pages={pages} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
+        );
+      case "settings": return <SettingsPanel user={user} pages={pages} onLogout={async () => { await logout(); navigate("/"); }} />;
+      case "billing": return <BillingPanel />;
+      default: return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
     }
   };
 
@@ -4551,13 +5171,22 @@ export default function DashboardPage() {
           ))}
           <div style={{ marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid var(--color-divider)" }}>
             <button
-              onClick={() => setNewPageWizardOpen(true)}
+              onClick={() => {
+                if (pages.length >= tierLimits.pages) {
+                  setUpgradeModalOpen(true);
+                } else {
+                  setNewPageWizardOpen(true);
+                }
+              }}
               className="sidebar-nav-item"
               style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", color: "var(--color-primary)", fontWeight: 600, justifyContent: sidebarCollapsed ? "center" : undefined }}
               data-testid="button-new-page-wizard"
               title={sidebarCollapsed ? "New page" : undefined}
             >
               {icons.plus} {!sidebarCollapsed && "New page"}
+              {pages.length >= tierLimits.pages && !sidebarCollapsed && (
+                <span style={{ marginLeft: "auto", fontSize: 9, padding: "0.1rem 0.35rem", background: "var(--color-primary-highlight)", color: "var(--color-primary)", borderRadius: 999, fontWeight: 700 }}>PRO</span>
+              )}
             </button>
           </div>
         </div>
@@ -4650,6 +5279,13 @@ export default function DashboardPage() {
         onCreated={(id) => setActivePageId(id)}
       />
 
+      {upgradeModalOpen && (
+        <UpgradeModal
+          onClose={() => setUpgradeModalOpen(false)}
+          onBilling={() => { setUpgradeModalOpen(false); setActiveNav("billing"); }}
+        />
+      )}
+
       {/* Help drawer */}
       {helpOpen && (
         <div
@@ -4707,7 +5343,7 @@ export default function DashboardPage() {
                 <li>• Track every view and click in <b>Analytics</b>.</li>
                 <li>• <b>Leads</b> captured via lead forms appear with status chips.</li>
                 <li>• Convert a lead into a contact from the lead detail.</li>
-                <li>• Choose a <b>theme preset</b> in Settings for instant restyling.</li>
+                <li>• Choose a <b>background</b> in Settings to style your public page.</li>
               </ul>
             </div>
           </div>

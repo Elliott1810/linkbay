@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, resolveMediaUrl } from "@/lib/queryClient";
 import { useAuth } from "@/App";
-import { backgroundToCss, getBackgroundLuminance } from "./BuilderPage";
+import { backgroundToCss, backgroundToClass, getBackgroundLuminance } from "./BuilderPage";
 import {
   SiInstagram, SiTiktok, SiX, SiYoutube, SiFacebook,
   SiGithub, SiPinterest, SiSnapchat, SiThreads, SiWhatsapp, SiTelegram,
@@ -329,10 +329,14 @@ function LeadForm({ pageId, accentColor, block }: { pageId: number; accentColor:
   const [done, setDone] = useState(false);
   const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const customFields = block?.customFields || [];
+  const viewTracked = useRef(false);
 
-  // Track on mount (form view)
+  // G4 FIX: track view only once per mount
   useEffect(() => {
-    if (block?.id) trackBlock(pageId, block.id, "lead-form", "view");
+    if (block?.id && !viewTracked.current) {
+      viewTracked.current = true;
+      trackBlock(pageId, block.id, "lead-form", "view");
+    }
   }, [block?.id, pageId]);
 
   const mutation = useMutation({
@@ -711,13 +715,21 @@ export default function ProfilePage() {
       return res.json();
     },
     retry: false,
-    staleTime: 30_000,
+    staleTime: Infinity, // G1/G2: never refetch during session — view tracked via POST on mount only
   });
 
   // Load Google Font once page data is available
   useEffect(() => {
     if (data?.page?.pageFont) loadGoogleFont(data.page.pageFont);
   }, [data?.page?.pageFont]);
+
+  // G1/G2 FIX: Record view exactly once per page mount via POST (never on refetch, never in preview)
+  const viewTracked = useRef(false);
+  useEffect(() => {
+    if (!data?.page || isPreview || viewTracked.current) return;
+    viewTracked.current = true;
+    apiRequest("POST", `/api/pages/public/${username}/view`).catch(() => {});
+  }, [data?.page?.id, isPreview, username]);
 
   if (isLoading) return <ProfileSkeleton />;
   if (isError || !data) return <PageNotFound username={username || ""} />;
@@ -734,13 +746,14 @@ export default function ProfilePage() {
   try { blocks = JSON.parse(page.blocks || "[]"); } catch {}
 
   const bgStyle = backgroundToCss(page.background || "none");
+  const bgClass = backgroundToClass(page.background || "none");
   // Goal 6: auto text color based on background luminance, or explicit textColor override
   const luminance = getBackgroundLuminance(page.background || "none");
   const autoText = (page as any).textColor || (luminance === "dark" ? "#f5f5f7" : "#0a0a0b");
   const autoTextMuted = (page as any).textColor || (luminance === "dark" ? "rgba(245,245,247,0.72)" : "rgba(10,10,11,0.62)");
 
   return (
-    <div style={{ minHeight: "100dvh", background: "var(--color-bg)", color: autoText, fontFamily, ...bgStyle, "--color-text": autoText, "--color-text-muted": autoTextMuted } as any}>
+    <div className={bgClass || undefined} style={{ minHeight: "100dvh", color: autoText, fontFamily, ...bgStyle, "--color-text": autoText, "--color-text-muted": autoTextMuted } as any}>
       {/* Minimal top bar */}
       <div style={{
         position: "sticky", top: 0, zIndex: 100,
@@ -782,6 +795,9 @@ export default function ProfilePage() {
                   objectFit: "cover",
                   margin: "0 auto 1rem",
                   display: "block",
+                  flexShrink: 0,
+                  minWidth: 0,
+                  maxWidth: "100%",
                   border: "3px solid var(--color-surface)",
                   boxShadow: "var(--shadow-md)"
                 }}
@@ -816,8 +832,9 @@ export default function ProfilePage() {
 
           {page.location && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", marginBottom: "0.5rem" }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-faint)" }}>{page.location}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: autoTextMuted, flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              {/* G14: use autoTextMuted (luminance-aware) instead of --color-text-faint so it reads on any bg */}
+              <span style={{ fontSize: "var(--text-xs)", color: autoTextMuted, textShadow: "0 1px 3px rgba(0,0,0,0.18)" }}>{page.location}</span>
             </div>
           )}
 

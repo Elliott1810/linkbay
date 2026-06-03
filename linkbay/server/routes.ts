@@ -1,9 +1,31 @@
 import type { Express, Request, Response } from "express";
 import { type Server } from "http";
-import { storage } from "./storage";
+import { storage, getUserLicence, setUserLicence, getUserByStripeCustomerId, getUserByStripeSubscriptionId } from "./storage";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import Database from "better-sqlite3";
+import Stripe from "stripe";
+import OpenAI from "openai";
+
+// ─── Tier limits ─────────────────────────────────────────────────────────────
+const TIER_LIMITS: Record<string, { pages: number; blocks: number; analytics: boolean; contacts: boolean }> = {
+  free:     { pages: 1,   blocks: 5,        analytics: false, contacts: false },
+  pro:      { pages: 3,   blocks: Infinity, analytics: true,  contacts: true  },
+  business: { pages: Infinity, blocks: Infinity, analytics: true, contacts: true },
+};
+function getLimits(tier: string) { return TIER_LIMITS[tier] || TIER_LIMITS.free; }
+
+// ─── Price ID → tier mapping ─────────────────────────────────────────────────────
+function tierFromPriceId(priceId: string): { tier: "pro" | "business"; interval: "month" | "year" } | null {
+  if (priceId === process.env.STRIPE_PRO_MONTHLY_PRICE_ID)      return { tier: "pro",      interval: "month" };
+  if (priceId === process.env.STRIPE_PRO_ANNUAL_PRICE_ID)        return { tier: "pro",      interval: "year"  };
+  if (priceId === process.env.STRIPE_BUSINESS_MONTHLY_PRICE_ID) return { tier: "business", interval: "month" };
+  if (priceId === process.env.STRIPE_BUSINESS_ANNUAL_PRICE_ID)  return { tier: "business", interval: "year"  };
+  return null;
+}
+
+// ─── AI rate limiter (in-memory) ────────────────────────────────────────────────────
+const aiRateLimit = new Map<number, { count: number; resetAt: number }>();
 
 const DB_PATH = process.env.DB_PATH || "data.db";
 import {
@@ -34,6 +56,8 @@ async function assertOwnsPage(req: Request, res: Response, pageId: number): Prom
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<void> {
+  // Register licence, Stripe, and AI routes first (webhook needs to run before express.json parses body)
+  registerLicenceRoutes(app);
 
   // ─────────────────────────────────────────────────
   //  AUTH
@@ -162,27 +186,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ─────────────────────────────────────────────────
 
   // GET a published page by username (public — used by ProfilePage)
+  // G1/G2 FIX: NO view tracking here — tracking moved to POST /api/pages/public/:username/view
+  // This prevents double/triple counts from TanStack Query refetches.
   app.get("/api/pages/public/:username", async (req, res) => {
     try {
       const page = await storage.getPageByUsername(req.params.username);
       if (!page) return res.status(404).json({ error: "Page not found" });
-      // Preview mode: allow unpublished pages to be viewed but skip analytics tracking entirely
       const isPreview = req.query.preview === "1";
       if (!page.published && !isPreview) return res.status(404).json({ error: "Page not found" });
-      // Generate hashed visitor ID from IP for unique visitor tracking
+      const links = await storage.getLinksByPage(page.id);
+      const owner = await storage.getUserByEmail(page.ownerEmail);
+      const { ownerEmail: _redacted, ...publicPage } = page as any;
+      res.json({ page: { ...publicPage, avatarUrl: owner?.avatarUrl ?? null }, links });
+    } catch { res.status(500).json({ error: "Server error" }); }
+  });
+
+  // POST record a single page view — called once per page mount by ProfilePage
+  // G1/G2 FIX: Separated from GET so refetches don't inflate view counts.
+  app.post("/api/pages/public/:username/view", async (req, res) => {
+    try {
+      const page = await storage.getPageByUsername(req.params.username);
+      if (!page || !page.published) return res.status(404).json({ error: "Not found" });
       const rawIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
       const visitorId = crypto.createHash("sha256").update(rawIp).digest("hex").slice(0, 16);
-      // Determine country: prefer Cloudflare header; otherwise leave null (will be back-filled async via ipapi.co)
       const cfCountry = ((req.headers["cf-ipcountry"] as string) || "").toUpperCase() || null;
-      // Track view event (skipped in preview)
-      if (!isPreview) {
-        await storage.incrementViewCount(page.id);
-        await storage.recordEvent({ pageId: page.id, type: "view", referrer: req.headers.referer || null, device: req.headers["user-agent"]?.includes("Mobile") ? "mobile" : "desktop", visitorId, country: cfCountry } as any);
-      }
-      // Best-effort async country lookup if no CF header and the IP looks publicly routable.
-      if (!isPreview && !cfCountry && rawIp && rawIp !== "127.0.0.1" && !rawIp.startsWith("192.168") && !rawIp.startsWith("10.") && !rawIp.startsWith("::1")) {
+      const ua = String(req.headers["user-agent"] || "");
+      const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
+      await storage.incrementViewCount(page.id);
+      await storage.recordEvent({ pageId: page.id, type: "view", referrer: req.headers.referer || null, device, visitorId, country: cfCountry } as any);
+      // Best-effort async country lookup
+      if (!cfCountry && rawIp && rawIp !== "127.0.0.1" && !rawIp.startsWith("192.168") && !rawIp.startsWith("10.") && !rawIp.startsWith("::1")) {
         try {
-          // Fire-and-forget; do not block the response.
           fetch(`https://ipapi.co/${rawIp}/country/`)
             .then(r => r.text())
             .then(c => {
@@ -190,22 +224,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               if (code && code.length === 2 && /^[A-Z]{2}$/.test(code)) {
                 try {
                   const db2 = new Database(DB_PATH);
-                  db2.prepare(
-                    "UPDATE page_events SET country = ? WHERE page_id = ? AND visitor_id = ? AND country IS NULL"
-                  ).run(code, page.id, visitorId);
+                  db2.prepare("UPDATE page_events SET country = ? WHERE page_id = ? AND visitor_id = ? AND country IS NULL").run(code, page.id, visitorId);
                   db2.close();
                 } catch {}
               }
-            })
-            .catch(() => {});
+            }).catch(() => {});
         } catch {}
       }
-      const links = await storage.getLinksByPage(page.id);
-      // Get owner avatar (public — only avatarUrl, no PII)
-      const owner = await storage.getUserByEmail(page.ownerEmail);
-      // Strip private owner email before sending to public (ownerName is intentionally public for display)
-      const { ownerEmail: _redacted, ...publicPage } = page as any;
-      res.json({ page: { ...publicPage, avatarUrl: owner?.avatarUrl ?? null }, links });
+      res.json({ success: true });
     } catch { res.status(500).json({ error: "Server error" }); }
   });
 
@@ -788,9 +814,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         periodViews: views,
         periodClicks: clicks,
         periodLeads: formLeads,
-        clickRate: views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0,
+        clickRate: views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0, // G12: always 1dp
         uniqueVisitors,
         repeatVisitors,
+        avgSessionViews: uniqueVisitors > 0 ? Math.round((views / uniqueVisitors) * 10) / 10 : 0,
         devices,
         topLinks: links.sort((a, b) => b.clickCount - a.clickCount).slice(0, 5),
         topCountries,
@@ -799,28 +826,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         dailyLeads,
         bestDay,
         // Top interactions: merge link clicks (by linkId→block) with block-level events
+        // G3: build a blockTitle lookup from the page's blocks JSON so we show real titles
         topInteractions: (() => {
-          const interMap = new Map<string, { id: string; label: string; type: string; count: number; isLink: boolean; linkId?: number }>();
+          // Build blockId → { title, type } map from page.blocks JSON
+          const blockMeta = new Map<string, { title: string; type: string }>();
+          try {
+            const rawBlocks: any[] = JSON.parse((page as any)?.blocks || "[]");
+            const BLOCK_TYPE_LABELS: Record<string, string> = {
+              "lead-form": "Lead Form", "button": "Button", "poll": "Poll", "faq": "FAQ",
+              "countdown": "Countdown", "video": "Video", "image": "Image", "text": "Text",
+              "testimonial": "Testimonial", "social-links": "Social Links", "divider": "Divider",
+            };
+            for (const b of rawBlocks) {
+              const typeLabel = BLOCK_TYPE_LABELS[b.type] || (b.type ? b.type.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "Block");
+              const title = b.title || b.label || b.question || "";
+              const displayLabel = title ? `${typeLabel} — ${title}` : typeLabel;
+              blockMeta.set(b.id, { title: displayLabel, type: typeLabel });
+            }
+          } catch {}
+
+          const interMap = new Map<string, { id: string; label: string; type: string; total: number; isLink: boolean; linkId?: number }>();
           // Link clicks
           for (const link of links) {
             if (link.clickCount > 0) {
-              interMap.set(`link-${link.id}`, { id: `link-${link.id}`, label: link.label || link.url, type: "link", count: link.clickCount, isLink: true, linkId: link.id });
+              interMap.set(`link-${link.id}`, { id: `link-${link.id}`, label: link.label || link.url, type: "link", total: link.clickCount, isLink: true, linkId: link.id });
             }
           }
-          // Block events (poll votes, FAQ expands, video plays, etc.)
-          const blockEventMap = new Map<string, { label: string; type: string; count: number }>();
+          // Block events — G4b: split into views vs interactions per block
+          const INTERACTION_EVENTS = new Set(["submit", "click", "vote", "expand", "play"]);
+          const VIEW_EVENTS = new Set(["view"]);
+          const blockEventMap = new Map<string, { label: string; type: string; views: number; interactions: number }>();
           for (const e of events) {
             const bid = (e as any).blockId ?? (e as any).block_id;
             const btype = (e as any).blockType ?? (e as any).block_type;
+            const etype = (e as any).type ?? "";
             if (!bid) continue;
             const key = `block-${bid}`;
-            if (!blockEventMap.has(key)) blockEventMap.set(key, { label: btype || "block", type: btype || "block", count: 0 });
-            blockEventMap.get(key)!.count++;
+            const meta = blockMeta.get(bid);
+            const label = meta?.title || (btype ? btype.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "Block");
+            if (!blockEventMap.has(key)) blockEventMap.set(key, { label, type: meta?.type || btype || "block", views: 0, interactions: 0 });
+            const entry = blockEventMap.get(key)!;
+            if (VIEW_EVENTS.has(etype)) entry.views++;
+            else if (INTERACTION_EVENTS.has(etype) || etype.startsWith("block_interact") || etype === "link_click") entry.interactions++;
+            else entry.interactions++; // default unknown events to interactions
           }
           blockEventMap.forEach((v, k) => {
-            interMap.set(k, { id: k, label: v.label, type: v.type, count: v.count, isLink: false });
+            const total = v.views + v.interactions;
+            interMap.set(k, { id: k, label: v.label, type: v.type, total, views: v.views, interactions: v.interactions, isLink: false } as any);
           });
-          return Array.from(interMap.values()).sort((a, b) => b.count - a.count).slice(0, 8);
+          return Array.from(interMap.values()).sort((a: any, b: any) => b.total - a.total).slice(0, 8);
         })(),
         events: events.slice(-200),
       });
@@ -977,12 +1031,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         try { fs.unlinkSync(oldPath); } catch {}
       }
 
-      // Compress and save new avatar as WebP, 400x400 max
+      // G9: Compress and save new avatar as WebP, 200x200 (smaller, faster to load)
       const filename = `avatar-${req.session.userId}-${Date.now()}.webp`;
       const filepath = path.join(uploadsDir, filename);
       await sharp(req.file.buffer)
-        .resize(400, 400, { fit: "cover", position: "centre" })
-        .webp({ quality: 80 })
+        .resize(200, 200, { fit: "cover", position: "centre" })
+        .webp({ quality: 82 })
         .toFile(filepath);
 
       const avatarUrl = `/uploads/avatars/${filename}`;
@@ -1166,6 +1220,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch { res.status(500).send("Reset failed"); }
   });
 
+  app.post("/admin/set-licence", requireAdmin as any, async (req, res) => {
+    try {
+      const userId = Number(req.body?.userId);
+      const tier = String(req.body?.tier || "free").trim();
+      if (!userId || !["free", "pro", "business"].includes(tier)) return res.status(400).send("Invalid input");
+      const db2 = new Database(DB_PATH);
+      const existing = db2.prepare("SELECT id FROM licences WHERE user_id = ?").get(userId);
+      if (existing) {
+        db2.prepare("UPDATE licences SET tier = ?, updated_at = ? WHERE user_id = ?").run(tier, new Date().toISOString(), userId);
+      } else {
+        db2.prepare("INSERT INTO licences (user_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?)").run(userId, tier, new Date().toISOString(), new Date().toISOString());
+      }
+      db2.close();
+      res.redirect("/admin");
+    } catch (e) { res.status(500).send("Failed to update licence"); }
+  });
+
   app.get("/admin", requireAdmin as any, async (req: Request, res: Response) => {
     // Read directly from SQLite for admin view
     const sqlite = require("better-sqlite3")(process.env.DB_PATH || "data.db") as import("better-sqlite3").Database;
@@ -1254,6 +1325,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       FROM leads l JOIN pages p ON p.id = l.page_id
       ORDER BY l.created_at DESC LIMIT 20
     `).all() as any[];
+
+    // Licence data for admin panel
+    const licences = sqlite.prepare(`
+      SELECT u.id as user_id, u.name, u.email, l.tier, l.expires_at, l.stripe_subscription_id
+      FROM users u
+      LEFT JOIN licences l ON l.user_id = u.id
+      ORDER BY CASE l.tier WHEN 'business' THEN 0 WHEN 'pro' THEN 1 ELSE 2 END, u.created_at DESC
+    `).all() as any[];
+    const licCountFree = licences.filter(l => !l.tier || l.tier === "free").length;
+    const licCountPro = licences.filter(l => l.tier === "pro").length;
+    const licCountBusiness = licences.filter(l => l.tier === "business").length;
+    // Rough MRR (£): pro=5, business=20
+    const mrrEstimate = licCountPro * 5 + licCountBusiness * 20;
 
     sqlite.close();
 
@@ -1451,6 +1535,67 @@ function filterTable(input,tbodyId){
   </div>
 
   <div class="section">
+    <h2>Licences</h2>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+      <div style="background:#f1f5f9;border-radius:8px;padding:0.75rem 1.25rem;min-width:120px;text-align:center">
+        <div style="font-size:22px;font-weight:800">${licCountFree}</div>
+        <div style="font-size:11px;color:#64748b;font-weight:600">Free</div>
+      </div>
+      <div style="background:#fef3c7;border-radius:8px;padding:0.75rem 1.25rem;min-width:120px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#92400e">${licCountPro}</div>
+        <div style="font-size:11px;color:#92400e;font-weight:600">Pro</div>
+      </div>
+      <div style="background:#ccfbf1;border-radius:8px;padding:0.75rem 1.25rem;min-width:120px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#0f766e">${licCountBusiness}</div>
+        <div style="font-size:11px;color:#0f766e;font-weight:600">Business</div>
+      </div>
+      <div style="background:#fdf4ff;border-radius:8px;padding:0.75rem 1.25rem;min-width:120px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:#7c3aed">\u00a3${mrrEstimate}</div>
+        <div style="font-size:11px;color:#7c3aed;font-weight:600">Est. MRR</div>
+      </div>
+    </div>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search licences by name, email, tier…" oninput="filterTable(this,'tbody-licences')" /><span class="count" id="tbody-licences-count"></span></div>
+    <table>
+      <thead><tr><th>User</th><th>Email</th><th>Tier</th><th>Expires</th><th>Subscription ID</th><th>Change Tier</th></tr></thead>
+      <tbody id="tbody-licences">
+        ${licences.map(l => {
+          const tier = l.tier || "free";
+          const expiresAt = l.expires_at ? new Date(l.expires_at) : null;
+          const daysLeft = expiresAt ? Math.ceil((expiresAt.getTime() - Date.now()) / 86400000) : null;
+          const expiryWarn = daysLeft !== null && daysLeft <= 7;
+          const tierBadge = tier === "business"
+            ? `<span style="background:#ccfbf1;color:#0f766e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">Business</span>`
+            : tier === "pro"
+              ? `<span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">Pro</span>`
+              : `<span style="background:#f1f5f9;color:#64748b;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">Free</span>`;
+          const expiryCell = expiresAt
+            ? `<span style="color:${expiryWarn ? "#dc2626" : "#64748b"};font-size:11px">${expiryWarn ? "\u26a0\ufe0f " : ""}${expiresAt.toISOString().slice(0,10)} (${daysLeft}d)</span>`
+            : `<span style="color:#aaa">—</span>`;
+          return `
+            <tr>
+              <td><strong>${escHtml(l.name || "")}</strong></td>
+              <td class="email">${escHtml(l.email)}</td>
+              <td>${tierBadge}</td>
+              <td>${expiryCell}</td>
+              <td class="email" style="font-size:10px">${l.stripe_subscription_id ? escHtml(l.stripe_subscription_id) : "—"}</td>
+              <td>
+                <form method="POST" action="/admin/set-licence" style="display:inline-flex;gap:4px;align-items:center">
+                  <input type="hidden" name="userId" value="${l.user_id}">
+                  <select name="tier" style="font-size:11px;padding:2px 4px;border:1px solid #d1d5db;border-radius:4px">
+                    <option value="free" ${tier === "free" ? "selected" : ""}>Free</option>
+                    <option value="pro" ${tier === "pro" ? "selected" : ""}>Pro</option>
+                    <option value="business" ${tier === "business" ? "selected" : ""}>Business</option>
+                  </select>
+                  <button type="submit" style="background:#e06b1a;color:#fff;border:none;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">Save</button>
+                </form>
+              </td>
+            </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
     <h2>Pages (${pages.length} real, excl. demo profiles)</h2>
     <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search pages by username, owner, status…" oninput="filterTable(this,'tbody-pages')" /><span class="count" id="tbody-pages-count"></span></div>
     <table>
@@ -1492,18 +1637,21 @@ function filterTable(input,tbodyId){
   </div>
 
   <div class="section">
-    <h2>Recent connections (last 30 days — top 20)</h2>
-    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search connections by visitor ID, country, device…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
+    <h2>Recent connections (in-memory log — last 20 unique IPs)</h2>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search by IP, email, device, browser…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
     <table>
-      <thead><tr><th>Visitor ID</th><th>Country</th><th>Device</th><th>When</th></tr></thead>
+      <thead><tr><th>IP Address</th><th>Logged-in as</th><th>Device</th><th>Browser</th><th>Location</th><th>Path</th><th>When</th></tr></thead>
       <tbody id="tbody-connections">
-        ${recentConnEvents.map(e => `
+        ${ipsWithGeo.length ? ipsWithGeo.map(e => `
           <tr>
-            <td><code style="font-family:ui-monospace,monospace;font-size:11px">${escHtml((e.visitor_id||"").slice(0,16))}…</code></td>
-            <td class="ts">${escHtml(e.country || "Unknown")}</td>
-            <td class="ts">${escHtml(e.device || "—")}</td>
-            <td class="ts">${ago(e.created_at)}</td>
-          </tr>`).join("") || '<tr><td colspan="4" class="ts" style="text-align:center;padding:1rem">No connections in last 30 days</td></tr>'}
+            <td><code style="font-family:ui-monospace,monospace;font-size:11px">${escHtml(e.ip)}</code></td>
+            <td class="email">${escHtml(e.userEmail || "—")}</td>
+            <td class="ts">${escHtml(parseDevice(e.userAgent))}</td>
+            <td class="ts">${escHtml(parseBrowser(e.userAgent))}</td>
+            <td class="ts">${escHtml(e.location || "—")}</td>
+            <td class="ts" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.path)}</td>
+            <td class="ts">${ago(e.timestamp)}</td>
+          </tr>`).join("") : '<tr><td colspan="7" class="ts" style="text-align:center;padding:1rem">No connections logged yet (resets on restart)</td></tr>'}
       </tbody>
     </table>
   </div>
@@ -1516,5 +1664,316 @@ function filterTable(input,tbodyId){
 
 function escHtml(str: string) {
   return String(str ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// LICENCE, STRIPE & AI ROUTES — appended to registerRoutes via module-level patch
+// Call patchRoutes(app) from registerRoutes or after it.
+// ──────────────────────────────────────────────────────────────────────
+export function registerLicenceRoutes(app: Express) {
+  // ── GET /api/me/licence ──────────────────────────────────────────────────────
+  app.get("/api/me/licence", async (req: Request, res: Response) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const lic = getUserLicence(req.session.userId);
+      const pages = await storage.getPagesByOwner(req.session.userEmail!);
+      const limits = getLimits(lic.tier);
+      // Count blocks on first page
+      let blockCount = 0;
+      if (pages.length > 0) {
+        try { blockCount = JSON.parse(pages[0].blocks || "[]").length; } catch {}
+      }
+      return res.json({
+        tier: lic.tier,
+        expiry: lic.expiry,
+        stripeCustomerId: lic.stripeCustomerId,
+        stripeSubscriptionId: lic.stripeSubscriptionId,
+        pageCount: pages.length,
+        blockCount,
+        limits: {
+          pages: limits.pages === Infinity ? null : limits.pages,
+          blocks: limits.blocks === Infinity ? null : limits.blocks,
+          analytics: limits.analytics,
+          contacts: limits.contacts,
+        },
+        priceIds: {
+          proMonthly: process.env.STRIPE_PRO_MONTHLY_PRICE_ID || "",
+          proAnnual: process.env.STRIPE_PRO_ANNUAL_PRICE_ID || "",
+          businessMonthly: process.env.STRIPE_BUSINESS_MONTHLY_PRICE_ID || "",
+          businessAnnual: process.env.STRIPE_BUSINESS_ANNUAL_PRICE_ID || "",
+        },
+        stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || process.env.VITE_STRIPE_PUBLISHABLE_KEY || "",
+      });
+    } catch (e) {
+      return res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // ── POST /api/stripe/create-checkout ────────────────────────────────────────
+  app.post("/api/stripe/create-checkout", async (req: Request, res: Response) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Not authenticated" });
+    if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: "Payments not configured" });
+    try {
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      const { priceId } = req.body;
+      if (!priceId) return res.status(400).json({ error: "priceId required" });
+      const mapped = tierFromPriceId(priceId);
+      if (!mapped) return res.status(400).json({ error: "Invalid priceId" });
+
+      const lic = getUserLicence(req.session.userId);
+      let customerId = lic.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: req.session.userEmail,
+          metadata: { userId: String(req.session.userId) },
+        });
+        customerId = customer.id;
+        setUserLicence(req.session.userId, lic.tier, lic.expiry, customerId);
+      }
+
+      const origin = req.headers.origin || "https://linkbay.ai";
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ["card"],
+        mode: "subscription",
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: `${origin}/dashboard?billing=success`,
+        cancel_url: `${origin}/dashboard?tab=billing`,
+        metadata: { userId: String(req.session.userId) },
+      });
+      return res.json({ url: session.url });
+    } catch (e: any) {
+      console.error("Stripe checkout error:", e.message);
+      return res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  // ── POST /api/stripe/create-portal ──────────────────────────────────────────
+  app.post("/api/stripe/create-portal", async (req: Request, res: Response) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Not authenticated" });
+    if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: "Payments not configured" });
+    try {
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      const lic = getUserLicence(req.session.userId);
+      if (!lic.stripeCustomerId) return res.status(400).json({ error: "No Stripe customer found" });
+      const origin = req.headers.origin || "https://linkbay.ai";
+      const portal = await stripe.billingPortal.sessions.create({
+        customer: lic.stripeCustomerId,
+        return_url: `${origin}/dashboard?tab=billing`,
+      });
+      return res.json({ url: portal.url });
+    } catch (e: any) {
+      console.error("Stripe portal error:", e.message);
+      return res.status(500).json({ error: "Failed to create portal session" });
+    }
+  });
+
+  // ── POST /api/stripe/webhook ─────────────────────────────────────────────────
+  // Uses rawBody captured in index.ts express.json verify callback
+  app.post("/api/stripe/webhook", async (req: Request, res: Response) => {
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+      return res.status(503).json({ error: "Stripe not configured" });
+    }
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const sig = req.headers["stripe-signature"] as string;
+    const rawBody = (req as any).rawBody;
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (e: any) {
+      console.error("Webhook signature failed:", e.message);
+      return res.status(400).json({ error: "Invalid signature" });
+    }
+
+    try {
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          const userId = session.metadata?.userId ? parseInt(session.metadata.userId) : null;
+          if (!userId) break;
+          // Get subscription details
+          if (session.subscription) {
+            const sub = await stripe.subscriptions.retrieve(session.subscription as string);
+            const priceId = sub.items.data[0]?.price.id;
+            const mapped = priceId ? tierFromPriceId(priceId) : null;
+            if (mapped) {
+              const expiry = new Date((sub as any).current_period_end * 1000).toISOString();
+              setUserLicence(userId, mapped.tier, expiry, session.customer as string, sub.id, priceId);
+            }
+          }
+          break;
+        }
+        case "customer.subscription.updated": {
+          const sub = event.data.object as Stripe.Subscription;
+          const user = getUserByStripeSubscriptionId(sub.id) || getUserByStripeCustomerId(sub.customer as string);
+          if (!user) break;
+          const priceId = sub.items.data[0]?.price.id;
+          const mapped = priceId ? tierFromPriceId(priceId) : null;
+          if (mapped) {
+            const expiry = new Date((sub as any).current_period_end * 1000).toISOString();
+            setUserLicence(user.id, mapped.tier, expiry, undefined, sub.id, priceId);
+          }
+          break;
+        }
+        case "customer.subscription.deleted": {
+          const sub = event.data.object as Stripe.Subscription;
+          const user = getUserByStripeSubscriptionId(sub.id) || getUserByStripeCustomerId(sub.customer as string);
+          if (!user) break;
+          setUserLicence(user.id, "free", null);
+          break;
+        }
+        case "invoice.payment_failed": {
+          // Log but don’t immediately downgrade — Stripe will retry
+          console.warn("Payment failed for customer:", (event.data.object as any).customer);
+          break;
+        }
+      }
+    } catch (e: any) {
+      console.error("Webhook handler error:", e.message);
+    }
+    return res.json({ received: true });
+  });
+
+  // ── PATCH /api/admin/users/:id/licence ──────────────────────────────────────
+  app.patch("/api/admin/users/:id/licence", async (req: Request, res: Response) => {
+    // Admin auth check
+    const adminPassword = process.env.ADMIN_PASSWORD || "";
+    const authHeader = req.headers.authorization || "";
+    const sessionAdmin = (req.session as any).isAdmin;
+    const basicMatch = authHeader.startsWith("Basic ") && Buffer.from(authHeader.slice(6), "base64").toString().split(":")[1] === adminPassword;
+    if (!sessionAdmin && !basicMatch) {
+      // Check admin cookie used by the admin panel
+      const cookieAdmin = req.cookies?.adminAuth === adminPassword;
+      if (!cookieAdmin) return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      const userId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+      const tier = String(req.body?.tier || "").trim();
+      const expiry = req.body?.expiry ? String(req.body.expiry) : undefined;
+      if (!tier) return res.status(400).json({ error: "tier required" });
+      const validTiers = ["free", "pro", "business"];
+      if (!validTiers.includes(tier)) return res.status(400).json({ error: "Invalid tier" });
+      const finalExpiry = expiry || (tier !== "free" ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() : null);
+      setUserLicence(userId, tier, finalExpiry);
+      return res.json({ success: true, tier, expiry: finalExpiry });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── GET /api/admin/licence-stats ────────────────────────────────────────────
+  app.get("/api/admin/licence-stats", async (req: Request, res: Response) => {
+    if (!process.env.ADMIN_PASSWORD) return res.status(503).json({ error: "Not configured" });
+    try {
+      const db = new Database(process.env.DB_PATH || "data.db");
+      const users = db.prepare("SELECT id, email, name, licence, licence_expiry, stripe_customer_id, stripe_subscription_id FROM users ORDER BY id DESC").all() as any[];
+      db.close();
+      const now = new Date();
+      const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const stats = {
+        total: users.length,
+        free: users.filter(u => !u.licence || u.licence === "free").length,
+        pro: users.filter(u => u.licence === "pro").length,
+        business: users.filter(u => u.licence === "business").length,
+        expiringIn7Days: users.filter(u => {
+          if (!u.licence_expiry) return false;
+          const exp = new Date(u.licence_expiry);
+          return exp > now && exp <= in7Days;
+        }).length,
+        mrr: users.filter(u => u.licence === "pro").length * 5 + users.filter(u => u.licence === "business").length * 20,
+      };
+      return res.json({ users, stats });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── POST /api/ai/generate-page ───────────────────────────────────────────────
+  app.post("/api/ai/generate-page", async (req: Request, res: Response) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Not authenticated" });
+    if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI not configured" });
+
+    // Rate limit: 5 per user per hour
+    const userId = req.session.userId;
+    const now = Date.now();
+    const bucket = aiRateLimit.get(userId);
+    if (bucket && bucket.resetAt > now) {
+      if (bucket.count >= 5) return res.status(429).json({ error: "Rate limit: max 5 generations per hour" });
+      bucket.count++;
+    } else {
+      aiRateLimit.set(userId, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    }
+
+    try {
+      const { answers } = req.body;
+      if (!answers) return res.status(400).json({ error: "answers required" });
+
+      // Sanitise inputs
+      const safe = (s: string) => String(s || "").slice(0, 200).replace(/[<>{}\\]/g, "");
+      const name     = safe(answers.name);
+      const tagline  = safe(answers.tagline);
+      const goal     = safe(answers.goal);
+      const industry = safe(answers.industry);
+      const style    = safe(answers.style);
+
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const systemPrompt = `You are a page builder assistant for Linkbay, a link-in-bio platform.
+Your ONLY job is to output a single valid JSON object for a Linkbay page.
+NEVER output explanations, markdown, comments, or any text outside the JSON.
+If asked anything not related to building a Linkbay page, output: {"error":"off_topic"}
+
+Output schema:
+{
+  "background": string,  // one of: none, bg-aurora, bg-blush, bg-dusk, bg-ember, bg-fog, bg-forest, bg-glacier, bg-haze, bg-ivory, bg-lava, bg-midnight, bg-mint, bg-mocha, bg-ocean, bg-peach, bg-plum, bg-rose, bg-sand, bg-slate, bg-twilight
+  "accentColor": string, // hex colour matching the brand
+  "fontFamily": string,  // one of: inter, cabinet-grotesk, general-sans, playfair, space-grotesk
+  "blocks": Block[]      // 4-8 blocks
+}
+
+Block types and their field shapes:
+- text:      { id, type:"text",      content:"markdown text" }
+- link:      { id, type:"link",      title:"label", url:"https://...", description:"optional" }
+- socials:   { id, type:"socials",   links:[{platform:"instagram",url:"https://..."}, ...] }
+- lead_form: { id, type:"lead_form", title:"...", description:"...", buttonText:"..." }
+- video:     { id, type:"video",     url:"https://youtube.com/...", title:"..." }
+- countdown: { id, type:"countdown", title:"...", targetDate:"2025-12-31" }
+- poll:      { id, type:"poll",      question:"...", options:["Option A","Option B"] }
+
+Rules:
+- Use a UUID-style string for each block id (e.g. "blk-1", "blk-2")
+- Choose background and accentColor to match the user's style and industry
+- Pre-fill all content with realistic, specific text based on the user's answers
+- Include at minimum: one text block (bio/tagline), 2-3 link blocks, one socials block
+- If goal is lead generation, include a lead_form block
+- Output ONLY the JSON object, nothing else`;
+
+      const userPrompt = `Build a Linkbay page for:
+- Name/Brand: ${name}
+- What they do: ${tagline}
+- Page goal: ${goal}
+- Industry: ${industry}
+- Preferred style: ${style}`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+        temperature: 0.7,
+      });
+
+      const raw = completion.choices[0]?.message?.content || "{}";
+      const parsed = JSON.parse(raw);
+      if (parsed.error) return res.status(400).json({ error: "AI could not generate page", detail: parsed.error });
+      return res.json(parsed);
+    } catch (e: any) {
+      console.error("AI generation error:", e.message);
+      return res.status(500).json({ error: "AI generation failed" });
+    }
+  });
 }
 

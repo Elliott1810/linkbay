@@ -978,9 +978,9 @@ a, button, [role="button"] {
     align-items: stretch !important;
   }
 
-  /* Nav label visibility */
+  /* Nav label visibility — M1: hide labels entirely on very narrow screens so 8 tabs fit */
   .nav-label-desktop { display: none !important; }
-  .nav-label-mobile { display: block !important; font-size: 9px !important; line-height: 1 !important; }
+  .nav-label-mobile { display: none !important; }
 
   /* ─── Fix 3: Each tab button — scrollable, equal min-width ─── */
   .dashboard-sidebar .sidebar-nav {
@@ -992,18 +992,18 @@ a, button, [role="button"] {
 
   .dashboard-sidebar .sidebar-nav-item {
     flex: 1 1 0 !important;         /* share space equally */
-    min-width: 44px !important;     /* reduced to fit 8 tabs on 375px screen */
-    max-width: 72px !important;
+    min-width: 36px !important;     /* M1: smaller min-width, no labels needed */
+    max-width: 56px !important;
     flex-direction: column !important;
     justify-content: center !important;
     align-items: center !important;
-    padding: 4px 2px 3px !important;
+    padding: 6px 2px 6px !important;
     font-size: 9px !important;
     font-weight: 600 !important;
-    gap: 2px !important;
+    gap: 0 !important;
     border-radius: 0 !important;
     border-left: none !important;
-    height: 58px !important;
+    height: 48px !important;
     overflow: visible !important;  /* allow badge to show above */
     letter-spacing: 0 !important;
     position: relative !important;
@@ -1272,10 +1272,11 @@ a, button, [role="button"] {
   .editor-outer {
     max-height: 100% !important;
   }
-  /* Editor settings panel sticky top must clear mobile context bar */
+  /* M2: Editor settings panel — must not overlap the dashboard header/tab bar above it */
   .editor-settings-panel {
     top: 0 !important;
-    z-index: 5 !important;
+    z-index: 1 !important;  /* below dashboard header (z-index: 100) */
+    position: relative !important;
   }
 
   /* ─── Mobile 4: Ensure badge parent containers don't clip the dot ─── */
@@ -1294,4 +1295,77 @@ img.avatar-img {
   max-width: none !important;
   object-fit: cover;
   flex-shrink: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   20 CSS Gradient Backgrounds — applied as a class on the ProfilePage wrapper
+   ───────────────────────────────────────────────────────────────────────────── */
+.bg-aurora   { background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); min-height: 100dvh; }
+.bg-blush    { background: linear-gradient(135deg, #f8e1e7 0%, #fce4ec 40%, #f48fb1 100%); min-height: 100dvh; }
+.bg-dusk     { background: linear-gradient(160deg, #2d1b69 0%, #11998e 100%); min-height: 100dvh; }
+.bg-ember    { background: linear-gradient(135deg, #1a0505 0%, #3d0c02 40%, #b5451b 100%); min-height: 100dvh; }
+.bg-fog      { background: linear-gradient(135deg, #e0e0e0 0%, #efefef 50%, #d3cce3 100%); min-height: 100dvh; }
+.bg-forest   { background: linear-gradient(160deg, #0a2e1f 0%, #1a4a2e 50%, #2d6a4f 100%); min-height: 100dvh; }
+.bg-glacier  { background: linear-gradient(135deg, #e8f4f8 0%, #c8e6f0 50%, #a8d5e8 100%); min-height: 100dvh; }
+.bg-haze     { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100dvh; }
+.bg-ivory    { background: linear-gradient(135deg, #fefefe 0%, #f5f0e8 50%, #ede0c8 100%); min-height: 100dvh; }
+.bg-lava     { background: linear-gradient(160deg, #1a0000 0%, #4a0000 40%, #e53935 100%); min-height: 100dvh; }
+.bg-midnight { background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%); min-height: 100dvh; }
+.bg-mint     { background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 50%, #a5d6a7 100%); min-height: 100dvh; }
+.bg-mocha    { background: linear-gradient(160deg, #2c1810 0%, #4a2c1a 50%, #8b5a2b 100%); min-height: 100dvh; }
+.bg-ocean    { background: linear-gradient(135deg, #0c1445 0%, #0a3d62 50%, #006994 100%); min-height: 100dvh; }
+.bg-peach    { background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 50%, #ffcc80 100%); min-height: 100dvh; }
+.bg-plum     { background: linear-gradient(135deg, #2d1b33 0%, #4a2d55 50%, #7b4f9e 100%); min-height: 100dvh; }
+.bg-rose     { background: linear-gradient(160deg, #1a0010 0%, #4a0025 40%, #c2185b 100%); min-height: 100dvh; }
+.bg-sand     { background: linear-gradient(135deg, #f5f0e8 0%, #e8dcc8 50%, #d4c4a0 100%); min-height: 100dvh; }
+.bg-slate    { background: linear-gradient(135deg, #1e2a38 0%, #2d3f55 50%, #3d5a7a 100%); min-height: 100dvh; }
+.bg-twilight { background: linear-gradient(160deg, #0f0c29 0%, #302b63 50%, #24243e 100%); min-height: 100dvh; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Block Styles — applied as block-style-{name} on each block wrapper in ProfilePage
+   ───────────────────────────────────────────────────────────────────────────── */
+.block-style-default .block-card { /* standard — no overrides */ }
+
+.block-style-rounded .block-card {
+  border-radius: 1.5rem !important;
+}
+.block-style-sharp .block-card {
+  border-radius: 0 !important;
+}
+.block-style-bordered .block-card {
+  border: 2px solid var(--color-primary, #e06b1a) !important;
+}
+.block-style-outlined .block-card {
+  background: transparent !important;
+  border: 2px solid currentColor !important;
+}
+.block-style-elevated .block-card {
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22) !important;
+  transform: translateY(-2px);
+}
+.block-style-ghost .block-card {
+  background: rgba(255,255,255,0.10) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.22) !important;
+}
+.block-style-pill .block-card {
+  border-radius: 9999px !important;
+}
+.block-style-underline .block-card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-bottom: 2px solid var(--color-primary, #e06b1a) !important;
+  border-radius: 0 !important;
+}
+.block-style-gradient .block-card {
+  background: linear-gradient(135deg, var(--color-primary, #e06b1a), color-mix(in srgb, var(--color-primary, #e06b1a) 60%, #000)) !important;
+  color: #fff !important;
+}
+
+/* M3: Analytics detail grid — stacks to 1 column on mobile */
+@media (max-width: 640px) {
+  .analytics-detail-grid {
+    grid-template-columns: 1fr !important;
+  }
 }

@@ -3,79 +3,100 @@ import { Link } from "wouter";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
+// Correct pricing: Pro £5/mo or £4/mo billed annually (£48/yr), Business £20/mo or £16/mo billed annually (£192/yr)
 const plans = [
   {
     id: "free",
     name: "Free",
     monthly: 0,
-    annual: 0,
-    tagline: "Get started with no commitment.",
-    features: {
-      "Page & Links": ["1 page", "5 links per page", "Linkbay subdomain (yourname.linkbay.ai)", "Basic themes (3 presets)"],
-      "Analytics": ["Page view counter", "Total link clicks"],
-      "Lead Capture": [],
-      "AI Features": ["AI headline suggestion (1 use)"],
-      "Custom Branding": [],
-      "Support": ["Community support"],
-    },
+    annualMonthly: 0,
+    annualTotal: 0,
+    tagline: "Build your page and start sharing links, completely free.",
+    featured: false,
+    features: [
+      "1 page",
+      "Unlimited links",
+      "All core block types",
+      "Lead capture forms",
+      "Analytics dashboard",
+      "Linkbay subdomain (name.linkbay.ai)",
+      "AI page builder",
+      "3 block style presets",
+      "Community support",
+    ],
+    cta: "Get started free",
+    ctaHref: "/builder",
   },
   {
     id: "pro",
     name: "Pro",
-    monthly: 9,
-    annual: 7,
-    tagline: "For professionals who want results.",
+    monthly: 5,
+    annualMonthly: 4,
+    annualTotal: 48,
+    tagline: "For creators and professionals who want more from their page.",
     featured: true,
-    features: {
-      "Page & Links": ["Unlimited pages", "Unlimited links", "Custom domain", "All block types (16+)", "All themes + custom colours", "Custom fonts", "Mobile & desktop preview"],
-      "Analytics": ["Full analytics dashboard", "Device & source breakdown", "Conversion tracking", "Weekly digest email", "Export CSV"],
-      "Lead Capture": ["Lead form block", "Email capture block", "Leads inbox with notes & tags", "CSV export"],
-      "AI Features": ["AI wizard setup", "AI headline + bio + CTA generation", "AI layout recommendations", "AI copy variants", "AI audit suggestions"],
-      "Custom Branding": ["Remove Linkbay branding", "Custom meta title & description"],
-      "Support": ["Priority email support", "Setup guidance"],
-    },
+    features: [
+      "Everything in Free",
+      "Unlimited pages",
+      "Custom domain (coming soon)",
+      "Priority email support",
+      "Remove Linkbay branding",
+      "Advanced analytics & date filters",
+      "% change analytics vs previous period",
+      "Export leads to CSV",
+      "Early access to new features",
+    ],
+    cta: "Start Pro",
+    ctaHref: "/dashboard?billing=pro",
   },
   {
     id: "business",
     name: "Business",
-    monthly: 29,
-    annual: 24,
-    tagline: "For agencies and teams managing multiple clients.",
-    features: {
-      "Page & Links": ["Everything in Pro", "Unlimited client pages", "Bulk page creation"],
-      "Analytics": ["White-label reports", "Client-level reporting", "Advanced date ranges"],
-      "Lead Capture": ["Full lead management", "Multi-client inbox", "Webhook notifications"],
-      "AI Features": ["All Pro AI features", "Niche template library", "Batch AI setup"],
-      "Custom Branding": ["Full white-label", "Client-facing branding", "Custom login page"],
-      "Support": ["Dedicated support", "Onboarding call", "SLA uptime guarantee"],
-      "Team & Agency": ["5 team seats (+£5/seat)", "Shared asset library", "Client management portal", "API access"],
-    },
+    monthly: 20,
+    annualMonthly: 16,
+    annualTotal: 192,
+    tagline: "For agencies and teams managing multiple pages and clients.",
+    featured: false,
+    features: [
+      "Everything in Pro",
+      "Multiple team members",
+      "Client page management",
+      "White-label branding",
+      "Custom meta title & description",
+      "Advanced lead management",
+      "Webhook integrations",
+      "Dedicated support",
+      "Onboarding call",
+    ],
+    cta: "Start Business",
+    ctaHref: "/dashboard?billing=business",
   },
 ];
 
 const featureRows = [
   { label: "Pages", free: "1", pro: "Unlimited", business: "Unlimited" },
   { label: "Links per page", free: "Unlimited", pro: "Unlimited", business: "Unlimited" },
-  { label: "Block types (link, text, poll)", free: "✓", pro: "✓", business: "✓" },
+  { label: "All block types", free: "✓", pro: "✓", business: "✓" },
   { label: "Lead capture forms", free: "✓", pro: "✓", business: "✓" },
   { label: "Analytics dashboard", free: "✓", pro: "✓", business: "✓" },
-  { label: "Custom domain", free: "—", pro: "✓", business: "✓" },
-  { label: "Advanced block types", free: "—", pro: "✓", business: "✓" },
-  { label: "AI page builder", free: "—", pro: "✓", business: "✓" },
+  { label: "AI page builder", free: "✓", pro: "✓", business: "✓" },
+  { label: "% change analytics", free: "—", pro: "✓", business: "✓" },
+  { label: "Custom domain", free: "—", pro: "Soon", business: "Soon" },
   { label: "Remove branding", free: "—", pro: "✓", business: "✓" },
+  { label: "Unlimited pages", free: "—", pro: "✓", business: "✓" },
   { label: "White-label", free: "—", pro: "—", business: "✓" },
   { label: "Team seats", free: "—", pro: "—", business: "✓" },
-  { label: "Agency dashboard", free: "—", pro: "—", business: "✓" },
-  { label: "API access", free: "—", pro: "—", business: "✓" },
+  { label: "Webhook integrations", free: "—", pro: "—", business: "✓" },
+  { label: "Dedicated support", free: "—", pro: "—", business: "✓" },
 ];
 
 const billingFaqs = [
-  { q: "Is there a free trial for paid plans?", a: "Pro comes with a 14-day free trial — no credit card required. You can build your page, capture leads, and test the full product before committing." },
   { q: "Can I cancel any time?", a: "Yes. Cancel from your account settings at any time. Your page stays live until the end of your billing period." },
-  { q: "How does annual billing work?", a: "Annual billing is charged upfront for 12 months at the discounted rate. You save ~22% compared to monthly billing." },
-  { q: "Can I use my own domain on the Pro plan?", a: "Yes. Add your custom domain in Settings → Domain. We provide step-by-step DNS instructions. Most domains are live within 5 minutes." },
-  { q: "What happens to my page if I downgrade?", a: "Your content is preserved. If you exceed free plan limits (1 page, 5 links), excess pages are archived (not deleted) and you can reactivate by upgrading." },
-  { q: "Do you offer discounts for non-profits or students?", a: "Yes — contact us for a 50% discount. We verify eligibility and apply it within 1 business day." },
+  { q: "How does annual billing work?", a: "Annual billing is charged upfront for 12 months. Pro is £48/year (equivalent to £4/month) and Business is £192/year (equivalent to £16/month) — saving you 20% vs monthly." },
+  { q: "Is there a free trial for paid plans?", a: "You can build and test your full page on the Free plan with no credit card required. Upgrade any time when you're ready." },
+  { q: "What happens to my page if I downgrade?", a: "Your content is always preserved. If you have multiple pages on Pro/Business and downgrade to Free, only 1 page is kept active — the rest are archived (not deleted) and reactivated when you upgrade again." },
+  { q: "Can I use my own domain?", a: "Custom domain support is coming soon on Pro and Business plans. You'll be able to connect your domain in Settings with step-by-step DNS instructions." },
+  { q: "Do you offer refunds?", a: "We offer a full refund within 7 days of your first payment if you're not satisfied. Contact us at support@linkbay.ai." },
 ];
 
 export default function PricingPage() {
@@ -91,26 +112,24 @@ export default function PricingPage() {
         <div className="container-narrow" style={{ textAlign: "center" }}>
           <span className="badge badge-muted" style={{ marginBottom: "1.25rem" }}>Pricing</span>
           <h1 className="text-title" style={{ marginBottom: "1rem" }}>Simple, honest pricing.</h1>
-          <p className="text-body-lg text-muted" style={{ marginBottom: "2rem", marginLeft: "auto", marginRight: "auto" }}>
-            Free to start. Upgrade when you need more. No hidden fees, no confusing tiers.
+          <p className="text-body-lg text-muted" style={{ marginBottom: "2rem", maxWidth: 480, marginLeft: "auto", marginRight: "auto" }}>
+            Free forever. Upgrade for more pages, advanced analytics, and team tools. No hidden fees.
           </p>
 
           {/* Billing toggle */}
           <div style={{ display: "inline-flex", alignItems: "center", gap: "0.875rem", padding: "0.5rem 1rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-full)" }}>
             <button
               onClick={() => setAnnual(false)}
-              style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: annual ? "var(--color-text-muted)" : "var(--color-text)", background: annual ? "none" : "var(--color-surface)", border: "none", cursor: "pointer", padding: "0.375rem 0.875rem", borderRadius: "var(--radius-full)", boxShadow: annual ? "none" : "var(--shadow-sm)" }}
-              data-testid="button-billing-monthly"
+              style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: annual ? "var(--color-text-muted)" : "var(--color-text)", background: annual ? "none" : "var(--color-surface)", border: "none", cursor: "pointer", padding: "0.375rem 0.875rem", borderRadius: "var(--radius-full)", boxShadow: annual ? "none" : "var(--shadow-sm)", transition: "all 0.15s" }}
             >
               Monthly
             </button>
             <button
               onClick={() => setAnnual(true)}
-              style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: annual ? "var(--color-text)" : "var(--color-text-muted)", background: annual ? "var(--color-surface)" : "none", border: "none", cursor: "pointer", padding: "0.375rem 0.875rem", borderRadius: "var(--radius-full)", boxShadow: annual ? "var(--shadow-sm)" : "none", display: "flex", alignItems: "center", gap: "0.375rem" }}
-              data-testid="button-billing-annual"
+              style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: annual ? "var(--color-text)" : "var(--color-text-muted)", background: annual ? "var(--color-surface)" : "none", border: "none", cursor: "pointer", padding: "0.375rem 0.875rem", borderRadius: "var(--radius-full)", boxShadow: annual ? "var(--shadow-sm)" : "none", display: "flex", alignItems: "center", gap: "0.375rem", transition: "all 0.15s" }}
             >
               Annual
-              <span style={{ fontSize: 10, background: "var(--color-success)", color: "#fff", padding: "0.15rem 0.4rem", borderRadius: 999, fontWeight: 700 }}>Save 22%</span>
+              <span style={{ fontSize: 10, background: "var(--color-success)", color: "#fff", padding: "0.15rem 0.4rem", borderRadius: 999, fontWeight: 700 }}>Save 20%</span>
             </button>
           </div>
         </div>
@@ -121,57 +140,52 @@ export default function PricingPage() {
         <div className="container-default">
           <div className="pricing-cards-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1.5rem", maxWidth: 960, margin: "0 auto" }}>
             {plans.map(plan => (
-              <div key={plan.id} className={`pricing-card ${plan.featured ? "featured" : ""}`}>
+              <div key={plan.id} className={`pricing-card ${plan.featured ? "featured" : ""}`} style={{ position: "relative" }}>
                 {plan.featured && <div className="pricing-badge">Most Popular</div>}
 
                 <div style={{ marginBottom: "1.5rem" }}>
-                  <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>{plan.name}</div>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem" }}>
-                    <span style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>
-                      £{annual ? (plan.annual || 0) : plan.monthly}
+                  <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text-muted)", marginBottom: "0.375rem" }}>{plan.name}</div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem", marginBottom: "0.25rem" }}>
+                    <span style={{ fontSize: "2rem", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1 }}>
+                      {plan.monthly === 0 ? "Free" : `£${annual ? plan.annualMonthly : plan.monthly}`}
                     </span>
                     {plan.monthly > 0 && (
                       <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>/mo</span>
                     )}
                   </div>
                   {plan.monthly > 0 && annual && (
-                    <div style={{ fontSize: 11, color: "var(--color-text-faint)" }}>Billed annually (£{(plan.annual || 0) * 12}/yr)</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>£{plan.annualTotal}/year — billed annually</div>
                   )}
-                  <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: "0.5rem" }}>{plan.tagline}</p>
+                  {plan.monthly > 0 && !annual && (
+                    <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>or £{plan.annualMonthly}/mo billed annually</div>
+                  )}
+                  <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", lineHeight: 1.5 }}>{plan.tagline}</p>
                 </div>
 
                 <Link
-                  href={plan.monthly === 0 ? "/builder" : "/waitlist"}
+                  href={plan.ctaHref}
                   className={`btn ${plan.featured ? "btn-primary" : "btn-secondary"}`}
-                  style={{ width: "100%", justifyContent: "center", marginBottom: "1.5rem" }}
-                  data-testid={`button-plan-${plan.id}`}
+                  style={{ width: "100%", justifyContent: "center", marginBottom: "1.75rem", display: "flex" }}
                 >
-                  {plan.monthly === 0 ? "Get started — free" : plan.id === "business" ? "Contact us" : `Start ${plan.name} trial`}
+                  {plan.cta}
                 </Link>
 
-                <div style={{ height: 1, background: "var(--color-divider)", marginBottom: "1.5rem" }} />
+                <div style={{ height: 1, background: "var(--color-divider)", marginBottom: "1.25rem" }} />
 
-                {Object.entries(plan.features).map(([category, items]: [string, string[]]) => (
-                  items.length > 0 && (
-                    <div key={category} style={{ marginBottom: "1.25rem" }}>
-                      <div style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>{category}</div>
-                      <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-                        {items.map(item => (
-                          <li key={item} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", fontSize: "var(--text-sm)" }}>
-                            <span style={{ color: "var(--color-success)", fontSize: 14, lineHeight: 1.4 }}>✓</span>
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )
-                ))}
+                <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {plan.features.map(item => (
+                    <li key={item} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", fontSize: "var(--text-sm)" }}>
+                      <span style={{ color: "var(--color-success)", fontSize: 13, lineHeight: 1.6, flexShrink: 0 }}>✓</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
 
           <p style={{ textAlign: "center", fontSize: "var(--text-sm)", color: "var(--color-text-faint)", marginTop: "2rem" }}>
-            All plans include SSL, uptime monitoring, and mobile-optimised pages. VAT may apply.
+            All plans include SSL, uptime monitoring, and mobile-optimised pages. Prices ex. VAT.
           </p>
         </div>
       </section>
@@ -181,7 +195,7 @@ export default function PricingPage() {
         <div className="container-default">
           <h2 className="text-section-title" style={{ marginBottom: "2rem", textAlign: "center" }}>Full feature comparison</h2>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--text-sm)", maxWidth: 800, margin: "0 auto", display: "block" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--text-sm)", maxWidth: 800, margin: "0 auto" }}>
               <thead>
                 <tr>
                   <th style={{ textAlign: "left", padding: "0.875rem 1rem", borderBottom: "2px solid var(--color-border)", color: "var(--color-text-muted)", fontWeight: 600 }}>Feature</th>
@@ -197,7 +211,7 @@ export default function PricingPage() {
                     {[row.free, row.pro, row.business].map((val, j) => (
                       <td key={j} style={{ padding: "0.75rem 1rem", textAlign: "center" }}>
                         <span style={{
-                          color: val === "✓" ? "var(--color-success)" : val === "—" ? "var(--color-text-faint)" : "var(--color-text)",
+                          color: val === "✓" ? "var(--color-success)" : val === "—" ? "var(--color-text-faint)" : val === "Soon" ? "var(--color-primary)" : "var(--color-text)",
                           fontSize: val === "✓" || val === "—" ? 16 : "var(--text-sm)",
                           fontWeight: 500
                         }}>
@@ -213,10 +227,10 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* Billing FAQ */}
+      {/* FAQ */}
       <section className="section">
         <div className="container-narrow">
-          <h2 className="text-section-title" style={{ marginBottom: "2rem", textAlign: "center" }}>Billing & plan questions</h2>
+          <h2 className="text-section-title" style={{ marginBottom: "2rem", textAlign: "center" }}>Frequently asked questions</h2>
           {billingFaqs.map((faq, i) => (
             <div key={i} className={`accordion-item ${openFaq === i ? "open" : ""}`}>
               <button className="accordion-trigger" onClick={() => setOpenFaq(openFaq === i ? null : i)}>
@@ -234,8 +248,8 @@ export default function PricingPage() {
       {/* CTA */}
       <section className="section-sm" style={{ background: "var(--color-surface-2)" }}>
         <div className="container-narrow" style={{ textAlign: "center" }}>
-          <h2 className="text-section-title" style={{ marginBottom: "1rem" }}>Start with Free. Upgrade when you're ready.</h2>
-          <p className="text-muted" style={{ marginBottom: "1.5rem" }}>No credit card required for the free plan or Pro trial.</p>
+          <h2 className="text-section-title" style={{ marginBottom: "1rem" }}>Start free. Upgrade when you're ready.</h2>
+          <p className="text-muted" style={{ marginBottom: "1.5rem" }}>No credit card needed. Your free page is live in under 2 minutes.</p>
           <Link href="/builder" className="btn btn-primary btn-lg">Get started free →</Link>
         </div>
       </section>
@@ -244,9 +258,6 @@ export default function PricingPage() {
 
       <style>{`
         @media (max-width: 768px) {
-          .pricing-cards-grid { grid-template-columns: 1fr !important; }
-        }
-        @media (max-width: 900px) and (min-width: 769px) {
           .pricing-cards-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>

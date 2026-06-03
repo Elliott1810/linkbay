@@ -2151,19 +2151,29 @@ function SmartBlockWizard({ onPick, onAddAll, onSkip }: { onPick: (kind: BlockKi
 }
 
 // ─── AI Block Recommender — replaces Smart Block Wizard with real GPT-4o call ─
+const BLOCK_GOAL_OPTIONS = [
+  { value: "Grow my email list",           icon: "📬" },
+  { value: "Promote a product or service", icon: "💼" },
+  { value: "Boost engagement",             icon: "📈" },
+  { value: "Share an update or news",      icon: "📰" },
+  { value: "Announce a launch or event",   icon: "🚀" },
+  { value: "Build community",              icon: "👥" },
+];
+
 function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock[]) => void; onSkip: () => void }) {
   const { data: licData } = useLicence();
-  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const { data: userData } = useQuery({ queryKey: ["/api/auth/me"], queryFn: () => apiRequest("GET", "/api/auth/me").then(r => r.json()) });
+  const [phase, setPhase] = useState<"ask" | "loading" | "done" | "error">("ask");
+  const [blockGoal, setBlockGoal] = useState("");
   const [suggestions, setSuggestions] = useState<PageBlock[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [errorMsg, setErrorMsg] = useState("");
-  const [retryCount, setRetryCount] = useState(0);
 
   const tier = (licData as any)?.tier || "free";
-  const roleLabel = tier === "business" ? "Business" : tier === "pro" ? "Pro user" : "Creator";
+  const userName = (userData as any)?.name || "";
 
-  const fetchSuggestions = () => {
-    setStatus("loading");
+  const fetchSuggestions = (goal: string) => {
+    setPhase("loading");
     setErrorMsg("");
     fetch("/api/ai/generate-page", {
       method: "POST",
@@ -2171,19 +2181,19 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         answers: {
-          name: "My Page",
-          tagline: `${roleLabel} looking to grow engagement`,
-          goal: "Add engaging content blocks to my page",
-          industry: roleLabel,
-          style: "clean, modern, professional",
+          name: userName || "My Page",
+          tagline: goal,
+          goal: goal,
+          industry: tier === "business" ? "Business" : "Professional",
+          style: "clean, modern",
+          blockGoal: goal,
         },
       }),
     })
       .then(async r => {
         let data: any;
-        try { data = await r.json(); } catch { setErrorMsg(`AI service error (HTTP ${r.status}). Please try again.`); setStatus("error"); return; }
-        if (!r.ok || data.error) { setErrorMsg(data.error || `AI service error (${r.status}). Please try again.`); setStatus("error"); return; }
-        // Map AI blocks to PageBlock shape
+        try { data = await r.json(); } catch { setErrorMsg(`AI service error (HTTP ${r.status}). Please try again.`); setPhase("error"); return; }
+        if (!r.ok || data.error) { setErrorMsg(data.error || `AI service error (${r.status}). Please try again.`); setPhase("error"); return; }
         const genId = () => "blk-" + Math.random().toString(36).slice(2, 8);
         const mapped: PageBlock[] = (data.blocks || []).flatMap((b: any): PageBlock[] => {
           switch (b.type) {
@@ -2194,22 +2204,42 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
             case "countdown": return [{ id: genId(), type: "countdown", title: b.title || "Coming soon", targetDate: b.targetDate || "2026-12-31" } as any];
             default: return [];
           }
-        }).slice(0, 6);
+        }).slice(0, 5);
         setSuggestions(mapped);
         setSelected(new Set(mapped.map((_: PageBlock, i: number) => i)));
-        setStatus("done");
+        setPhase("done");
       })
-      .catch((err: any) => { setErrorMsg(`Could not reach AI service: ${err?.message || "network error"}. Please try again.`); setStatus("error"); });
+      .catch((err: any) => { setErrorMsg(`Could not reach AI service: ${err?.message || "network error"}. Please try again.`); setPhase("error"); });
   };
-
-  useEffect(() => { if (status === "idle" || retryCount > 0) fetchSuggestions(); }, [retryCount]);
 
   const toggle = (i: number) => setSelected(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
   const blockIcon = (type: string) =>
     type === "text" ? "📝" : type === "poll" ? "📊" : type === "lead-form" ? "📬" : type === "social-links" ? "🔗" : type === "countdown" ? "⏳" : "🧩";
 
-  if (status === "loading") return (
+  // Phase: ask — one question before generating
+  if (phase === "ask") return (
+    <div style={{ marginBottom: "1rem", padding: "1rem", background: "var(--color-primary-highlight)", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+        <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>✨ What do you want to achieve?</span>
+        <button style={{ background: "none", border: "none", fontSize: 11, color: "var(--color-text-faint)", cursor: "pointer" }} onClick={onSkip}>Skip</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.375rem", marginBottom: "0.75rem" }}>
+        {BLOCK_GOAL_OPTIONS.map(opt => {
+          const active = blockGoal === opt.value;
+          return (
+            <button key={opt.value} type="button" onClick={() => setBlockGoal(opt.value)} style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.625rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-surface)" : "var(--color-bg)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: 12, fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const }}>
+              <span>{opt.icon}</span>{opt.value}
+            </button>
+          );
+        })}
+      </div>
+      <button className="btn btn-primary btn-sm" style={{ width: "100%", justifyContent: "center" }} disabled={!blockGoal} onClick={() => fetchSuggestions(blockGoal)}>✨ Show me AI-recommended blocks</button>
+    </div>
+  );
+
+  // Phase: loading
+  if (phase === "loading") return (
     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "1rem", background: "var(--color-primary-highlight)", borderRadius: "var(--radius-md)", marginBottom: "1rem" }}>
       <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2.5px solid var(--color-primary)", borderTopColor: "transparent", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
       <span style={{ fontSize: "var(--text-sm)", color: "var(--color-primary)", fontWeight: 600 }}>GPT-4o is recommending blocks for you…</span>
@@ -2217,15 +2247,17 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
     </div>
   );
 
-  if (status === "error") return (
-    <div style={{ padding: "0.875rem 1rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+  // Phase: error
+  if (phase === "error") return (
+    <div style={{ padding: "0.875rem 1rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" as const }}>
       <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", flex: 1 }}>🤖 {errorMsg || "AI unavailable"} — pick a block below or retry.</span>
-      <button className="btn btn-secondary btn-sm" onClick={() => setRetryCount(c => c + 1)}>Retry AI</button>
+      <button className="btn btn-secondary btn-sm" onClick={() => fetchSuggestions(blockGoal)}>Retry AI</button>
       <button className="btn btn-secondary btn-sm" onClick={onSkip}>Skip</button>
     </div>
   );
 
-  if (status === "done") return (
+  // Phase: done
+  if (phase === "done") return (
     <div style={{ marginBottom: "1rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
         <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>🤖 AI-recommended blocks</span>
@@ -5055,7 +5087,7 @@ function BillingPanel() {
 // ────────────────────────────────────────────────────────────────────────
 function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (page: any) => void }) {
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState({ name: "", tagline: "", goal: "", industry: "", style: "" });
+  const [answers, setAnswers] = useState({ name: "", tagline: "", goal: "", industry: "", colorMood: "", fontStyle: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -5065,23 +5097,107 @@ function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (pa
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const questions = [
-    { key: "name",     label: "What's your name or brand?",         type: "text",   placeholder: "e.g. Sarah Johnson or Bloom Studio" },
-    { key: "tagline", label: "What do you do in one sentence?",      type: "text",   placeholder: "e.g. I help small businesses grow on social media" },
-    { key: "goal",    label: "What's the main goal of your page?",   type: "select", options: ["Get more followers", "Sell products or services", "Capture leads", "Share content", "Other"] },
-    { key: "industry",label: "What industry are you in?",            type: "select", options: ["Creator / Influencer", "Fitness & Health", "Business & Consulting", "Music & Arts", "Retail & E-commerce", "Tech & Software", "Other"] },
-    { key: "style",   label: "What style feels right?",              type: "pills",  options: ["Minimal", "Bold", "Professional", "Playful"] },
+  type WizardQuestion = {
+    key: string;
+    label: string;
+    sublabel?: string;
+    type: "text" | "select" | "pills" | "color-pills";
+    placeholder?: string;
+    options?: { value: string; icon?: string; preview?: string; text?: string }[];
+  };
+
+  const questions: WizardQuestion[] = [
+    {
+      key: "name",
+      label: "What's your name or brand?",
+      type: "text",
+      placeholder: "e.g. Sarah Johnson or Bloom Studio",
+    },
+    {
+      key: "tagline",
+      label: "What do you do in one sentence?",
+      sublabel: "Be specific — this becomes your bio and block text.",
+      type: "text",
+      placeholder: "e.g. I help DTC brands 3x revenue through paid social",
+    },
+    {
+      key: "goal",
+      label: "What's the main goal of this page?",
+      sublabel: "Pick the one that matters most right now.",
+      type: "select",
+      options: [
+        { value: "Get clients or customers",  icon: "💼" },
+        { value: "Grow my audience",          icon: "📈" },
+        { value: "Capture leads & emails",    icon: "📬" },
+        { value: "Promote a launch or event", icon: "🚀" },
+        { value: "Share my content",          icon: "🎥" },
+        { value: "Connect my socials",        icon: "🔗" },
+      ],
+    },
+    {
+      key: "industry",
+      label: "What industry are you in?",
+      type: "select",
+      options: [
+        { value: "Creator / Influencer",     icon: "🎨" },
+        { value: "Fitness & Health",         icon: "💪" },
+        { value: "Business & Consulting",    icon: "📊" },
+        { value: "Music & Arts",             icon: "🎵" },
+        { value: "Retail & E-commerce",      icon: "🛍️" },
+        { value: "Tech & Software",          icon: "💻" },
+        { value: "Education & Coaching",     icon: "🎓" },
+        { value: "Other",                   icon: "✨" },
+      ],
+    },
+    {
+      key: "colorMood",
+      label: "What vibe should your page have?",
+      sublabel: "Sets your background and accent colour.",
+      type: "color-pills",
+      options: [
+        { value: "Warm & energetic",    preview: "linear-gradient(135deg,#b5451b,#e06b1a)", text: "#fff" },
+        { value: "Cool & professional", preview: "linear-gradient(135deg,#0891b2,#e8f4f8)", text: "#0891b2" },
+        { value: "Dark & dramatic",     preview: "linear-gradient(135deg,#1a1a2e,#7c3aed)", text: "#fff" },
+        { value: "Light & minimal",     preview: "linear-gradient(135deg,#f5f0e8,#334155)", text: "#334155" },
+        { value: "Natural & earthy",    preview: "linear-gradient(135deg,#d4c4a0,#059669)", text: "#fff" },
+        { value: "Bold & creative",     preview: "linear-gradient(135deg,#4a0000,#e11d48)", text: "#fff" },
+      ],
+    },
+    {
+      key: "fontStyle",
+      label: "How should your text feel?",
+      sublabel: "Sets the font across your whole page.",
+      type: "pills",
+      options: [
+        { value: "Clean & modern",     icon: "Aa" },
+        { value: "Bold & editorial",   icon: "AB" },
+        { value: "Friendly & rounded", icon: "Oo" },
+        { value: "Elegant & serif",    icon: "Ꭺ" },
+        { value: "Technical & sharp",  icon: "{}" },
+      ],
+    },
   ];
 
   const currentQ = questions[step];
   const totalSteps = questions.length;
-  const canNext = answers[currentQ.key as keyof typeof answers].trim().length > 0;
+  const currentVal = answers[currentQ.key as keyof typeof answers];
+  const canNext = currentVal.trim().length > 0;
 
   async function handleGenerate() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("POST", "/api/ai/generate-page", { answers });
+      const res = await apiRequest("POST", "/api/ai/generate-page", {
+        answers: {
+          name: answers.name,
+          tagline: answers.tagline,
+          goal: answers.goal,
+          industry: answers.industry,
+          style: answers.fontStyle || "clean, modern",
+          colorMood: answers.colorMood,
+          fontStyle: answers.fontStyle,
+        },
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
       onApply(data);
@@ -5093,52 +5209,88 @@ function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (pa
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
-      <div style={{ background: "var(--color-surface)", borderRadius: "var(--radius-xl)", padding: "2rem", maxWidth: 460, width: "100%", boxShadow: "0 24px 64px rgba(0,0,0,0.24)" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: "var(--color-surface)", borderRadius: "var(--radius-xl)", padding: "2rem", maxWidth: 480, width: "100%", boxShadow: "0 24px 64px rgba(0,0,0,0.24)" }} onClick={e => e.stopPropagation()}>
         {loading ? (
           <div style={{ textAlign: "center", padding: "2rem 0" }}>
             <div style={{ fontSize: 40, marginBottom: "1rem", animation: "spin 1.5s linear infinite", display: "inline-block" }}>✨</div>
-            <div style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>Building your page…</div>
-            <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>AI is generating blocks tailored to your brand</div>
+            <div style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>Rebuilding your page…</div>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>GPT-4o is generating blocks tailored to your answers</div>
+            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
           </div>
         ) : (
           <>
             {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-faint)", marginBottom: "0.25rem" }}>Step {step + 1} of {totalSteps}</div>
-                <h2 style={{ fontSize: "var(--text-base)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", margin: 0 }}>{currentQ.label}</h2>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-faint)", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>✨ AI Page Builder · {step + 1} of {totalSteps}</div>
+                <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", margin: 0 }}>{currentQ.label}</h2>
               </div>
               <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 20, lineHeight: 1 }}>×</button>
             </div>
 
             {/* Progress bar */}
-            <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.5rem" }}>
+            <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.25rem" }}>
               <div style={{ height: "100%", width: `${((step + 1) / totalSteps) * 100}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.3s" }} />
             </div>
 
-            {/* Input */}
+            {currentQ.sublabel && (
+              <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "0.875rem", marginTop: "-0.25rem" }}>{currentQ.sublabel}</p>
+            )}
+
+            {/* Text input */}
             {currentQ.type === "text" && (
               <input
                 autoFocus
-                value={answers[currentQ.key as keyof typeof answers]}
+                value={currentVal}
                 onChange={e => setAnswers(a => ({ ...a, [currentQ.key]: e.target.value }))}
                 onKeyDown={e => { if (e.key === "Enter" && canNext) step < totalSteps - 1 ? setStep(s => s + 1) : handleGenerate(); }}
                 placeholder={currentQ.placeholder}
-                style={{ width: "100%", padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: "var(--text-sm)", marginBottom: "1.5rem", boxSizing: "border-box" }}
+                style={{ width: "100%", padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: "var(--text-sm)", marginBottom: "1.25rem", boxSizing: "border-box" as const }}
               />
             )}
+
+            {/* Select (icon + label rows) */}
             {currentQ.type === "select" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
-                {currentQ.options!.map(opt => (
-                  <button key={opt} onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt }))} style={{ padding: "0.625rem 1rem", borderRadius: "var(--radius-md)", border: `1px solid ${answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-border)"}`, background: answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary-highlight)" : "var(--color-bg)", color: answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: 500, cursor: "pointer", textAlign: "left" }}>{opt}</button>
-                ))}
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem", marginBottom: "1.25rem", maxHeight: 320, overflowY: "auto" }}>
+                {currentQ.options!.map(opt => {
+                  const active = currentVal === opt.value;
+                  return (
+                    <button key={opt.value} onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt.value }))} style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.625rem 0.875rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary-highlight)" : "var(--color-bg)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const }}>
+                      {opt.icon && <span style={{ fontSize: 16, minWidth: 20 }}>{opt.icon}</span>}
+                      {opt.value}
+                    </button>
+                  );
+                })}
               </div>
             )}
+
+            {/* Pills (2-col grid) */}
             {currentQ.type === "pills" && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1.5rem" }}>
-                {currentQ.options!.map(opt => (
-                  <button key={opt} onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt }))} style={{ padding: "0.5rem 1rem", borderRadius: "var(--radius-full)", border: `1px solid ${answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-border)"}`, background: answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-bg)", color: answers[currentQ.key as keyof typeof answers] === opt ? "#fff" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: 600, cursor: "pointer" }}>{opt}</button>
-                ))}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.25rem" }}>
+                {currentQ.options!.map(opt => {
+                  const active = currentVal === opt.value;
+                  return (
+                    <button key={opt.value} onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt.value }))} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.625rem 0.875rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary-highlight)" : "var(--color-bg)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const }}>
+                      {opt.icon && <span style={{ fontSize: 13, minWidth: 18, fontWeight: 800 }}>{opt.icon}</span>}
+                      {opt.value}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Colour mood */}
+            {currentQ.type === "color-pills" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.25rem" }}>
+                {currentQ.options!.map(opt => {
+                  const active = currentVal === opt.value;
+                  return (
+                    <button key={opt.value} onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt.value }))} style={{ padding: "0.875rem", borderRadius: "var(--radius-md)", border: `2.5px solid ${active ? "var(--color-primary)" : "transparent"}`, background: opt.preview, cursor: "pointer", boxShadow: active ? "0 0 0 2px var(--color-primary)" : "0 1px 4px rgba(0,0,0,0.15)", transition: "all 0.15s", position: "relative" as const, overflow: "hidden" as const }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: opt.text, textShadow: "0 1px 3px rgba(0,0,0,0.3)", position: "relative" as const, zIndex: 1 }}>{opt.value}</div>
+                      {active && <div style={{ position: "absolute" as const, top: 4, right: 4, width: 16, height: 16, borderRadius: "50%", background: "var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "#fff", fontSize: 9, fontWeight: 800 }}>✓</span></div>}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -5148,7 +5300,7 @@ function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (pa
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <button className="btn btn-secondary btn-sm" onClick={() => step > 0 ? setStep(s => s - 1) : onClose()} style={{ visibility: step === 0 ? "hidden" : "visible" }}>Back</button>
               {step < totalSteps - 1 ? (
-                <button className="btn btn-primary btn-sm" onClick={() => setStep(s => s + 1)} disabled={!canNext}>Next</button>
+                <button className="btn btn-primary btn-sm" onClick={() => setStep(s => s + 1)} disabled={!canNext}>Next →</button>
               ) : (
                 <button className="btn btn-primary btn-sm" onClick={handleGenerate} disabled={!canNext}>✨ Build my page</button>
               )}

@@ -35,9 +35,9 @@ const LINK_ICONS = ["🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇
 // --- Nav items (leads dot injected dynamically) ---
 const navItems = [
   { id: "overview", label: "Overview", icon: "grid" },
-  { id: "blocks", label: "Blocks", icon: "blocks" },
   { id: "editor", label: "Page Editor", icon: "edit" },
   { id: "analytics", label: "Analytics", icon: "chart" },
+  { id: "blocks", label: "Blocks", icon: "blocks" },
   { id: "leads", label: "Leads", icon: "users" },
   { id: "contacts", label: "Contacts", icon: "users" },
   { id: "settings", label: "Settings", icon: "settings" },
@@ -382,9 +382,27 @@ function OverviewPanel({
   const dailyViews = analytics?.dailyViews ?? [];
   const dailyClicks = analytics?.dailyClicks ?? [];
   const dailyLeads = analytics?.dailyLeads ?? [];
+  // Parse a date string that may be YYYY-MM-DD or YYYY-Www (ISO week)
+  const parseDateLabel = (dateStr: string): string => {
+    if (/^\d{4}-W\d{2}$/.test(dateStr)) {
+      // Weekly format: extract year + week number, compute Monday of that week
+      const [yearStr, weekStr] = dateStr.split("-W");
+      const year = parseInt(yearStr, 10);
+      const week = parseInt(weekStr, 10);
+      // Jan 4 is always in week 1 per ISO 8601
+      const jan4 = new Date(year, 0, 4);
+      const dayOfWeek = jan4.getDay() || 7; // Mon=1..Sun=7
+      const weekStart = new Date(jan4);
+      weekStart.setDate(jan4.getDate() - (dayOfWeek - 1) + (week - 1) * 7);
+      return `Wk ${weekStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+    }
+    const d = new Date(dateStr + "T00:00:00");
+    return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  };
+
   // G2a/G2b: use the FULL range returned by the API (no artificial slice)
   const chartData = dailyViews.map((d: { date: string; count: number }, i: number) => ({
-    date: new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+    date: parseDateLabel(d.date),
     Views: d.count,
     Clicks: (dailyClicks[i] as any)?.count ?? 0,
     Leads: (dailyLeads[i] as any)?.count ?? 0,
@@ -585,37 +603,24 @@ function OverviewPanel({
               </div>
             );
             const liveBlockIds = (() => { try { return new Set((JSON.parse(page?.blocks || "[]") as any[]).map((b: any) => b.id)); } catch { return new Set(); } })();
-            const max = Math.max(...interactions.map((i: any) => i.total ?? i.clickCount ?? 0), 1);
+            const totalPageViews = analytics?.periodViews ?? analytics?.totalViews ?? 1;
             return interactions.map((item: any) => {
               const isLive = !item.blockId || liveBlockIds.has(item.blockId);
               const total = item.total ?? item.clickCount ?? 0;
-              const views = item.views ?? 0;
-              const interCount = item.interactions ?? total;
-              const viewPct = max > 0 ? Math.round((views / max) * 100) : 0;
-              const interPct = max > 0 ? Math.round((interCount / max) * 100) : 0;
+              const rate = totalPageViews > 0 ? Math.min(Math.round((total / totalPageViews) * 100), 100) : 0;
               return (
                 <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: "0.25rem", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
                     <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Link"}</span>
                     {!isLive && <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>past</span>}
-                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{total} ×</span>
+                    <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>{rate}%</span>
+                    <span style={{ fontWeight: 700, flexShrink: 0, color: "var(--color-text-muted)" }}>{total} ×</span>
                   </div>
-                  {/* G4b/4c: dual progress bars — views (amber) + interactions (orange) */}
-                  {item.isLink ? (
-                    <div className="progress-bar"><div className="progress-fill" style={{ width: `${interPct}%`, background: isLive ? "var(--color-primary)" : "var(--color-text-faint)" }} /></div>
-                  ) : (
-                    <>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)", marginBottom: 2 }}>
-                        <span>Views: {views}</span><span>Interactions: {interCount}</span>
-                      </div>
-                      <div className="progress-bar" style={{ marginBottom: 2 }}>
-                        <div className="progress-fill" style={{ width: `${viewPct}%`, background: "#f59e0b" }} />
-                      </div>
-                      <div className="progress-bar">
-                        <div className="progress-fill" style={{ width: `${interPct}%`, background: isLive ? "var(--color-primary)" : "var(--color-text-faint)" }} />
-                      </div>
-                    </>
-                  )}
+                  {/* Interaction rate bar: % of page views that became interactions */}
+                  <div style={{ height: 6, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${rate}%`, background: isLive ? "var(--color-primary)" : "var(--color-text-faint)", borderRadius: 999, transition: "width 0.4s" }} />
+                  </div>
+                  <div style={{ fontSize: 9, color: "var(--color-text-faint)", marginTop: 2 }}>{total} interactions / {totalPageViews} views</div>
                 </div>
               );
             });
@@ -2154,18 +2159,22 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
   const fetchSuggestions = () => {
     setStatus("loading");
     setErrorMsg("");
-    apiRequest("POST", "/api/ai/generate-page", {
-      answers: {
-        name: "My Page",
-        tagline: `${roleLabel} looking to grow engagement`,
-        goal: "Add engaging content blocks to my page",
-        industry: roleLabel,
-        style: "clean, modern, professional",
-      },
+    fetch("/api/ai/generate-page", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        answers: {
+          name: "My Page",
+          tagline: `${roleLabel} looking to grow engagement`,
+          goal: "Add engaging content blocks to my page",
+          industry: roleLabel,
+          style: "clean, modern, professional",
+        },
+      }),
     })
-      .then(r => r.json())
-      .then((data: any) => {
-        if (data.error) { setErrorMsg(data.error); setStatus("error"); return; }
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok || data.error) { setErrorMsg(data.error || "AI service returned an error. Please try again."); setStatus("error"); return; }
         // Map AI blocks to PageBlock shape
         const genId = () => "blk-" + Math.random().toString(36).slice(2, 8);
         const mapped: PageBlock[] = (data.blocks || []).flatMap((b: any): PageBlock[] => {
@@ -2182,7 +2191,7 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
         setSelected(new Set(mapped.map((_: PageBlock, i: number) => i)));
         setStatus("done");
       })
-      .catch(() => { setErrorMsg("Could not reach AI."); setStatus("error"); });
+      .catch(() => { setErrorMsg("Could not reach AI service. Please check your connection and try again."); setStatus("error"); });
   };
 
   useEffect(() => { if (status === "idle" || retryCount > 0) fetchSuggestions(); }, [retryCount]);
@@ -2592,8 +2601,23 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
   const dailyViews = analytics?.dailyViews ?? [];
   const dailyClicks = analytics?.dailyClicks ?? [];
   const dailyLeads = analytics?.dailyLeads ?? [];
+  // Parse YYYY-MM-DD or YYYY-Www weekly format safely
+  const parseDateLabel = (dateStr: string): string => {
+    if (/^\d{4}-W\d{2}$/.test(dateStr)) {
+      const [yearStr, weekStr] = dateStr.split("-W");
+      const year = parseInt(yearStr, 10);
+      const week = parseInt(weekStr, 10);
+      const jan4 = new Date(year, 0, 4);
+      const dayOfWeek = jan4.getDay() || 7;
+      const weekStart = new Date(jan4);
+      weekStart.setDate(jan4.getDate() - (dayOfWeek - 1) + (week - 1) * 7);
+      return `Wk ${weekStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+    }
+    const d = new Date(dateStr + "T00:00:00");
+    return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  };
   const chartData = dailyViews.map((d: { date: string; count: number }, i: number) => ({
-    date: new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+    date: parseDateLabel(d.date),
     Views: d.count,
     Clicks: (dailyClicks[i] as any)?.count ?? 0,
     Leads: (dailyLeads[i] as any)?.count ?? 0,
@@ -2640,23 +2664,46 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
       ) : analytics ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
           {/* Stats row */}
-          <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
-            {[
-              { label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0" },
-              { label: days === 0 ? "Views (ALL TIME)" : `Views (${days}d)`, value: analytics.periodViews?.toLocaleString() ?? "0" },
-              { label: days === 0 ? "Clicks (ALL TIME)" : `Clicks (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0" },
-              { label: "Click rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%" },
-              { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString() },
-              { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString() },
-              { label: "Best day", value: analytics.bestDay ? `${analytics.bestDay.count} views (${analytics.bestDay.label})` : "No data" },
-              { label: days === 0 ? "Avg views (ALL TIME)" : `Avg views (${days}d)`, value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—" },
-            ].map(s => (
-              <div key={s.label} className="stat-card">
-                <div className="stat-label">{s.label}</div>
-                <div className="stat-value" style={{ marginTop: "0.5rem" }}>{s.value}</div>
+          {(() => {
+            const prev = analytics.prevPeriod;
+            const pctChange = (curr: number, prevVal: number) => {
+              if (!prev || days === 0) return null;
+              if (prevVal === 0) return curr > 0 ? 100 : null;
+              return Math.round(((curr - prevVal) / prevVal) * 100);
+            };
+            const pctLabel = (curr: number, prevVal: number) => {
+              const p = pctChange(curr, prevVal);
+              if (p === null) return null;
+              const sign = p >= 0 ? "+" : "";
+              return { text: `${sign}${p}%`, up: p >= 0 };
+            };
+            const cards = [
+              { label: days === 0 ? "Total views (all time)" : `Views (${days}d)`, value: (days === 0 ? analytics.totalViews : analytics.periodViews)?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodViews ?? 0, prev?.views ?? 0) },
+              { label: days === 0 ? "Clicks (all time)" : `Clicks (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodClicks ?? 0, prev?.clicks ?? 0) },
+              { label: "Click rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%", delta: null },
+              { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString(), delta: pctLabel(analytics.uniqueVisitors ?? 0, prev?.uniqueVisitors ?? 0) },
+              { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString(), delta: null },
+              { label: "Best day", value: analytics.bestDay ? `${analytics.bestDay.count} views (${analytics.bestDay.label})` : "No data", delta: null },
+              { label: days === 0 ? "Avg views (all time)" : `Avg views (${days}d)`, value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—", delta: null },
+              { label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0", delta: null },
+            ];
+            return (
+              <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
+                {cards.map(s => (
+                  <div key={s.label} className="stat-card">
+                    <div className="stat-label">{s.label}</div>
+                    <div className="stat-value" style={{ marginTop: "0.5rem" }}>{s.value}</div>
+                    {s.delta && (
+                      <div style={{ fontSize: 11, fontWeight: 700, marginTop: "0.375rem", color: s.delta.up ? "var(--color-success)" : "#ef4444" }}>
+                        {s.delta.text} vs prev {days}d
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
+          {/* end stats row */}
 
           {/* Views/Clicks/Leads chart with dropdown */}
           {chartData.length > 0 && (
@@ -2706,16 +2753,25 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
               {(() => {
                 const interactions = analytics.topInteractions ?? analytics.topLinks ?? [];
                 if (interactions.length === 0) return <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No interactions yet.</div>;
-                const max = interactions[0]?.total ?? interactions[0]?.clickCount ?? 1;
-                return interactions.map((item: any) => (
-                  <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.75rem" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 2, gap: "0.5rem" }}>
-                      <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Interaction"}</span>
-                      <span style={{ fontWeight: 700 }}>{item.total ?? item.clickCount}</span>
+                const totalPageViews = analytics.periodViews ?? analytics.totalViews ?? 1;
+                return interactions.map((item: any) => {
+                  const total = item.total ?? item.clickCount ?? 0;
+                  const rate = totalPageViews > 0 ? Math.min(Math.round((total / totalPageViews) * 100), 100) : 0;
+                  return (
+                    <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
+                        <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Interaction"}</span>
+                        <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>{rate}%</span>
+                        <span style={{ fontWeight: 700, flexShrink: 0, color: "var(--color-text-muted)" }}>{total} ×</span>
+                      </div>
+                      {/* Interaction rate bar: % of page views that triggered this interaction */}
+                      <div style={{ height: 6, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${rate}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
+                      </div>
+                      <div style={{ fontSize: 9, color: "var(--color-text-faint)", marginTop: 2 }}>{total} interactions / {totalPageViews} views</div>
                     </div>
-                    <div className="progress-bar"><div className="progress-fill" style={{ width: `${max > 0 ? Math.round(((item.total ?? item.clickCount) / max) * 100) : 0}%` }} /></div>
-                  </div>
-                ));
+                  );
+                });
               })()}
             </div>
 
@@ -3161,27 +3217,22 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
                             <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{blockLabel(block)}</span>
                             <span style={{ fontSize: 11, fontWeight: 700, color: stats.count > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, marginLeft: "0.5rem" }}>{stats.count} ({pct}%)</span>
                           </div>
-                          {/* G6: teal Views bar + amber Interactions bar */}
+                          {/* Interaction rate bar: % of total page views that interacted with this block */}
                           {(() => {
                             const viewCount = stats.eventTypes["view"] ?? 0;
                             const interCount2 = stats.count - viewCount;
-                            const maxCount = Math.max(...Array.from(blockStats.values()).map(s => s.count), 1);
-                            const vPct = Math.round((viewCount / maxCount) * 100);
-                            const iPct = Math.round((interCount2 / maxCount) * 100);
+                            const pageViewsTotal = (analytics as any)?.periodViews ?? (analytics as any)?.totalViews ?? 1;
+                            const interactionRate = pageViewsTotal > 0 ? Math.min(Math.round((interCount2 / pageViewsTotal) * 100), 100) : 0;
                             return (
                               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 3 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)" }}>
-                                  <span>Views</span><span style={{ fontWeight: 600 }}>{viewCount}</span>
+                                  <span>Interaction rate</span>
+                                  <span style={{ fontWeight: 700, color: interactionRate > 0 ? "var(--color-primary)" : "var(--color-text-faint)" }}>{interactionRate}%</span>
                                 </div>
-                                <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
-                                  <div style={{ height: "100%", width: `${vPct}%`, background: "#0891b2", borderRadius: 999, transition: "width 0.4s" }} />
+                                <div style={{ height: 6, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
                                 </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)" }}>
-                                  <span>Interactions</span><span style={{ fontWeight: 600 }}>{interCount2}</span>
-                                </div>
-                                <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
-                                  <div style={{ height: "100%", width: `${iPct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
-                                </div>
+                                <div style={{ fontSize: 9, color: "var(--color-text-faint)" }}>{interCount2} interactions / {viewCount > 0 ? viewCount : pageViewsTotal} views</div>
                               </div>
                             );
                           })()}
@@ -4555,12 +4606,15 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
       </div>
 
       {/* Custom domain */}
-      <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem" }}>
-        <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>Custom domain</h2>
-        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>Available on Pro and Business plans.</p>
+      <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem", opacity: 0.85 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", marginBottom: "0.5rem" }}>
+          <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700 }}>Custom domain</h2>
+          <span style={{ fontSize: 10, fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: 999, background: "rgba(224,107,26,0.12)", color: "var(--color-primary)", border: "1px solid rgba(224,107,26,0.25)", letterSpacing: "0.04em" }}>COMING SOON</span>
+        </div>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>Connect your own domain to your Linkbay page. Available on Business plan.</p>
         <div style={{ display: "flex", gap: "0.75rem" }}>
-          <input className="input" placeholder="yourdomain.com" style={{ flex: 1 }} />
-          <button className="btn btn-secondary">Connect →</button>
+          <input className="input" placeholder="yourdomain.com" style={{ flex: 1 }} disabled />
+          <button className="btn btn-secondary" disabled style={{ opacity: 0.5, cursor: "not-allowed" }}>Coming soon</button>
         </div>
       </div>
 

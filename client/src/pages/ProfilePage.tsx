@@ -788,15 +788,17 @@ export default function ProfilePage() {
           {/* Avatar */}
           {(() => {
             const avatarRadius = (page as any).avatarShape === "rounded" ? "var(--radius-lg)" : "50%";
+            const avatarSize = isPreview ? 52 : 72;
+            const avatarFontSize = isPreview ? "1.25rem" : "1.75rem";
             return page.avatarUrl ? (
               <img
                 src={resolveMediaUrl(page.avatarUrl)}
                 alt={page.ownerName}
                 className="avatar-img"
                 style={{
-                  width: 72, height: 72, borderRadius: avatarRadius,
+                  width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
                   objectFit: "cover",
-                  margin: "0 auto 1rem",
+                  margin: "0 auto 0.75rem",
                   display: "block",
                   flexShrink: 0,
                   minWidth: 0,
@@ -807,12 +809,12 @@ export default function ProfilePage() {
               />
             ) : (
               <div style={{
-                width: 72, height: 72, borderRadius: avatarRadius,
+                width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
                 background: accent,
                 color: "#fff",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "1.75rem", fontWeight: 800,
-                margin: "0 auto 1rem",
+                fontSize: avatarFontSize, fontWeight: 800,
+                margin: "0 auto 0.75rem",
                 border: "3px solid var(--color-surface)",
                 boxShadow: "var(--shadow-md)"
               }}>
@@ -893,28 +895,49 @@ export default function ProfilePage() {
         )}
 
         {/* Blocks */}
-        {blocks.length > 0 && (
-          <div className={`block-style-${blockStyle}`} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
-            {blocks.map(block => {
-              let inner: ReactNode = null;
-              switch (block.type) {
-                case "text": inner = <TextBlock key={block.id} block={block} accent={accent} />; break;
-                case "poll": inner = <PollBlock key={block.id} block={block} pageId={page.id} accentColor={accent} />; break;
-                case "lead-form": inner = <LeadForm key={block.id} pageId={page.id} accentColor={accent} block={block} />; break;
-                case "image": inner = <ImageBlock key={block.id} block={block} />; break;
-                case "video": inner = <VideoBlock key={block.id} block={block} pageId={page.id} />; break;
-                case "social-links": inner = <SocialLinksBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
-                case "countdown": inner = <CountdownBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
-                case "divider": inner = <DividerBlock key={block.id} block={block} />; break;
-                case "button": inner = <ButtonBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
-                case "testimonial": inner = <TestimonialBlock key={block.id} block={block} accent={accent} />; break;
-                case "faq": inner = <FaqBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
-                default: return null;
-              }
-              return <div key={block.id} className="block-card">{inner}</div>;
-            })}
-          </div>
-        )}
+        {blocks.length > 0 && (() => {
+          // Map blockStyle to actual CSS border-radius value for inline override
+          // This is needed because inline styles on inner components override CSS class rules
+          const blockRadiusMap: Record<string, string> = {
+            default: "var(--radius-lg)",
+            rounded: "1.5rem",
+            sharp: "0px",
+            bordered: "var(--radius-lg)",
+            outlined: "var(--radius-lg)",
+            elevated: "var(--radius-lg)",
+            ghost: "var(--radius-lg)",
+            pill: "9999px",
+            underline: "0px",
+            gradient: "var(--radius-lg)",
+          };
+          const blockRadius = blockRadiusMap[blockStyle] ?? "var(--radius-lg)";
+          return (
+            <div className={`block-style-${blockStyle}`} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem", "--block-radius": blockRadius } as React.CSSProperties}>
+              {blocks.map(block => {
+                let inner: ReactNode = null;
+                switch (block.type) {
+                  case "text": inner = <TextBlock key={block.id} block={block} accent={accent} />; break;
+                  case "poll": inner = <PollBlock key={block.id} block={block} pageId={page.id} accentColor={accent} />; break;
+                  case "lead-form": inner = <LeadForm key={block.id} pageId={page.id} accentColor={accent} block={block} />; break;
+                  case "image": inner = <ImageBlock key={block.id} block={block} />; break;
+                  case "video": inner = <VideoBlock key={block.id} block={block} pageId={page.id} />; break;
+                  case "social-links": inner = <SocialLinksBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                  case "countdown": inner = <CountdownBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                  case "divider": inner = <DividerBlock key={block.id} block={block} />; break;
+                  case "button": inner = <ButtonBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                  case "testimonial": inner = <TestimonialBlock key={block.id} block={block} accent={accent} />; break;
+                  case "faq": inner = <FaqBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                  default: return null;
+                }
+                return (
+                  <div key={block.id} className="block-card" style={{ borderRadius: blockRadius, overflow: "hidden" }}>
+                    {inner}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* Floating copy URL button (hidden in preview) */}
         {!isPreview && (

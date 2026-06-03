@@ -462,21 +462,49 @@ function LeadForm({ pageId, accentColor, block }: { pageId: number; accentColor:
 }
 
 // ─── Poll block ───────────────────────────────────────────────
+// Get or create a persistent anonymous voter token (localStorage exception per sprint rules — visitor identity, not auth)
+function getVoterToken(): string {
+  try {
+    let token = localStorage.getItem("lb_voter_token");
+    if (!token) {
+      token = crypto.randomUUID();
+      localStorage.setItem("lb_voter_token", token);
+    }
+    return token;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
 function PollBlock({ block, pageId, accentColor }: { block: Block; pageId: number; accentColor: string }) {
   const { user } = useAuth();
+  const [voterToken] = useState<string>(() => getVoterToken());
+  const [hasVoted, setHasVoted] = useState(false);
 
-  const { data, refetch } = useQuery<{ votes: Array<{ optionIndex: number; count: number }> }>({
+  const { data, refetch } = useQuery<{ votes: Array<{ optionIndex: number; count: number }>; hasVoted?: boolean }>({
     queryKey: ["/api/pages", pageId, "polls", block.id, "votes"],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/pages/${pageId}/polls/${block.id}/votes`);
+      const token = voterToken;
+      const res = await apiRequest("GET", `/api/pages/${pageId}/polls/${block.id}/votes?voterToken=${encodeURIComponent(token)}`);
       return res.json();
     },
     staleTime: 10_000,
   });
 
+  // Sync hasVoted from server response
+  useEffect(() => {
+    if (data?.hasVoted !== undefined) setHasVoted(data.hasVoted);
+  }, [data?.hasVoted]);
+
   const voteMutation = useMutation({
     mutationFn: async (optionIndex: number) => {
-      const res = await apiRequest("POST", `/api/pages/${pageId}/polls/${block.id}/vote`, { optionIndex });
+      const token = user ? undefined : voterToken;
+      const res = await fetch(`/api/pages/${pageId}/polls/${block.id}/vote`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionIndex, voterToken: token }),
+      });
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error || "Failed to vote");
@@ -484,6 +512,7 @@ function PollBlock({ block, pageId, accentColor }: { block: Block; pageId: numbe
       return res.json();
     },
     onSuccess: () => {
+      setHasVoted(true);
       refetch();
       trackBlock(pageId, block.id, "poll", "vote");
     },
@@ -505,16 +534,15 @@ function PollBlock({ block, pageId, accentColor }: { block: Block; pageId: numbe
           return (
             <button
               key={i}
-              disabled={!user || voteMutation.isPending}
-              onClick={() => user && voteMutation.mutate(i)}
-              title={!user ? "Sign in to vote" : undefined}
+              disabled={hasVoted || voteMutation.isPending}
+              onClick={() => !hasVoted && voteMutation.mutate(i)}
               style={{
                 position: "relative", overflow: "hidden",
                 padding: "0.625rem 0.875rem",
                 borderRadius: "var(--radius-md)",
                 border: `1.5px solid ${accentColor}40`,
                 background: "var(--color-surface-offset)",
-                textAlign: "left", cursor: user ? "pointer" : "default",
+                textAlign: "left", cursor: hasVoted ? "default" : "pointer",
                 width: "100%",
               }}
               data-testid={`button-poll-option-${i}`}
@@ -539,7 +567,7 @@ function PollBlock({ block, pageId, accentColor }: { block: Block; pageId: numbe
         </p>
       )}
       <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: "0.75rem" }}>
-        {totalVotes} vote{totalVotes !== 1 ? "s" : ""}{!user ? " — sign in to vote" : ""}
+        {totalVotes} vote{totalVotes !== 1 ? "s" : ""}{hasVoted ? " — thanks for voting!" : ""}
       </p>
     </div>
   );
@@ -750,13 +778,45 @@ export default function ProfilePage() {
   // Parse blockStyle from background JSON
   let blockStyle = "default";
   try { const bgParsed = JSON.parse(page.background || "null"); if (bgParsed && bgParsed.blockStyle) blockStyle = bgParsed.blockStyle; } catch {}
+  // Map blockStyle to actual CSS border-radius value for inline override
+  const blockRadiusMap: Record<string, string> = {
+    default: "var(--radius-lg)",
+    rounded: "1.5rem",
+    sharp: "0px",
+    bordered: "var(--radius-lg)",
+    outlined: "var(--radius-lg)",
+    elevated: "var(--radius-lg)",
+    ghost: "var(--radius-lg)",
+    floating: "1.25rem",
+    underline: "0px",
+    gradient: "var(--radius-lg)",
+  };
+  const blockRadius = blockRadiusMap[blockStyle] ?? "var(--radius-lg)";
   // Goal 6: auto text color based on background luminance, or explicit textColor override
   const luminance = getBackgroundLuminance(page.background || "none");
   const autoText = (page as any).textColor || (luminance === "dark" ? "#f5f5f7" : "#0a0a0b");
   const autoTextMuted = (page as any).textColor || (luminance === "dark" ? "rgba(245,245,247,0.72)" : "rgba(10,10,11,0.62)");
 
   return (
-    <div className={bgClass || undefined} style={{ minHeight: "100dvh", color: autoText, fontFamily, ...bgStyle, "--color-text": autoText, "--color-text-muted": autoTextMuted } as any}>
+    <div
+      data-theme="light"
+      className={bgClass || undefined}
+      style={{
+        minHeight: "100dvh",
+        color: autoText,
+        fontFamily,
+        ...bgStyle,
+        colorScheme: "light",
+        "--color-text": autoText,
+        "--color-text-muted": autoTextMuted,
+        "--color-bg": "#ffffff",
+        "--color-surface": "#f8f8f8",
+        "--color-surface-2": "#f2f2f2",
+        "--color-surface-offset": "#efefef",
+        "--color-border": "rgba(0,0,0,0.1)",
+        "--color-divider": "rgba(0,0,0,0.08)",
+      } as any}
+    >
       {/* Minimal top bar */}
       <div style={{
         position: "sticky", top: 0, zIndex: 100,
@@ -777,9 +837,9 @@ export default function ProfilePage() {
       <div style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
 
         {/* Cover / hero card */}
-        <div style={{
+        <div className={blockStyle !== "divider" ? `block-style-${blockStyle}` : undefined} style={{
           background: `linear-gradient(135deg, ${accent}18, ${accent}06)`,
-          borderRadius: "var(--radius-xl)",
+          borderRadius: blockRadius,
           padding: "2.5rem 2rem",
           marginBottom: "1.25rem",
           textAlign: "center",
@@ -788,7 +848,7 @@ export default function ProfilePage() {
           {/* Avatar */}
           {(() => {
             const avatarRadius = (page as any).avatarShape === "rounded" ? "var(--radius-lg)" : "50%";
-            const avatarSize = isPreview ? 52 : 72;
+            const avatarSize = isPreview ? 36 : 72;
             const avatarFontSize = isPreview ? "1.25rem" : "1.75rem";
             return page.avatarUrl ? (
               <img
@@ -825,13 +885,13 @@ export default function ProfilePage() {
 
           <h1 style={{
             fontSize: "var(--text-xl)", fontWeight: 800,
-            fontFamily: "Cabinet Grotesk, sans-serif",
+            fontFamily: fontFamily,
             letterSpacing: "-0.025em", marginBottom: "0.375rem"
           }}>
             {page.ownerName}
           </h1>
 
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "0.75rem", fontWeight: 500 }}>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "0.75rem", fontWeight: 500, fontFamily }}>
             {page.title}
           </p>
 
@@ -839,7 +899,7 @@ export default function ProfilePage() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", marginBottom: "0.5rem" }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: autoTextMuted, flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
               {/* G14: use autoTextMuted (luminance-aware) instead of --color-text-faint so it reads on any bg */}
-              <span style={{ fontSize: "var(--text-xs)", color: autoTextMuted, textShadow: "0 1px 3px rgba(0,0,0,0.18)" }}>{page.location}</span>
+              <span style={{ fontSize: "var(--text-xs)", color: autoTextMuted, textShadow: "0 1px 3px rgba(0,0,0,0.18)", fontFamily }}>{page.location}</span>
             </div>
           )}
 
@@ -849,7 +909,7 @@ export default function ProfilePage() {
               {page.phone && (
                 <a
                   href={`tel:${page.phone}`}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: accent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30` }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: accent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30`, fontFamily }}
                   data-testid="link-phone"
                 >
                   📞 {page.phone}
@@ -858,7 +918,7 @@ export default function ProfilePage() {
               {page.contactEmail && (
                 <a
                   href={`mailto:${page.contactEmail}`}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: accent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30` }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: accent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30`, fontFamily }}
                   data-testid="link-contact-email"
                 >
                   ✉️ {page.contactEmail}
@@ -875,8 +935,8 @@ export default function ProfilePage() {
 
         {/* Bio */}
         {page.bio && (
-          <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", marginBottom: "1.25rem" }}>
-            <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: "var(--color-text)" }}>{page.bio}</p>
+          <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: blockRadius, marginBottom: "1.25rem" }}>
+            <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: "var(--color-text)", fontFamily }}>{page.bio}</p>
           </div>
         )}
 
@@ -895,49 +955,33 @@ export default function ProfilePage() {
         )}
 
         {/* Blocks */}
-        {blocks.length > 0 && (() => {
-          // Map blockStyle to actual CSS border-radius value for inline override
-          // This is needed because inline styles on inner components override CSS class rules
-          const blockRadiusMap: Record<string, string> = {
-            default: "var(--radius-lg)",
-            rounded: "1.5rem",
-            sharp: "0px",
-            bordered: "var(--radius-lg)",
-            outlined: "var(--radius-lg)",
-            elevated: "var(--radius-lg)",
-            ghost: "var(--radius-lg)",
-            pill: "9999px",
-            underline: "0px",
-            gradient: "var(--radius-lg)",
-          };
-          const blockRadius = blockRadiusMap[blockStyle] ?? "var(--radius-lg)";
-          return (
-            <div className={`block-style-${blockStyle}`} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem", "--block-radius": blockRadius } as React.CSSProperties}>
-              {blocks.map(block => {
-                let inner: ReactNode = null;
-                switch (block.type) {
-                  case "text": inner = <TextBlock key={block.id} block={block} accent={accent} />; break;
-                  case "poll": inner = <PollBlock key={block.id} block={block} pageId={page.id} accentColor={accent} />; break;
-                  case "lead-form": inner = <LeadForm key={block.id} pageId={page.id} accentColor={accent} block={block} />; break;
-                  case "image": inner = <ImageBlock key={block.id} block={block} />; break;
-                  case "video": inner = <VideoBlock key={block.id} block={block} pageId={page.id} />; break;
-                  case "social-links": inner = <SocialLinksBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
-                  case "countdown": inner = <CountdownBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
-                  case "divider": inner = <DividerBlock key={block.id} block={block} />; break;
-                  case "button": inner = <ButtonBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
-                  case "testimonial": inner = <TestimonialBlock key={block.id} block={block} accent={accent} />; break;
-                  case "faq": inner = <FaqBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
-                  default: return null;
-                }
-                return (
-                  <div key={block.id} className="block-card" style={{ borderRadius: blockRadius, overflow: "hidden" }}>
-                    {inner}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
+        {blocks.length > 0 && (
+          <div className={`block-style-${blockStyle}`} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem", "--block-radius": blockRadius } as React.CSSProperties}>
+            {blocks.map(block => {
+              let inner: ReactNode = null;
+              const isDivider = block.type === "divider";
+              switch (block.type) {
+                case "text": inner = <TextBlock key={block.id} block={block} accent={accent} />; break;
+                case "poll": inner = <PollBlock key={block.id} block={block} pageId={page.id} accentColor={accent} />; break;
+                case "lead-form": inner = <LeadForm key={block.id} pageId={page.id} accentColor={accent} block={block} />; break;
+                case "image": inner = <ImageBlock key={block.id} block={block} />; break;
+                case "video": inner = <VideoBlock key={block.id} block={block} pageId={page.id} />; break;
+                case "social-links": inner = <SocialLinksBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                case "countdown": inner = <CountdownBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                case "divider": inner = <DividerBlock key={block.id} block={block} />; break;
+                case "button": inner = <ButtonBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                case "testimonial": inner = <TestimonialBlock key={block.id} block={block} accent={accent} />; break;
+                case "faq": inner = <FaqBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                default: return null;
+              }
+              return (
+                <div key={block.id} className={isDivider ? undefined : "block-card"} style={{ borderRadius: isDivider ? undefined : blockRadius, overflow: isDivider ? undefined : "hidden" }}>
+                  {inner}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Floating copy URL button (hidden in preview) */}
         {!isPreview && (

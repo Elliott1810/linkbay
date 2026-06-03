@@ -1934,9 +1934,17 @@ export function registerLicenceRoutes(app: Express) {
     }
   });
 
+  // ── GET /api/ai/status — health check for AI config ───────────────────────
+  app.get("/api/ai/status", (_req: Request, res: Response) => {
+    return res.json({
+      configured: !!process.env.OPENAI_API_KEY,
+      keyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.slice(0, 7) + "..." : null,
+    });
+  });
+
   // ── POST /api/ai/generate-page ───────────────────────────────────────────────
   app.post("/api/ai/generate-page", async (req: Request, res: Response) => {
-    if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI not configured" });
+    if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI not configured — OPENAI_API_KEY missing" });
 
     // Rate limit: 20 per user per hour — use userId for authenticated users only
     // IMPORTANT: Do NOT use req.ip as fallback — on Railway all requests share the same proxy IP

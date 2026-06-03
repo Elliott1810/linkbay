@@ -25,7 +25,7 @@ function tierFromPriceId(priceId: string): { tier: "pro" | "business"; interval:
 }
 
 // ─── AI rate limiter (in-memory) ────────────────────────────────────────────────────
-const aiRateLimit = new Map<number, { count: number; resetAt: number }>();
+const aiRateLimit = new Map<number | string, { count: number; resetAt: number }>();
 
 const DB_PATH = process.env.DB_PATH || "data.db";
 import {
@@ -1392,6 +1392,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return Math.floor(diff / 86400000) + "d ago";
     };
 
+    // Pre-compute licences rows HTML (arrow fn with {} body can't go inside template literal)
+    const licenceRowsHtml = licences.map(l => {
+      const tier = l.tier || "free";
+      const expiresAt = l.expires_at ? new Date(l.expires_at) : null;
+      const daysLeft = expiresAt ? Math.ceil((expiresAt.getTime() - Date.now()) / 86400000) : null;
+      const expiryWarn = daysLeft !== null && daysLeft <= 7;
+      const tierBadge = tier === "business"
+        ? `<span style="background:#ccfbf1;color:#0f766e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">Business</span>`
+        : tier === "pro"
+          ? `<span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">Pro</span>`
+          : `<span style="background:#f1f5f9;color:#64748b;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">Free</span>`;
+      const expiryCell = expiresAt
+        ? `<span style="color:${expiryWarn ? "#dc2626" : "#64748b"};font-size:11px">${expiryWarn ? "⚠️ " : ""}${expiresAt.toISOString().slice(0,10)} (${daysLeft}d)</span>`
+        : `<span style="color:#aaa">—</span>`;
+      const selectedFree = tier === "free" ? "selected" : "";
+      const selectedPro = tier === "pro" ? "selected" : "";
+      const selectedBiz = tier === "business" ? "selected" : "";
+      return `<tr>
+        <td><strong>${escHtml(l.name || "")}</strong></td>
+        <td class="email">${escHtml(l.email)}</td>
+        <td>${tierBadge}</td>
+        <td>${expiryCell}</td>
+        <td class="email" style="font-size:10px">${l.stripe_subscription_id ? escHtml(l.stripe_subscription_id) : "—"}</td>
+        <td>
+          <form method="POST" action="/admin/set-licence" style="display:inline-flex;gap:4px;align-items:center">
+            <input type="hidden" name="userId" value="${l.user_id}">
+            <select name="tier" style="font-size:11px;padding:2px 4px;border:1px solid #d1d5db;border-radius:4px">
+              <option value="free" ${selectedFree}>Free</option>
+              <option value="pro" ${selectedPro}>Pro</option>
+              <option value="business" ${selectedBiz}>Business</option>
+            </select>
+            <button type="submit" style="background:#e06b1a;color:#fff;border:none;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">Save</button>
+          </form>
+        </td>
+      </tr>`;
+    }).join("");
+
     res.setHeader("Content-Type", "text/html");
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -1558,39 +1595,7 @@ function filterTable(input,tbodyId){
     <table>
       <thead><tr><th>User</th><th>Email</th><th>Tier</th><th>Expires</th><th>Subscription ID</th><th>Change Tier</th></tr></thead>
       <tbody id="tbody-licences">
-        ${licences.map(l => {
-          const tier = l.tier || "free";
-          const expiresAt = l.expires_at ? new Date(l.expires_at) : null;
-          const daysLeft = expiresAt ? Math.ceil((expiresAt.getTime() - Date.now()) / 86400000) : null;
-          const expiryWarn = daysLeft !== null && daysLeft <= 7;
-          const tierBadge = tier === "business"
-            ? `<span style="background:#ccfbf1;color:#0f766e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">Business</span>`
-            : tier === "pro"
-              ? `<span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">Pro</span>`
-              : `<span style="background:#f1f5f9;color:#64748b;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">Free</span>`;
-          const expiryCell = expiresAt
-            ? `<span style="color:${expiryWarn ? "#dc2626" : "#64748b"};font-size:11px">${expiryWarn ? "\u26a0\ufe0f " : ""}${expiresAt.toISOString().slice(0,10)} (${daysLeft}d)</span>`
-            : `<span style="color:#aaa">—</span>`;
-          return `
-            <tr>
-              <td><strong>${escHtml(l.name || "")}</strong></td>
-              <td class="email">${escHtml(l.email)}</td>
-              <td>${tierBadge}</td>
-              <td>${expiryCell}</td>
-              <td class="email" style="font-size:10px">${l.stripe_subscription_id ? escHtml(l.stripe_subscription_id) : "—"}</td>
-              <td>
-                <form method="POST" action="/admin/set-licence" style="display:inline-flex;gap:4px;align-items:center">
-                  <input type="hidden" name="userId" value="${l.user_id}">
-                  <select name="tier" style="font-size:11px;padding:2px 4px;border:1px solid #d1d5db;border-radius:4px">
-                    <option value="free" ${tier === "free" ? "selected" : ""}>Free</option>
-                    <option value="pro" ${tier === "pro" ? "selected" : ""}>Pro</option>
-                    <option value="business" ${tier === "business" ? "selected" : ""}>Business</option>
-                  </select>
-                  <button type="submit" style="background:#e06b1a;color:#fff;border:none;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">Save</button>
-                </form>
-              </td>
-            </tr>`;
-        }).join("")}
+        ${licenceRowsHtml}
       </tbody>
     </table>
   </div>
@@ -1890,18 +1895,17 @@ export function registerLicenceRoutes(app: Express) {
 
   // ── POST /api/ai/generate-page ───────────────────────────────────────────────
   app.post("/api/ai/generate-page", async (req: Request, res: Response) => {
-    if (!req.session.userId) return res.status(401).json({ error: "Not authenticated" });
     if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI not configured" });
 
-    // Rate limit: 5 per user per hour
-    const userId = req.session.userId;
+    // Rate limit: 5 per user/IP per hour — works for both authenticated and unauthenticated (builder flow)
+    const rateLimitKey = req.session.userId ?? (req.ip || "unknown");
     const now = Date.now();
-    const bucket = aiRateLimit.get(userId);
+    const bucket = aiRateLimit.get(rateLimitKey);
     if (bucket && bucket.resetAt > now) {
       if (bucket.count >= 5) return res.status(429).json({ error: "Rate limit: max 5 generations per hour" });
       bucket.count++;
     } else {
-      aiRateLimit.set(userId, { count: 1, resetAt: now + 60 * 60 * 1000 });
+      aiRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 60 * 60 * 1000 });
     }
 
     try {

@@ -1,5 +1,5 @@
 import { useParams, Link } from "wouter";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, resolveMediaUrl } from "@/lib/queryClient";
 import { useAuth } from "@/App";
@@ -747,6 +747,9 @@ export default function ProfilePage() {
 
   const bgStyle = backgroundToCss(page.background || "none");
   const bgClass = backgroundToClass(page.background || "none");
+  // Parse blockStyle from background JSON
+  let blockStyle = "default";
+  try { const bgParsed = JSON.parse(page.background || "null"); if (bgParsed && bgParsed.blockStyle) blockStyle = bgParsed.blockStyle; } catch {}
   // Goal 6: auto text color based on background luminance, or explicit textColor override
   const luminance = getBackgroundLuminance(page.background || "none");
   const autoText = (page as any).textColor || (luminance === "dark" ? "#f5f5f7" : "#0a0a0b");
@@ -891,22 +894,24 @@ export default function ProfilePage() {
 
         {/* Blocks */}
         {blocks.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
+          <div className={`block-style-${blockStyle}`} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
             {blocks.map(block => {
+              let inner: ReactNode = null;
               switch (block.type) {
-                case "text": return <TextBlock key={block.id} block={block} accent={accent} />;
-                case "poll": return <PollBlock key={block.id} block={block} pageId={page.id} accentColor={accent} />;
-                case "lead-form": return <LeadForm key={block.id} pageId={page.id} accentColor={accent} block={block} />;
-                case "image": return <ImageBlock key={block.id} block={block} />;
-                case "video": return <VideoBlock key={block.id} block={block} pageId={page.id} />;
-                case "social-links": return <SocialLinksBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
-                case "countdown": return <CountdownBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
-                case "divider": return <DividerBlock key={block.id} block={block} />;
-                case "button": return <ButtonBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
-                case "testimonial": return <TestimonialBlock key={block.id} block={block} accent={accent} />;
-                case "faq": return <FaqBlock key={block.id} block={block} accent={accent} pageId={page.id} />;
+                case "text": inner = <TextBlock key={block.id} block={block} accent={accent} />; break;
+                case "poll": inner = <PollBlock key={block.id} block={block} pageId={page.id} accentColor={accent} />; break;
+                case "lead-form": inner = <LeadForm key={block.id} pageId={page.id} accentColor={accent} block={block} />; break;
+                case "image": inner = <ImageBlock key={block.id} block={block} />; break;
+                case "video": inner = <VideoBlock key={block.id} block={block} pageId={page.id} />; break;
+                case "social-links": inner = <SocialLinksBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                case "countdown": inner = <CountdownBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                case "divider": inner = <DividerBlock key={block.id} block={block} />; break;
+                case "button": inner = <ButtonBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                case "testimonial": inner = <TestimonialBlock key={block.id} block={block} accent={accent} />; break;
+                case "faq": inner = <FaqBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
                 default: return null;
               }
+              return <div key={block.id} className="block-card">{inner}</div>;
             })}
           </div>
         )}

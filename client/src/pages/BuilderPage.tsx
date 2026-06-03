@@ -450,6 +450,40 @@ const USE_CASE_LABELS: Record<string, string> = {
   other: "Professional",
 };
 
+// Map AI-returned blocks to builder Block[] and PageLink[]
+function mapAiBlocks(aiBlocks: any[]): { links: PageLink[]; blocks: Block[] } {
+  const links: PageLink[] = [];
+  const blocks: Block[] = [];
+  const genId = () => "blk-" + Math.random().toString(36).slice(2, 8);
+  (aiBlocks || []).forEach((b: any) => {
+    switch (b.type) {
+      case "link":
+        links.push({ label: b.title || b.label || "Link", url: b.url || "", icon: "🔗", style: "default", description: b.description, position: links.length });
+        break;
+      case "text":
+        blocks.push({ id: genId(), type: "text", content: b.content || "" });
+        break;
+      case "poll":
+        blocks.push({ id: genId(), type: "poll", question: b.question || "Quick question", options: b.options || ["Option A", "Option B"] });
+        break;
+      case "lead_form":
+        blocks.push({ id: genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || "", buttonText: b.buttonText || "Send" } as any);
+        break;
+      case "socials":
+        blocks.push({ id: genId(), type: "social-links", links: b.links || [] } as any);
+        break;
+      case "video":
+        blocks.push({ id: genId(), type: "video", url: b.url || "", title: b.title || "" } as any);
+        break;
+      case "countdown":
+        blocks.push({ id: genId(), type: "countdown", title: b.title || "Launching soon", targetDate: b.targetDate || "2026-01-01" } as any);
+        break;
+      default: break;
+    }
+  });
+  return { links, blocks };
+}
+
 function AISuggestionsStep({
   state,
   update,
@@ -459,155 +493,157 @@ function AISuggestionsStep({
   update: (v: Partial<BuilderState>) => void;
   onContinue: () => void;
 }) {
-  const suggestions = AI_SUGGESTIONS[state.useCase] || AI_SUGGESTIONS["other"];
   const roleLabel = USE_CASE_LABELS[state.useCase] || "Professional";
-  const [selected, setSelected] = useState<Set<number>>(() => new Set(suggestions.map((_, i) => i)));
+  const [aiStatus, setAiStatus] = useState<"loading" | "done" | "error">("loading");
+  const [aiResult, setAiResult] = useState<{ links: PageLink[]; blocks: Block[]; background?: string; accentColor?: string } | null>(null);
+  const [aiError, setAiError] = useState("");
 
-  const genId = () => Math.random().toString(36).slice(2, 10);
-
-  const toggle = (i: number) =>
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
+  // Fetch AI suggestions on mount
+  useEffect(() => {
+    let cancelled = false;
+    const useCaseGoals: Record<string, string> = {
+      consultant: "Get consulting clients and showcase expertise",
+      creator: "Grow audience and share content",
+      recruiter: "Connect with candidates and share job opportunities",
+      founder: "Attract investors and early users",
+      coach: "Book coaching sessions and share resources",
+      agency: "Showcase services and get leads",
+      other: "Share links and connect with people",
+    };
+    apiRequest("POST", "/api/ai/generate-page", {
+      answers: {
+        name: state.name,
+        tagline: `${roleLabel} — ${useCaseGoals[state.useCase] || "Professional"}`,
+        goal: useCaseGoals[state.useCase] || "Share links and connect",
+        industry: roleLabel,
+        style: "clean, modern, professional",
+      },
+    })
+      .then(res => res.json())
+      .then((data: any) => {
+        if (cancelled) return;
+        if (data.error) { setAiError(data.error); setAiStatus("error"); return; }
+        const { links, blocks } = mapAiBlocks(data.blocks || []);
+        setAiResult({ links, blocks, background: data.background, accentColor: data.accentColor });
+        setAiStatus("done");
+      })
+      .catch(() => {
+        if (!cancelled) { setAiError("Could not reach AI service."); setAiStatus("error"); }
+      });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const applyAndContinue = () => {
-    const chosenLinks: PageLink[] = [];
-    const chosenBlocks: Block[] = [];
-
-    suggestions.forEach((s, i) => {
-      if (!selected.has(i)) return;
-      if (s.type === "link") {
-        chosenLinks.push({
-          label: s.label,
-          url: s.url || "",
-          icon: s.icon,
-          style: (s.style as any) || "default",
-          description: s.description,
-          position: chosenLinks.length,
-        });
-      } else if (s.type === "text") {
-        chosenBlocks.push({ id: genId(), type: "text", content: s.content || s.description });
-      } else if (s.type === "poll") {
-        chosenBlocks.push({
-          id: genId(),
-          type: "poll",
-          question: s.question || s.label,
-          options: s.options || ["Option A", "Option B"],
-        });
-      }
+    if (!aiResult) return;
+    update({
+      links: aiResult.links,
+      blocks: aiResult.blocks,
+      ...(aiResult.background && aiResult.background !== "none" ? { background: aiResult.background } : {}),
+      ...(aiResult.accentColor ? { accentColor: aiResult.accentColor } : {}),
     });
-
-    update({ links: chosenLinks, blocks: chosenBlocks });
     onContinue();
   };
 
+  // Loading state
+  if (aiStatus === "loading") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 300, gap: "1.25rem", textAlign: "center" }}>
+        <div style={{
+          width: 52, height: 52, borderRadius: "50%",
+          border: "3px solid var(--color-primary)",
+          borderTopColor: "transparent",
+          animation: "spin 0.9s linear infinite",
+        }} />
+        <div>
+          <div style={{ fontSize: "var(--text-lg)", fontWeight: 700, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: 4 }}>
+            Building your AI page...
+          </div>
+          <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
+            GPT-4o is personalising your {roleLabel} page
+          </div>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  // Error fallback
+  if (aiStatus === "error") {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>🤖</div>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>AI unavailable</h2>
+        </div>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>
+          {aiError || "AI generation failed."} You can continue without AI suggestions.
+        </p>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} data-testid="button-skip-suggestions">Start blank</button>
+          <button type="button" onClick={() => { setAiStatus("loading"); setAiError(""); }} className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }}>Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Done — show AI results
+  const totalItems = (aiResult?.links.length ?? 0) + (aiResult?.blocks.length ?? 0);
   return (
     <div>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: "50%",
-          background: "var(--color-primary-highlight)",
-          border: "1.5px solid var(--color-primary)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 18, flexShrink: 0,
-        }}>🤖</div>
+        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>🤖</div>
         <div>
           <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>
-            Your AI-suggested blocks
+            Your AI-generated page
           </h2>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: 2 }}>
-            Based on your role as a <strong>{roleLabel}</strong>
+            Personalised for a <strong>{roleLabel}</strong> by GPT-4o
           </p>
         </div>
       </div>
-      <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)", marginBottom: "1.5rem" }}>
-        We've pre-selected the blocks that work best for your profile. Deselect anything you don't want — you can edit everything in step 3.
+      <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)", marginBottom: "1.25rem" }}>
+        GPT-4o has generated {totalItems} item{totalItems !== 1 ? "s" : ""} for your page — links, blocks, and a colour theme. You can edit everything in step 3.
       </p>
 
-      {/* Suggestion cards */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1.5rem" }}>
-        {suggestions.map((s, i) => {
-          const active = selected.has(i);
-          return (
-            <button
-              key={i}
-              type="button"
-              onClick={() => toggle(i)}
-              data-testid={`suggestion-${i}`}
-              style={{
-                width: "100%", textAlign: "left", cursor: "pointer",
-                display: "flex", alignItems: "center", gap: "0.875rem",
-                padding: "0.875rem 1rem",
-                borderRadius: "var(--radius-lg)",
-                border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`,
-                background: active ? "var(--color-primary-highlight)" : "var(--color-surface)",
-                transition: "all var(--transition-interactive)",
-              }}
-            >
-              {/* Checkbox */}
-              <div style={{
-                width: 20, height: 20, borderRadius: 4, flexShrink: 0,
-                border: `2px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`,
-                background: active ? "var(--color-primary)" : "transparent",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: "white", fontSize: 12, fontWeight: 800, transition: "all var(--transition-interactive)",
-              }}>
-                {active && "✓"}
-              </div>
-              {/* Icon */}
-              <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>{s.icon}</span>
-              {/* Text */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: active ? "var(--color-primary)" : "var(--color-text)", marginBottom: 2 }}>
-                  {s.label}
-                </div>
-                <div style={{ fontSize: 12, color: "var(--color-text-faint)", lineHeight: 1.4 }}>
-                  {s.description}
-                </div>
-              </div>
-              {/* Type badge */}
-              <span style={{
-                fontSize: 10, padding: "0.2rem 0.5rem", borderRadius: 999, flexShrink: 0,
-                background: s.type === "link" ? "var(--color-surface-offset)" : s.type === "poll" ? "#fef3c7" : "#f0fdf4",
-                color: s.type === "link" ? "var(--color-text-faint)" : s.type === "poll" ? "#92400e" : "#166534",
-                fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.04em",
-              }}>
-                {s.type}
-              </span>
-            </button>
-          );
-        })}
+      {/* Summary cards */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
+        {(aiResult?.links || []).map((l, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)", background: "var(--color-primary-highlight)" }}>
+            <span style={{ fontSize: 18 }}>🔗</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>{l.label}</div>
+              <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.url}</div>
+            </div>
+            <span style={{ fontSize: 10, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", fontWeight: 600, textTransform: "uppercase" as const }}>link</span>
+          </div>
+        ))}
+        {(aiResult?.blocks || []).map((b, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)", background: "var(--color-primary-highlight)" }}>
+            <span style={{ fontSize: 18 }}>{(b as any).type === "text" ? "📝" : (b as any).type === "poll" ? "📊" : (b as any).type === "lead-form" ? "📬" : (b as any).type === "social-links" ? "🔗" : (b as any).type === "video" ? "🎥" : (b as any).type === "countdown" ? "⏳" : "🧩"}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)", textTransform: "capitalize" as const }}>{b.type} block</div>
+              <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(b as any).content || (b as any).question || (b as any).title || ""}</div>
+            </div>
+            <span style={{ fontSize: 10, padding: "0.2rem 0.5rem", borderRadius: 999, background: "#f0fdf4", color: "#166534", fontWeight: 600, textTransform: "uppercase" as const }}>{(b as any).type}</span>
+          </div>
+        ))}
+        {aiResult?.accentColor && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)", background: "var(--color-surface)" }}>
+            <div style={{ width: 24, height: 24, borderRadius: 6, background: aiResult.accentColor, flexShrink: 0, border: "1px solid rgba(0,0,0,0.1)" }} />
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>Accent colour: <span style={{ color: aiResult.accentColor }}>{aiResult.accentColor}</span></div>
+          </div>
+        )}
       </div>
-
-      {/* Selection count */}
-      <p style={{ fontSize: "var(--text-xs)", color: "var(--color-text-faint)", marginBottom: "1.25rem" }}>
-        {selected.size} block{selected.size !== 1 ? "s" : ""} selected — you can edit or remove them in step 3.
-      </p>
 
       {/* Actions */}
       <div style={{ display: "flex", gap: "0.75rem" }}>
-        <button
-          type="button"
-          onClick={() => { update({ links: [], blocks: [] }); onContinue(); }}
-          className="btn btn-secondary"
-          style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }}
-          data-testid="button-skip-suggestions"
-        >
+        <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }} data-testid="button-skip-suggestions">
           Start blank
         </button>
-        <button
-          type="button"
-          onClick={applyAndContinue}
-          disabled={selected.size === 0}
-          className="btn btn-primary"
-          style={{ flex: 2, justifyContent: "center" }}
-          data-testid="button-apply-suggestions"
-        >
-          Add selected blocks →
+        <button type="button" onClick={applyAndContinue} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-apply-suggestions">
+          Apply AI suggestions →
         </button>
       </div>
     </div>

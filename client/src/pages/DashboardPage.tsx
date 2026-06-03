@@ -1429,6 +1429,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
   const [aiWizardOpen, setAiWizardOpen] = useState(false);
   const { data: licenceDataEditor } = useLicence();
   const editorTier: "free" | "pro" | "business" = (licenceDataEditor as any)?.tier ?? "free";
+  const FREE_BLOCK_LIMIT = 5;
 
   const page = pages.find((p: any) => p.id === selectedPageId) || pages[0];
 
@@ -1708,18 +1709,27 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
                 ))}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => addLinkMutation.mutate()}
-              disabled={!newLink.label || !newLink.url || addLinkMutation.isPending}
-              className="btn btn-primary"
-              style={{ justifyContent: "center" }}
-              data-testid="button-add-link"
-            >
-              {addLinkMutation.isPending ? "Adding…" : "Add link"}
-            </button>
-            {addLinkMutation.isError && (
-              <p style={{ fontSize: 12, color: "var(--color-error)" }}>{(addLinkMutation.error as Error).message}</p>
+            {editorTier === "free" && (links?.length ?? 0) + pageBlocks.length >= FREE_BLOCK_LIMIT ? (
+              <div style={{ padding: "0.75rem", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", borderRadius: "var(--radius-md)", textAlign: "center", fontSize: "var(--text-sm)" }}>
+                <strong style={{ color: "var(--color-primary)" }}>Free limit reached ({FREE_BLOCK_LIMIT} links/blocks)</strong>
+                <p style={{ margin: "0.25rem 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>Upgrade to Pro or Business to add unlimited links and blocks.</p>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => addLinkMutation.mutate()}
+                  disabled={!newLink.label || !newLink.url || addLinkMutation.isPending}
+                  className="btn btn-primary"
+                  style={{ justifyContent: "center" }}
+                  data-testid="button-add-link"
+                >
+                  {addLinkMutation.isPending ? "Adding…" : "Add link"}
+                </button>
+                {addLinkMutation.isError && (
+                  <p style={{ fontSize: 12, color: "var(--color-error)" }}>{(addLinkMutation.error as Error).message}</p>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1748,11 +1758,18 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
 
         {/* Add new block */}
         <div className={editorTab === "add" ? "editor-pane editor-pane-active" : "editor-pane editor-pane-hidden-mobile"}>
-          <AddBlockForm
-            onAdd={(block) => saveBlocksMutation.mutate([...(pageBlocks || []), block])}
-            onAddAll={(newBlocks) => saveBlocksMutation.mutate([...(pageBlocks || []), ...newBlocks])}
-            saving={saveBlocksMutation.isPending}
-          />
+          {editorTier === "free" && (links?.length ?? 0) + pageBlocks.length >= FREE_BLOCK_LIMIT ? (
+            <div style={{ padding: "1.25rem", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", borderRadius: "var(--radius-md)", textAlign: "center" }}>
+              <div style={{ fontSize: "var(--text-base)", fontWeight: 700, color: "var(--color-primary)", marginBottom: "0.375rem" }}>Free limit reached</div>
+              <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", margin: 0 }}>You\'ve used all {FREE_BLOCK_LIMIT} free links/blocks. Upgrade to Pro or Business for unlimited blocks.</p>
+            </div>
+          ) : (
+            <AddBlockForm
+              onAdd={(block) => saveBlocksMutation.mutate([...(pageBlocks || []), block])}
+              onAddAll={(newBlocks) => saveBlocksMutation.mutate([...(pageBlocks || []), ...newBlocks])}
+              saving={saveBlocksMutation.isPending}
+            />
+          )}
         </div>
 
         {/* Blocks editor */}

@@ -1406,14 +1406,19 @@ img.avatar-img {
   box-shadow: none !important;
 }
 
-.block-style-pill .block-card {
-  border-radius: 9999px !important;
+.block-style-floating .block-card {
+  border-radius: 1.25rem !important;
   overflow: hidden !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06) !important;
+  transform: translateY(-2px);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-.block-style-pill .block-card > * {
-  border-radius: 9999px !important;
-  padding-left: 1.5rem !important;
-  padding-right: 1.5rem !important;
+.block-style-floating .block-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.16), 0 4px 8px rgba(0,0,0,0.08) !important;
+}
+.block-style-floating .block-card > * {
+  border-radius: 1.25rem !important;
 }
 
 .block-style-underline .block-card {

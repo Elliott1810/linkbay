@@ -793,6 +793,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         clickRate: views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0, // G12: always 1dp
         uniqueVisitors,
         repeatVisitors,
+        avgSessionViews: uniqueVisitors > 0 ? Math.round((views / uniqueVisitors) * 10) / 10 : 0,
         devices,
         topLinks: links.sort((a, b) => b.clickCount - a.clickCount).slice(0, 5),
         topCountries,

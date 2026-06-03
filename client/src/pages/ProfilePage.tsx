@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, resolveMediaUrl } from "@/lib/queryClient";
 import { useAuth } from "@/App";
-import { backgroundToCss, getBackgroundLuminance } from "./BuilderPage";
+import { backgroundToCss, backgroundToClass, getBackgroundLuminance } from "./BuilderPage";
 import {
   SiInstagram, SiTiktok, SiX, SiYoutube, SiFacebook,
   SiGithub, SiPinterest, SiSnapchat, SiThreads, SiWhatsapp, SiTelegram,
@@ -746,13 +746,14 @@ export default function ProfilePage() {
   try { blocks = JSON.parse(page.blocks || "[]"); } catch {}
 
   const bgStyle = backgroundToCss(page.background || "none");
+  const bgClass = backgroundToClass(page.background || "none");
   // Goal 6: auto text color based on background luminance, or explicit textColor override
   const luminance = getBackgroundLuminance(page.background || "none");
   const autoText = (page as any).textColor || (luminance === "dark" ? "#f5f5f7" : "#0a0a0b");
   const autoTextMuted = (page as any).textColor || (luminance === "dark" ? "rgba(245,245,247,0.72)" : "rgba(10,10,11,0.62)");
 
   return (
-    <div style={{ minHeight: "100dvh", background: "var(--color-bg)", color: autoText, fontFamily, ...bgStyle, "--color-text": autoText, "--color-text-muted": autoTextMuted } as any}>
+    <div className={bgClass || undefined} style={{ minHeight: "100dvh", color: autoText, fontFamily, ...bgStyle, "--color-text": autoText, "--color-text-muted": autoTextMuted } as any}>
       {/* Minimal top bar */}
       <div style={{
         position: "sticky", top: 0, zIndex: 100,

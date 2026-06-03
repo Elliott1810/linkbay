@@ -71,25 +71,34 @@ const ACCENT_COLORS = [
   { label: "Custom", value: "custom" },
 ];
 
-// Background options for page picker
-const BACKGROUND_OPTIONS = [
-  { label: "None", value: "none", preview: "#f7f6f4" },
-  { label: "Warm White", value: "warm-white", preview: "#fef9f4" },
-  { label: "Slate", value: "slate", preview: "#f1f5f9" },
-  { label: "Charcoal", value: "charcoal", preview: "#1e293b" },
-  { label: "Midnight", value: "midnight", preview: "#0f172a" },
-  { label: "Dots", value: "dots", preview: "radial-gradient(circle, #c0bdb9 1px, transparent 1px), #f7f6f4" },
-  { label: "Grid", value: "grid", preview: "linear-gradient(#e0dedd 1px, transparent 1px), linear-gradient(90deg, #e0dedd 1px, transparent 1px), #f7f6f4" },
-  { label: "Diagonal", value: "diagonal", preview: "repeating-linear-gradient(-45deg, #e0dedd 0px, #e0dedd 1px, transparent 1px, transparent 8px), #f7f6f4" },
-  { label: "Warm Amber", value: "warm-amber", preview: "linear-gradient(135deg, #fef3c7, #fde68a)" },
-  { label: "Cool Blue", value: "cool-blue", preview: "linear-gradient(135deg, #dbeafe, #bfdbfe)" },
-  { label: "Sage", value: "sage", preview: "linear-gradient(135deg, #d1fae5, #a7f3d0)" },
-  { label: "Rose", value: "rose", preview: "linear-gradient(135deg, #ffe4e6, #fecdd3)" },
+// ─── 20 CSS-class gradient backgrounds ───────────────────────────────────────
+// The `value` is the CSS class name applied directly to the page wrapper.
+// The `preview` is an inline gradient used for the swatch preview in the builder.
+export const BACKGROUND_OPTIONS: { label: string; value: string; preview: string; dark?: boolean }[] = [
+  { label: "None",     value: "none",      preview: "#f5f4f2" },
+  { label: "Aurora",   value: "bg-aurora",  preview: "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)",  dark: true },
+  { label: "Blush",    value: "bg-blush",   preview: "linear-gradient(135deg, #f8e1e7 0%, #fce4ec 40%, #f48fb1 100%)" },
+  { label: "Dusk",     value: "bg-dusk",    preview: "linear-gradient(160deg, #2d1b69 0%, #11998e 100%)",               dark: true },
+  { label: "Ember",    value: "bg-ember",   preview: "linear-gradient(135deg, #1a0505 0%, #3d0c02 40%, #b5451b 100%)", dark: true },
+  { label: "Fog",      value: "bg-fog",     preview: "linear-gradient(135deg, #e0e0e0 0%, #efefef 50%, #d3cce3 100%)" },
+  { label: "Forest",   value: "bg-forest",  preview: "linear-gradient(160deg, #0a2e1f 0%, #1a4a2e 50%, #2d6a4f 100%)", dark: true },
+  { label: "Glacier",  value: "bg-glacier", preview: "linear-gradient(135deg, #e8f4f8 0%, #c8e6f0 50%, #a8d5e8 100%)" },
+  { label: "Haze",     value: "bg-haze",    preview: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",               dark: true },
+  { label: "Ivory",    value: "bg-ivory",   preview: "linear-gradient(135deg, #fefefe 0%, #f5f0e8 50%, #ede0c8 100%)" },
+  { label: "Lava",     value: "bg-lava",    preview: "linear-gradient(160deg, #1a0000 0%, #4a0000 40%, #e53935 100%)", dark: true },
+  { label: "Midnight", value: "bg-midnight",preview: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%)", dark: true },
+  { label: "Mint",     value: "bg-mint",    preview: "linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 50%, #a5d6a7 100%)" },
+  { label: "Mocha",    value: "bg-mocha",   preview: "linear-gradient(160deg, #2c1810 0%, #4a2c1a 50%, #8b5a2b 100%)", dark: true },
+  { label: "Ocean",    value: "bg-ocean",   preview: "linear-gradient(135deg, #0c1445 0%, #0a3d62 50%, #006994 100%)", dark: true },
+  { label: "Peach",    value: "bg-peach",   preview: "linear-gradient(135deg, #fff3e0 0%, #ffe0b2 50%, #ffcc80 100%)" },
+  { label: "Plum",     value: "bg-plum",    preview: "linear-gradient(135deg, #2d1b33 0%, #4a2d55 50%, #7b4f9e 100%)", dark: true },
+  { label: "Rose",     value: "bg-rose",    preview: "linear-gradient(160deg, #1a0010 0%, #4a0025 40%, #c2185b 100%)", dark: true },
+  { label: "Sand",     value: "bg-sand",    preview: "linear-gradient(135deg, #f5f0e8 0%, #e8dcc8 50%, #d4c4a0 100%)" },
+  { label: "Slate",    value: "bg-slate",   preview: "linear-gradient(135deg, #1e2a38 0%, #2d3f55 50%, #3d5a7a 100%)", dark: true },
+  { label: "Twilight", value: "bg-twilight",preview: "linear-gradient(160deg, #0f0c29 0%, #302b63 50%, #24243e 100%)", dark: true },
 ];
 
-// Pattern options (no colour — applied on top of a base colour, semi-transparent so the
-// base colour shows through). Goal 1a/1b.
-// G7: exactly 20 patterns (legacy values still rendered via svgPatternUri fallbacks)
+// ─── Legacy: kept so old pattern references don't break at runtime ──────────────────
 export const PATTERN_OPTIONS = [
   { label: "None",          value: "none" },
   // Organic / nature
@@ -149,309 +158,69 @@ export const COLOR_OPTIONS = [
   { label: "Aurora",     value: "aurora",        preview: "linear-gradient(135deg, #a855f7 0%, #06b6d4 50%, #10b981 100%)" },
 ];
 
-function colorToCss(c: string): { bg?: string; bgColor?: string; text?: string } {
-  switch (c) {
-    case "stone": return { bgColor: "#e7e5e4" };
-    case "blush": return { bgColor: "#fce7f3" };
-    case "blush-pink": return { bgColor: "#fce7f3" };
-    case "espresso": return { bgColor: "#2c1a0e", text: "#fef9f4" };
-    case "copper": return { bg: "linear-gradient(135deg, #fed7aa, #fb923c)", text: "#431407" };
-    case "warm-white": return { bgColor: "#fef9f4" };
-    case "slate": return { bgColor: "#f1f5f9" };
-    case "charcoal": return { bgColor: "#1e293b", text: "#f1f5f9" };
-    case "midnight": return { bgColor: "#0f172a", text: "#f1f5f9" };
-    case "warm-amber": return { bg: "linear-gradient(135deg, #fef3c7, #fde68a)" };
-    case "cool-blue": return { bg: "linear-gradient(135deg, #dbeafe, #bfdbfe)" };
-    case "sage": return { bg: "linear-gradient(135deg, #d1fae5, #a7f3d0)" };
-    case "rose": return { bg: "linear-gradient(135deg, #ffe4e6, #fecdd3)" };
-    case "glass": return { bg: "linear-gradient(135deg, rgba(255,255,255,0.55), rgba(241,245,249,0.35)), #f1f5f9" };
-    case "sunset": return { bg: "linear-gradient(135deg, #f97316 0%, #ec4899 50%, #8b5cf6 100%)", text: "#fff" };
-    case "ocean": return { bg: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)", text: "#fff" };
-    case "forest": return { bg: "linear-gradient(135deg, #10b981 0%, #065f46 100%)", text: "#fff" };
-    case "aurora": return { bg: "linear-gradient(135deg, #a855f7 0%, #06b6d4 50%, #10b981 100%)", text: "#fff" };
-    case "midnight-blue": return { bgColor: "#1e3a5f", text: "#f1f5f9" };
-    case "warm-sand": return { bgColor: "#f5e6c8" };
-    case "deep-purple": return { bgColor: "#2d1b69", text: "#e9d5ff" };
-    // --- Pastels ---
-    case "mint": return { bgColor: "#d1fae5" };
-    case "lavender": return { bgColor: "#ede9fe" };
-    case "butter": return { bgColor: "#fef9c3" };
-    case "powder": return { bgColor: "#dbeafe" };
-    default:
-      if (c && c.startsWith("#")) return { bgColor: c };
-      return {};
+// ─── Background helpers (new CSS-class system) ───────────────────────────────
+// Dark backgrounds are flagged in BACKGROUND_OPTIONS. Used to auto-set text colour.
+export function getBackgroundLuminance(bg: string | null | undefined): "dark" | "light" {
+  if (!bg || bg === "none") return "light";
+  // New CSS class system
+  if (bg.startsWith("bg-")) {
+    const opt = BACKGROUND_OPTIONS.find(o => o.value === bg);
+    return opt?.dark ? "dark" : "light";
   }
-}
-
-/**
- * Build a CSS background-image for a pattern using a semi-transparent SVG data URI.
- * The pattern overlays on top of any base colour so the base colour shows through.
- * `tint` is the ink colour ("dark" -> rgba(0,0,0,a), "light" -> rgba(255,255,255,a)).
- */
-function svgPatternUri(pattern: string, tint: "dark" | "light"): { uri: string; size: string } | null {
-  const ink = (a: number) => tint === "dark" ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
-  const enc = (s: string) => `url("data:image/svg+xml;utf8,${encodeURIComponent(s)}")`;
-  switch (pattern) {
-    case "linen": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='6' viewBox='0 0 24 6'><line x1='0' y1='1' x2='24' y2='1' stroke='${ink(0.06)}' stroke-width='1'/><line x1='0' y1='4' x2='24' y2='4' stroke='${ink(0.04)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "24px 6px" };
-    }
-    case "paper": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'><circle cx='1' cy='1' r='0.6' fill='${ink(0.05)}'/><circle cx='5' cy='3' r='0.5' fill='${ink(0.04)}'/><circle cx='3' cy='6' r='0.6' fill='${ink(0.05)}'/></svg>`;
-      return { uri: enc(s), size: "8px 8px" };
-    }
-    case "weave": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='0' y1='0' x2='16' y2='16' stroke='${ink(0.08)}' stroke-width='1'/><line x1='16' y1='0' x2='0' y2='16' stroke='${ink(0.08)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "16px 16px" };
-    }
-    case "hexagons": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='44' viewBox='0 0 40 44'><path d='M20 2 L36 11 L36 33 L20 42 L4 33 L4 11 Z' fill='none' stroke='${ink(0.1)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "40px 44px" };
-    }
-    case "diamonds": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><rect x='8' y='8' width='16' height='16' transform='rotate(45 16 16)' fill='none' stroke='${ink(0.09)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "32px 32px" };
-    }
-    case "art-deco": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><path d='M24 0 A24 24 0 0 1 48 24' fill='none' stroke='${ink(0.08)}' stroke-width='1'/><path d='M0 24 A24 24 0 0 1 24 0' fill='none' stroke='${ink(0.08)}' stroke-width='1'/><path d='M48 24 A24 24 0 0 1 24 48' fill='none' stroke='${ink(0.06)}' stroke-width='1'/><path d='M24 48 A24 24 0 0 1 0 24' fill='none' stroke='${ink(0.06)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "48px 48px" };
-    }
-    case "tiles": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><path d='M20 4 L24 16 L36 20 L24 24 L20 36 L16 24 L4 20 L16 16 Z' fill='none' stroke='${ink(0.1)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "40px 40px" };
-    }
-    case "topography": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><ellipse cx='40' cy='40' rx='15' ry='12' fill='none' stroke='${ink(0.07)}' stroke-width='1'/><ellipse cx='40' cy='40' rx='25' ry='20' fill='none' stroke='${ink(0.06)}' stroke-width='1'/><ellipse cx='40' cy='40' rx='35' ry='28' fill='none' stroke='${ink(0.05)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "80px 80px" };
-    }
-    case "circuit": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><path d='M0 10 L15 10 L15 25 L30 25 L30 5 L40 5' fill='none' stroke='${ink(0.09)}' stroke-width='1'/><circle cx='15' cy='10' r='2' fill='${ink(0.09)}'/><circle cx='30' cy='25' r='2' fill='${ink(0.09)}'/><path d='M10 30 L25 30 L25 40' fill='none' stroke='${ink(0.07)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "40px 40px" };
-    }
-    case "dots-lg": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><circle cx='16' cy='16' r='3' fill='${ink(0.07)}'/></svg>`;
-      return { uri: enc(s), size: "32px 32px" };
-    }
-    case "grid-fine": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M12 0 L0 0 L0 12' fill='none' stroke='${ink(0.06)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "12px 12px" };
-    }
-    case "zigzag": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'><path d='M0 10 L6 2 L12 10 L18 2 L24 10' fill='none' stroke='${ink(0.09)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "24px 12px" };
-    }
-    case "waves": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'><path d='M0 10 Q10 0 20 10 T40 10' fill='none' stroke='${ink(0.08)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "40px 20px" };
-    }
-    // Legacy fallbacks — keep CSS-only patterns but ensure they're semi-transparent so the colour shows through.
-    case "dots": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'><circle cx='10' cy='10' r='1' fill='${ink(0.12)}'/></svg>`;
-      return { uri: enc(s), size: "20px 20px" };
-    }
-    case "grid": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M32 0 L0 0 L0 32' fill='none' stroke='${ink(0.07)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "32px 32px" };
-    }
-    case "diagonal": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'><line x1='-2' y1='10' x2='10' y2='-2' stroke='${ink(0.08)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "8px 8px" };
-    }
-    case "chevron": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'><path d='M0 12 L12 0 L24 12' fill='none' stroke='${ink(0.09)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "24px 12px" };
-    }
-    case "crosshatch": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'><line x1='0' y1='0' x2='8' y2='8' stroke='${ink(0.08)}' stroke-width='1'/><line x1='8' y1='0' x2='0' y2='8' stroke='${ink(0.08)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "8px 8px" };
-    }
-    case "hexagon": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='44' viewBox='0 0 40 44'><path d='M20 2 L36 11 L36 33 L20 42 L4 33 L4 11 Z' fill='none' stroke='${ink(0.1)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "40px 44px" };
-    }
-    case "circles": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><circle cx='12' cy='12' r='6' fill='none' stroke='${ink(0.09)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "24px 24px" };
-    }
-    case "noise": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='6' height='6' viewBox='0 0 6 6'><circle cx='1' cy='1' r='0.5' fill='${ink(0.06)}'/><circle cx='4' cy='3' r='0.5' fill='${ink(0.04)}'/><circle cx='2' cy='5' r='0.5' fill='${ink(0.05)}'/></svg>`;
-      return { uri: enc(s), size: "6px 6px" };
-    }
-    case "bubble": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'><circle cx='15' cy='15' r='5' fill='${ink(0.06)}'/><circle cx='45' cy='35' r='8' fill='${ink(0.05)}'/><circle cx='25' cy='50' r='4' fill='${ink(0.06)}'/></svg>`;
-      return { uri: enc(s), size: "60px 60px" };
-    }
-    case "moroccan": {
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><path d='M20 4 L24 16 L36 20 L24 24 L20 36 L16 24 L4 20 L16 16 Z' fill='none' stroke='${ink(0.1)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "40px 40px" };
-    }
-    // --- New conceptual patterns ---
-    case "rainfall": {
-      // Diagonal rain streaks at varied angles/lengths
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='60' viewBox='0 0 40 60'><line x1='6' y1='0' x2='2' y2='16' stroke='${ink(0.07)}' stroke-width='1' stroke-linecap='round'/><line x1='22' y1='10' x2='18' y2='28' stroke='${ink(0.05)}' stroke-width='1' stroke-linecap='round'/><line x1='36' y1='4' x2='32' y2='18' stroke='${ink(0.06)}' stroke-width='1' stroke-linecap='round'/><line x1='12' y1='34' x2='8' y2='52' stroke='${ink(0.05)}' stroke-width='1' stroke-linecap='round'/><line x1='30' y1='40' x2='26' y2='56' stroke='${ink(0.07)}' stroke-width='1' stroke-linecap='round'/></svg>`;
-      return { uri: enc(s), size: "40px 60px" };
-    }
-    case "botanica": {
-      // Delicate leaf silhouettes
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><path d='M20 60 Q10 40 20 20 Q30 40 20 60Z' fill='${ink(0.06)}'/><path d='M60 20 Q50 35 60 55 Q70 35 60 20Z' fill='${ink(0.05)}'/><line x1='20' y1='20' x2='20' y2='60' stroke='${ink(0.07)}' stroke-width='0.8'/><line x1='60' y1='20' x2='60' y2='55' stroke='${ink(0.06)}' stroke-width='0.8'/><path d='M44 65 Q38 50 44 38 Q50 50 44 65Z' fill='${ink(0.04)}'/></svg>`;
-      return { uri: enc(s), size: "80px 80px" };
-    }
-    case "constellations": {
-      // Stars connected with faint lines
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='15' cy='20' r='1.5' fill='${ink(0.15)}'/><circle cx='45' cy='10' r='1' fill='${ink(0.12)}'/><circle cx='75' cy='25' r='1.5' fill='${ink(0.13)}'/><circle cx='30' cy='55' r='1' fill='${ink(0.1)}'/><circle cx='65' cy='60' r='1.5' fill='${ink(0.14)}'/><circle cx='85' cy='80' r='1' fill='${ink(0.11)}'/><circle cx='20' cy='85' r='1.5' fill='${ink(0.12)}'/><line x1='15' y1='20' x2='45' y2='10' stroke='${ink(0.05)}' stroke-width='0.8'/><line x1='45' y1='10' x2='75' y2='25' stroke='${ink(0.04)}' stroke-width='0.8'/><line x1='75' y1='25' x2='65' y2='60' stroke='${ink(0.04)}' stroke-width='0.8'/><line x1='30' y1='55' x2='65' y2='60' stroke='${ink(0.04)}' stroke-width='0.8'/><line x1='20' y1='85' x2='65' y2='60' stroke='${ink(0.04)}' stroke-width='0.8'/><line x1='85' y1='80' x2='65' y2='60' stroke='${ink(0.03)}' stroke-width='0.8'/></svg>`;
-      return { uri: enc(s), size: "100px 100px" };
-    }
-    case "ripples": {
-      // Concentric arcs like water ripples
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><circle cx='40' cy='40' r='10' fill='none' stroke='${ink(0.08)}' stroke-width='1'/><circle cx='40' cy='40' r='20' fill='none' stroke='${ink(0.06)}' stroke-width='1'/><circle cx='40' cy='40' r='30' fill='none' stroke='${ink(0.05)}' stroke-width='1'/><circle cx='40' cy='40' r='40' fill='none' stroke='${ink(0.04)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "80px 80px" };
-    }
-    case "brushed": {
-      // Horizontal brush-stroke texture
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='8' viewBox='0 0 60 8'><path d='M0 4 Q15 2 30 4 Q45 6 60 4' fill='none' stroke='${ink(0.06)}' stroke-width='1.5' stroke-linecap='round'/><path d='M0 7 Q20 5.5 40 7 Q50 7.5 60 7' fill='none' stroke='${ink(0.03)}' stroke-width='1' stroke-linecap='round'/></svg>`;
-      return { uri: enc(s), size: "60px 8px" };
-    }
-    case "grain": {
-      // Fine randomised grain texture
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><circle cx='1' cy='2' r='0.4' fill='${ink(0.06)}'/><circle cx='4' cy='0.5' r='0.3' fill='${ink(0.05)}'/><circle cx='7' cy='3' r='0.4' fill='${ink(0.06)}'/><circle cx='2' cy='6' r='0.3' fill='${ink(0.04)}'/><circle cx='5.5' cy='7.5' r='0.4' fill='${ink(0.05)}'/><circle cx='9' cy='5' r='0.3' fill='${ink(0.04)}'/><circle cx='0.5' cy='9' r='0.3' fill='${ink(0.05)}'/><circle cx='3' cy='4' r='0.3' fill='${ink(0.04)}'/></svg>`;
-      return { uri: enc(s), size: "10px 10px" };
-    }
-    case "blueprint": {
-      // Blueprint grid — major + minor lines
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><line x1='0' y1='0' x2='40' y2='0' stroke='${ink(0.12)}' stroke-width='1'/><line x1='0' y1='0' x2='0' y2='40' stroke='${ink(0.12)}' stroke-width='1'/><line x1='10' y1='0' x2='10' y2='40' stroke='${ink(0.05)}' stroke-width='0.5'/><line x1='20' y1='0' x2='20' y2='40' stroke='${ink(0.05)}' stroke-width='0.5'/><line x1='30' y1='0' x2='30' y2='40' stroke='${ink(0.05)}' stroke-width='0.5'/><line x1='0' y1='10' x2='40' y2='10' stroke='${ink(0.05)}' stroke-width='0.5'/><line x1='0' y1='20' x2='40' y2='20' stroke='${ink(0.05)}' stroke-width='0.5'/><line x1='0' y1='30' x2='40' y2='30' stroke='${ink(0.05)}' stroke-width='0.5'/></svg>`;
-      return { uri: enc(s), size: "40px 40px" };
-    }
-    case "isometric": {
-      // Isometric / 3-D grid
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='34' viewBox='0 0 60 34'><line x1='30' y1='0' x2='60' y2='17' stroke='${ink(0.09)}' stroke-width='1'/><line x1='0' y1='17' x2='30' y2='0' stroke='${ink(0.09)}' stroke-width='1'/><line x1='0' y1='17' x2='30' y2='34' stroke='${ink(0.07)}' stroke-width='1'/><line x1='30' y1='34' x2='60' y2='17' stroke='${ink(0.07)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "60px 34px" };
-    }
-    case "terrazzo": {
-      // Scattered irregular fragments like terrazzo stone
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'><ellipse cx='12' cy='10' rx='4' ry='2.5' transform='rotate(-20 12 10)' fill='${ink(0.07)}'/><ellipse cx='38' cy='8' rx='3' ry='2' transform='rotate(15 38 8)' fill='${ink(0.06)}'/><ellipse cx='52' cy='22' rx='3.5' ry='2' transform='rotate(-30 52 22)' fill='${ink(0.08)}'/><ellipse cx='8' cy='38' rx='4' ry='2.5' transform='rotate(40 8 38)' fill='${ink(0.06)}'/><ellipse cx='28' cy='45' rx='3' ry='2' transform='rotate(-10 28 45)' fill='${ink(0.07)}'/><ellipse cx='48' cy='50' rx='3.5' ry='2.5' transform='rotate(25 48 50)' fill='${ink(0.06)}'/><ellipse cx='22' cy='25' rx='2.5' ry='1.5' transform='rotate(35 22 25)' fill='${ink(0.05)}'/></svg>`;
-      return { uri: enc(s), size: "60px 60px" };
-    }
-    case "herringbone": {
-      // Classic herringbone weave pattern
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'><path d='M0 5 L5 0 L10 5 L5 10Z' fill='${ink(0.07)}'/><path d='M10 5 L15 0 L20 5 L15 10Z' fill='${ink(0.07)}'/><path d='M0 15 L5 10 L10 15 L5 20Z' fill='${ink(0.07)}'/><path d='M10 15 L15 10 L20 15 L15 20Z' fill='${ink(0.07)}'/></svg>`;
-      return { uri: enc(s), size: "20px 20px" };
-    }
-    case "confetti": {
-      // Tiny scattered rectangles at varied angles
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><rect x='8' y='12' width='6' height='3' rx='1' transform='rotate(-25 8 12)' fill='${ink(0.08)}'/><rect x='35' y='5' width='5' height='2.5' rx='1' transform='rotate(15 35 5)' fill='${ink(0.07)}'/><rect x='62' y='18' width='6' height='3' rx='1' transform='rotate(40 62 18)' fill='${ink(0.08)}'/><rect x='20' y='42' width='5' height='2.5' rx='1' transform='rotate(-15 20 42)' fill='${ink(0.06)}'/><rect x='55' y='48' width='6' height='3' rx='1' transform='rotate(30 55 48)' fill='${ink(0.07)}'/><rect x='10' y='65' width='5' height='2.5' rx='1' transform='rotate(20 10 65)' fill='${ink(0.08)}'/><rect x='70' y='68' width='6' height='3' rx='1' transform='rotate(-35 70 68)' fill='${ink(0.07)}'/><rect x='40' y='30' width='4' height='2' rx='1' transform='rotate(10 40 30)' fill='${ink(0.05)}'/></svg>`;
-      return { uri: enc(s), size: "80px 80px" };
-    }
-    case "bubbles": {
-      // Organic overlapping circles of varied sizes
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='20' cy='25' r='10' fill='none' stroke='${ink(0.07)}' stroke-width='1'/><circle cx='55' cy='15' r='7' fill='none' stroke='${ink(0.06)}' stroke-width='1'/><circle cx='80' cy='35' r='12' fill='none' stroke='${ink(0.06)}' stroke-width='1'/><circle cx='15' cy='65' r='8' fill='none' stroke='${ink(0.07)}' stroke-width='1'/><circle cx='50' cy='70' r='14' fill='none' stroke='${ink(0.05)}' stroke-width='1'/><circle cx='82' cy='78' r='9' fill='none' stroke='${ink(0.06)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "100px 100px" };
-    }
-    case "squiggles": {
-      // Loose irregular wavy lines
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='40' viewBox='0 0 80 40'><path d='M0 10 C10 5 20 15 30 10 S50 5 60 10 S75 15 80 10' fill='none' stroke='${ink(0.07)}' stroke-width='1.2' stroke-linecap='round'/><path d='M0 25 C15 20 25 32 40 25 S60 20 80 25' fill='none' stroke='${ink(0.06)}' stroke-width='1' stroke-linecap='round'/><path d='M0 38 C12 33 22 42 35 38 S55 33 80 38' fill='none' stroke='${ink(0.05)}' stroke-width='1' stroke-linecap='round'/></svg>`;
-      return { uri: enc(s), size: "80px 40px" };
-    }
-    case "patchwork": {
-      // Irregular quadrilateral patches
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'><polygon points='0,0 28,0 25,28 0,30' fill='none' stroke='${ink(0.09)}' stroke-width='1'/><polygon points='28,0 60,0 60,25 25,28' fill='none' stroke='${ink(0.09)}' stroke-width='1'/><polygon points='0,30 25,28 30,60 0,60' fill='none' stroke='${ink(0.08)}' stroke-width='1'/><polygon points='25,28 60,25 60,60 30,60' fill='none' stroke='${ink(0.08)}' stroke-width='1'/></svg>`;
-      return { uri: enc(s), size: "60px 60px" };
-    }
-    case "mosaic": {
-      // Small irregular tiles with subtle gaps
-      const s = `<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30'><rect x='1' y='1' width='12' height='12' rx='1' fill='${ink(0.06)}'/><rect x='14.5' y='1' width='6' height='6' rx='1' fill='${ink(0.05)}'/><rect x='22' y='1' width='7' height='12' rx='1' fill='${ink(0.06)}'/><rect x='14.5' y='8.5' width='6' height='5.5' rx='1' fill='${ink(0.04)}'/><rect x='1' y='14.5' width='7' height='14' rx='1' fill='${ink(0.05)}'/><rect x='9.5' y='14.5' width='5' height='5' rx='1' fill='${ink(0.06)}'/><rect x='9.5' y='21' width='5' height='7.5' rx='1' fill='${ink(0.05)}'/><rect x='16' y='14.5' width='13' height='5' rx='1' fill='${ink(0.06)}'/><rect x='16' y='21' width='6' height='7.5' rx='1' fill='${ink(0.04)}'/><rect x='23' y='21' width='6' height='7.5' rx='1' fill='${ink(0.06)}'/></svg>`;
-      return { uri: enc(s), size: "30px 30px" };
-    }
-    default:
-      return null;
-  }
-}
-
-/**
- * Compose a pattern with the given base colour. The pattern image overlays the colour.
- * `tint` defaults to "dark" but should be "light" for dark backgrounds.
- */
-function patternToCss(p: string, baseBg = "#f7f6f4", tint: "dark" | "light" = "dark"): React.CSSProperties {
-  if (!p || p === "none") return { backgroundColor: baseBg };
-  const svg = svgPatternUri(p, tint);
-  if (svg) {
-    return {
-      backgroundColor: baseBg,
-      backgroundImage: svg.uri,
-      backgroundSize: svg.size,
-      backgroundRepeat: "repeat",
-    };
-  }
-  return { backgroundColor: baseBg };
-}
-
-export function parseBackground(bg: string | null | undefined): { pattern: string; color: string } {
-  if (!bg) return { pattern: "none", color: "none" };
-  // JSON format
+  // Legacy JSON system
   if (bg.startsWith("{")) {
     try {
       const parsed = JSON.parse(bg);
-      return { pattern: parsed.pattern || "none", color: parsed.color || "none" };
-    } catch { /* fall through to legacy */ }
-  }
-  // Legacy single-value format: map to new schema
-  const patterns = ["dots", "grid", "grid-bg", "diagonal", "waves", "hexagon", "hexagons", "circles", "chevron", "noise", "crosshatch", "linen", "paper", "weave", "diamonds", "art-deco", "tiles", "topography", "circuit", "dots-lg", "grid-fine", "zigzag", "bubble", "moroccan"];
-  if (patterns.includes(bg)) return { pattern: bg === "grid-bg" ? "grid" : bg, color: "none" };
-  return { pattern: "none", color: bg };
-}
-
-// Returns whether the background is visually dark or light — used by Goal 6 to auto-pick text colour
-export function getBackgroundLuminance(bg: string | null | undefined): "dark" | "light" {
-  if (!bg) return "light";
-  const { color } = parseBackground(bg);
-  const darkColors = new Set(["charcoal", "midnight", "midnight-blue", "deep-purple", "espresso", "forest", "ocean", "aurora", "sunset"]);
-  if (darkColors.has(color)) return "dark";
-  if (color && color.startsWith("#")) {
-    const hex = color.replace("#", "");
-    const full = hex.length === 3 ? hex.split("").map(c => c + c).join("") : hex;
-    if (full.length === 6) {
-      const r = parseInt(full.slice(0, 2), 16);
-      const g = parseInt(full.slice(2, 4), 16);
-      const b = parseInt(full.slice(4, 6), 16);
-      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      return luminance < 0.5 ? "dark" : "light";
-    }
+      const color = parsed.color || "";
+      const darkColors = new Set(["charcoal", "midnight", "midnight-blue", "deep-purple", "espresso", "forest", "ocean", "aurora", "sunset"]);
+      if (darkColors.has(color)) return "dark";
+    } catch { /* ignore */ }
   }
   return "light";
 }
 
-// Convert a background value to CSS for the profile page — supports JSON {pattern, color} + legacy string
+// Returns the CSS class name for new-format backgrounds, or {} for legacy/none
 export function backgroundToCss(bg: string | null | undefined): React.CSSProperties {
   if (!bg || bg === "none") return {};
-  const { pattern, color } = parseBackground(bg);
-  const c = colorToCss(color);
-  const out: React.CSSProperties = {};
-
-  // Determine pattern ink tint (light for dark bgs, dark otherwise)
-  const tint: "dark" | "light" = getBackgroundLuminance(bg) === "dark" ? "light" : "dark";
-
-  if (pattern && pattern !== "none") {
-    // Apply colour first (gradient or solid), then pattern image on top via the dual CSS keys.
-    if (c.bg) {
-      // Gradient background: layer SVG pattern OVER the gradient
-      const svg = svgPatternUri(pattern, tint);
-      if (svg) {
-        out.backgroundImage = `${svg.uri}, ${c.bg}`;
-        out.backgroundSize = `${svg.size}, cover`;
-        out.backgroundRepeat = `repeat, no-repeat`;
-      } else {
-        out.background = c.bg;
-      }
-    } else {
-      Object.assign(out, patternToCss(pattern, c.bgColor || "#f7f6f4", tint));
-    }
-  } else if (c.bg) {
-    out.background = c.bg;
-  } else if (c.bgColor) {
-    out.backgroundColor = c.bgColor;
+  // New CSS-class system: class is applied directly to the element — no inline style needed
+  if (bg.startsWith("bg-")) return {};
+  // Legacy JSON system — basic fallback so old profiles don't break
+  if (bg.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(bg);
+      const color = parsed.color as string | undefined;
+      if (!color || color === "none") return {};
+      const legacyMap: Record<string, React.CSSProperties> = {
+        "warm-white": { backgroundColor: "#fef9f4" },
+        "warm-sand": { backgroundColor: "#f5e6c8" },
+        "stone": { backgroundColor: "#e7e5e4" },
+        "charcoal": { backgroundColor: "#1e293b", color: "#f1f5f9" },
+        "midnight": { backgroundColor: "#0f172a", color: "#f1f5f9" },
+        "espresso": { backgroundColor: "#2c1a0e", color: "#fef9f4" },
+        "deep-purple": { backgroundColor: "#2d1b69", color: "#e9d5ff" },
+        "mint": { backgroundColor: "#d1fae5" },
+        "lavender": { backgroundColor: "#ede9fe" },
+        "butter": { backgroundColor: "#fef9c3" },
+        "powder": { backgroundColor: "#dbeafe" },
+        "blush": { backgroundColor: "#fce7f3" },
+        "rose": { background: "linear-gradient(135deg, #ffe4e6, #fecdd3)" },
+        "sage": { background: "linear-gradient(135deg, #d1fae5, #a7f3d0)" },
+        "ocean": { background: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)", color: "#fff" },
+        "aurora": { background: "linear-gradient(135deg, #a855f7 0%, #06b6d4 50%, #10b981 100%)", color: "#fff" },
+        "sunset": { background: "linear-gradient(135deg, #f97316 0%, #ec4899 50%, #8b5cf6 100%)", color: "#fff" },
+      };
+      if (color.startsWith("#")) return { backgroundColor: color };
+      return legacyMap[color] || {};
+    } catch { /* ignore */ }
   }
+  return {};
+}
 
-  if (c.text) out.color = c.text;
-  return out;
+// Used by ProfilePage to get the CSS class to apply to the page wrapper
+export function backgroundToClass(bg: string | null | undefined): string {
+  if (!bg || bg === "none") return "";
+  if (bg.startsWith("bg-")) return bg;
+  return "";
 }
 
 // Unified icon set used everywhere — empty string means "no icon" (default)
@@ -977,84 +746,47 @@ function Step2({ state, update }: { state: BuilderState; update: (v: Partial<Bui
           These appear on your public profile as clickable contact links.
         </p>
 
-        {/* Background pattern + colour pickers (JSON encoded) */}
-        {(() => {
-          const current = parseBackground(state.background);
-          const setBg = (next: Partial<{ pattern: string; color: string }>) => {
-            const merged = { ...current, ...next };
-            if (merged.pattern === "none" && merged.color === "none") {
-              update({ background: "none" });
-            } else {
-              update({ background: JSON.stringify(merged) });
-            }
-          };
-          return (
-            <>
-              <div>
-                <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.75rem" }}>
-                  Background pattern
-                </label>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))", gap: "0.5rem" }}>
-                  {PATTERN_OPTIONS.map(p => (
-                    <button
-                      key={p.value}
-                      type="button"
-                      onClick={() => setBg({ pattern: p.value })}
-                      style={{
-                        height: 52,
-                        borderRadius: "var(--radius-md)",
-                        border: `2.5px solid ${current.pattern === p.value ? "var(--color-text)" : "var(--color-border)"}`,
-                        cursor: "pointer",
-                        overflow: "hidden",
-                        ...patternToCss(p.value, "#f7f6f4"),
-                        display: "flex",
-                        alignItems: "flex-end",
-                        justifyContent: "center",
-                        padding: "0.25rem",
-                      }}
-                      title={p.label}
-                      data-testid={`button-pattern-${p.value}`}
-                    >
-                      <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(0,0,0,0.45)", color: "#fff", padding: "1px 5px", borderRadius: 3, lineHeight: 1.5 }}>{p.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ marginTop: "1rem" }}>
-                <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.75rem" }}>
-                  Background colour
-                </label>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))", gap: "0.5rem" }}>
-                  {COLOR_OPTIONS.map(co => (
-                    <button
-                      key={co.value}
-                      type="button"
-                      onClick={() => setBg({ color: co.value })}
-                      style={{
-                        height: 52,
-                        borderRadius: "var(--radius-md)",
-                        border: `2.5px solid ${current.color === co.value ? "var(--color-text)" : "var(--color-border)"}`,
-                        cursor: "pointer",
-                        overflow: "hidden",
-                        background: co.preview,
-                        display: "flex",
-                        alignItems: "flex-end",
-                        justifyContent: "center",
-                        padding: "0.25rem",
-                      }}
-                      title={co.label}
-                      data-testid={`button-color-${co.value}`}
-                    >
-                      <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(0,0,0,0.45)", color: "#fff", padding: "1px 5px", borderRadius: 3, lineHeight: 1.5 }}>{co.label}</span>
-                    </button>
-                  ))}
-                </div>
-                <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 6 }}>Mix a pattern with a colour for unique backgrounds.</p>
-              </div>
-            </>
-          );
-        })()}
+        {/* ─── Background picker — 20 CSS gradient swatches ─── */}
+        <div>
+          <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.75rem" }}>
+            Background
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))", gap: "0.5rem" }}>
+            {BACKGROUND_OPTIONS.map(opt => {
+              const isActive = state.background === opt.value || (!state.background && opt.value === "none");
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => update({ background: opt.value })}
+                  title={opt.label}
+                  data-testid={`button-bg-${opt.value}`}
+                  style={{
+                    height: 52,
+                    borderRadius: "var(--radius-md)",
+                    border: `2.5px solid ${isActive ? "var(--color-primary)" : "var(--color-border)"}`,
+                    cursor: "pointer",
+                    overflow: "hidden",
+                    background: opt.preview,
+                    backgroundSize: "cover",
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "center",
+                    padding: "0.25rem",
+                    position: "relative",
+                    outline: isActive ? "2px solid var(--color-primary)" : "none",
+                    outlineOffset: 1,
+                    boxShadow: isActive ? "0 0 0 3px var(--amber-subtle, rgba(224,107,26,0.18))" : undefined,
+                  }}
+                >
+                  <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.55)", color: "#fff", padding: "1px 4px", borderRadius: 3, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+                    {opt.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Accent colour */}
         <div>

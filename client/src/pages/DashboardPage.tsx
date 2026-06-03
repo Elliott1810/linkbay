@@ -5,7 +5,7 @@ import { apiRequest, queryClient, resolveMediaUrl } from "@/lib/queryClient";
 import { useTheme, useAuth } from "@/App";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { backgroundToCss, parseBackground, PATTERN_OPTIONS, COLOR_OPTIONS } from "./BuilderPage";
+import { BACKGROUND_OPTIONS } from "./BuilderPage";
 import { QRCodeSVG } from "qrcode.react";
 
 // --- Icons ---
@@ -789,20 +789,6 @@ const DASHBOARD_BG_OPTIONS = [
   { label: "Frosted", value: "glass", preview: "linear-gradient(135deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2)), #e0f2fe" },
 ];
 
-// G7: refreshed theme presets — 10 curated combos from the new pattern/colour palette
-const THEME_PRESETS: { id: string; name: string; accentColor: string; background: string }[] = [
-  { id: "ember",      name: "Ember",      accentColor: "#e06b1a", background: JSON.stringify({ pattern: "topography",    color: "warm-white" }) },
-  { id: "blossom",   name: "Blossom",    accentColor: "#e879a0", background: JSON.stringify({ pattern: "botanica",     color: "blush" }) },
-  { id: "peppermint",name: "Peppermint", accentColor: "#0fa87e", background: JSON.stringify({ pattern: "ripples",      color: "mint" }) },
-  { id: "nordic",    name: "Nordic",     accentColor: "#6366f1", background: JSON.stringify({ pattern: "constellations",color: "powder" }) },
-  { id: "buttercup", name: "Buttercup",  accentColor: "#d97706", background: JSON.stringify({ pattern: "linen",        color: "butter" }) },
-  { id: "deep-ocean",name: "Deep Ocean", accentColor: "#0891b2", background: JSON.stringify({ pattern: "circuit",      color: "midnight" }) },
-  { id: "aurora",    name: "Aurora",     accentColor: "#7c3aed", background: JSON.stringify({ pattern: "constellations",color: "aurora" }) },
-  { id: "espresso",  name: "Espresso",   accentColor: "#e06b1a", background: JSON.stringify({ pattern: "herringbone",   color: "espresso" }) },
-  { id: "linen",     name: "Linen",      accentColor: "#92400e", background: JSON.stringify({ pattern: "linen",        color: "warm-sand" }) },
-  { id: "minimal",   name: "Minimal",    accentColor: "#334155", background: "none" },
-];
-
 // Font options for page font selector (General 15)
 const PAGE_FONT_OPTIONS = [
   { label: "Inter (default)", value: "inter" },
@@ -911,78 +897,40 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ width: 24, height: 24, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0 }} />
         </div>
       </div>
-      {(() => {
-        const current = parseBackground(background);
-        const setBg = (next: Partial<{ pattern: string; color: string }>) => {
-          const merged = { ...current, ...next };
-          if (merged.pattern === "none" && merged.color === "none") {
-            setBackground("none");
-          } else {
-            setBackground(JSON.stringify(merged));
-          }
-        };
-        return (
-          <>
-            <div>
-              <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background pattern</label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
-                {PATTERN_OPTIONS.map(p => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setBg({ pattern: p.value })}
-                    title={p.label}
-                    style={{
-                      height: 44,
-                      borderRadius: "var(--radius-sm)",
-                      border: `2px solid ${current.pattern === p.value ? "var(--color-text)" : "var(--color-border)"}`,
-                      cursor: "pointer",
-                      overflow: "hidden",
-                      ...backgroundToCss(JSON.stringify({ pattern: p.value, color: "none" })),
-                      display: "flex",
-                      alignItems: "flex-end",
-                      justifyContent: "center",
-                      padding: "2px",
-                    }}
-                    data-testid={`button-dash-pattern-${p.value}`}
-                  >
-                    <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.45)", color: "#fff", padding: "1px 4px", borderRadius: 2, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{p.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ marginTop: "0.75rem" }}>
-              <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background colour</label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
-                {COLOR_OPTIONS.map(co => (
-                  <button
-                    key={co.value}
-                    type="button"
-                    onClick={() => setBg({ color: co.value })}
-                    title={co.label}
-                    style={{
-                      height: 44,
-                      borderRadius: "var(--radius-sm)",
-                      border: `2px solid ${current.color === co.value ? "var(--color-text)" : "var(--color-border)"}`,
-                      cursor: "pointer",
-                      background: co.preview,
-                      display: "flex",
-                      alignItems: "flex-end",
-                      justifyContent: "center",
-                      padding: "2px",
-                      overflow: "hidden",
-                    }}
-                    data-testid={`button-dash-color-${co.value}`}
-                  >
-                    <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.45)", color: "#fff", padding: "1px 4px", borderRadius: 2, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{co.label}</span>
-                  </button>
-                ))}
-              </div>
-              <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 6 }}>Mix a pattern with a colour for unique backgrounds.</p>
-            </div>
-          </>
-        );
-      })()}
+      {/* ─── Background picker — 20 CSS gradient swatches ─── */}
+      <div>
+        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background</label>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
+          {BACKGROUND_OPTIONS.map(opt => {
+            const isActive = background === opt.value || (!background && opt.value === "none");
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setBackground(opt.value)}
+                title={opt.label}
+                data-testid={`button-dash-bg-${opt.value}`}
+                style={{
+                  height: 44,
+                  borderRadius: "var(--radius-sm)",
+                  border: `2px solid ${isActive ? "var(--color-primary)" : "var(--color-border)"}`,
+                  cursor: "pointer",
+                  overflow: "hidden",
+                  background: opt.preview,
+                  backgroundSize: "cover",
+                  display: "flex",
+                  alignItems: "flex-end",
+                  justifyContent: "center",
+                  padding: "2px",
+                  boxShadow: isActive ? "0 0 0 2px var(--amber-subtle, rgba(224,107,26,0.2))" : undefined,
+                }}
+              >
+                <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.55)", color: "#fff", padding: "1px 4px", borderRadius: 2, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Profile picture shape</label>
         <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -996,24 +944,7 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           ))}
         </div>
       </div>
-      <div>
-        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Theme presets</label>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: "0.375rem" }}>
-          {THEME_PRESETS.map(t => {
-            const isActive = accentColor === t.accentColor && background === t.background;
-            return (
-              <button key={t.id} type="button"
-                onClick={() => { setAccentColor(t.accentColor); setBackground(t.background); }}
-                style={{ padding: "0.5rem", fontSize: 12, fontWeight: 600, borderRadius: "var(--radius-sm)", border: `2px solid ${isActive ? "var(--color-text)" : "var(--color-border)"}`, background: "var(--color-surface)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
-                data-testid={`theme-preset-${t.id}`}
-              >
-                <span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: t.accentColor, flexShrink: 0 }} />
-                {t.name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Page font</label>
         <select
@@ -2526,8 +2457,8 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                 key={d}
                 onClick={() => setDays(d)}
                 style={{
-                  padding: "0.3rem 0.75rem", borderRadius: "var(--radius-md)", fontSize: 12, fontWeight: 600,
-                  border: `1px solid ${days === d ? "var(--color-primary)" : "var(--color-border)"}`,
+                  padding: "0.25rem 0.625rem", borderRadius: "var(--radius-md)", fontSize: 11, fontWeight: 600,
+                  border: `1px solid ${days === d ? "var(--color-primary)" : "transparent"}`,
                   background: days === d ? "var(--color-primary-highlight)" : "var(--color-surface-offset)",
                   color: days === d ? "var(--color-primary)" : "var(--color-text-faint)",
                   cursor: "pointer",
@@ -2555,12 +2486,13 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
           <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
             {[
               { label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0" },
-              { label: `Views (${days}d)`, value: analytics.periodViews?.toLocaleString() ?? "0" },
-              { label: `Clicks (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0" },
+              { label: days === 0 ? "Views (ALL TIME)" : `Views (${days}d)`, value: analytics.periodViews?.toLocaleString() ?? "0" },
+              { label: days === 0 ? "Clicks (ALL TIME)" : `Clicks (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0" },
               { label: "Click rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%" },
               { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString() },
               { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString() },
               { label: "Best day", value: analytics.bestDay ? `${analytics.bestDay.count} views (${analytics.bestDay.label})` : "No data" },
+              { label: days === 0 ? "Avg views (ALL TIME)" : `Avg views (${days}d)`, value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—" },
             ].map(s => (
               <div key={s.label} className="stat-card">
                 <div className="stat-label">{s.label}</div>
@@ -2610,7 +2542,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+          <div className="analytics-detail-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
             {/* Top links */}
             <div className="card" style={{ padding: "1.25rem" }}>
               <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>Top Interactions</div>
@@ -2993,13 +2925,14 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
 
   const totalInteractions = periodEvents.length;
 
+  // G5: unified pill style — matches Overview and Analytics panels exactly
   const pillStyle = (active: boolean): React.CSSProperties => ({
-    padding: "0.25rem 0.75rem",
-    borderRadius: "var(--radius-full)",
-    border: `1px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`,
-    background: active ? "var(--color-primary)" : "transparent",
-    color: active ? "#fff" : "var(--color-text-muted)",
-    fontSize: "var(--text-sm)",
+    padding: "0.25rem 0.625rem",
+    borderRadius: "var(--radius-md)",
+    border: `1px solid ${active ? "var(--color-primary)" : "transparent"}`,
+    background: active ? "var(--color-primary-highlight)" : "var(--color-surface-offset)",
+    color: active ? "var(--color-primary)" : "var(--color-text-faint)",
+    fontSize: 11,
     fontWeight: 600,
     cursor: "pointer",
   });
@@ -3071,16 +3004,30 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
                             <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{blockLabel(block)}</span>
                             <span style={{ fontSize: 11, fontWeight: 700, color: stats.count > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, marginLeft: "0.5rem" }}>{stats.count} ({pct}%)</span>
                           </div>
-                          <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
-                            <div style={{ height: "100%", width: `${pct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
-                          </div>
-                          {Object.keys(stats.eventTypes).length > 0 && (
-                            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
-                              {Object.entries(stats.eventTypes).map(([et, cnt]) => (
-                                <span key={et} style={{ fontSize: 10, padding: "1px 5px", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 4, color: "var(--color-text-muted)" }}>{et}: {cnt as number}</span>
-                              ))}
-                            </div>
-                          )}
+                          {/* G6: teal Views bar + amber Interactions bar */}
+                          {(() => {
+                            const viewCount = stats.eventTypes["view"] ?? 0;
+                            const interCount2 = stats.count - viewCount;
+                            const maxCount = Math.max(...Array.from(blockStats.values()).map(s => s.count), 1);
+                            const vPct = Math.round((viewCount / maxCount) * 100);
+                            const iPct = Math.round((interCount2 / maxCount) * 100);
+                            return (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 3 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)" }}>
+                                  <span>Views</span><span style={{ fontWeight: 600 }}>{viewCount}</span>
+                                </div>
+                                <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${vPct}%`, background: "#0891b2", borderRadius: 999, transition: "width 0.4s" }} />
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)" }}>
+                                  <span>Interactions</span><span style={{ fontWeight: 600 }}>{interCount2}</span>
+                                </div>
+                                <div style={{ height: 4, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${iPct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {/* G6d: per-platform breakdown for social-links */}
                           {isSocial && platformMap && platformMap.size > 0 && (
                             <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
@@ -4062,17 +4009,7 @@ function ContactsPanel() {
                     </button>
                   ) : null}
                   {detail.contact.followUpDone ? (
-                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                      <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>✓ Marked done</span>
-                      <button
-                        type="button"
-                        onClick={() => updateMutation.mutate({ id: detail.contact.id, data: { followUpDone: false } })}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: 11 }}
-                      >
-                        Unmark
-                      </button>
-                    </div>
+                    <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>✓ Follow-up marked done</span>
                   ) : null}
                 </div>
 
@@ -4995,7 +4932,7 @@ export default function DashboardPage() {
                 <li>• Track every view and click in <b>Analytics</b>.</li>
                 <li>• <b>Leads</b> captured via lead forms appear with status chips.</li>
                 <li>• Convert a lead into a contact from the lead detail.</li>
-                <li>• Choose a <b>theme preset</b> in Settings for instant restyling.</li>
+                <li>• Choose a <b>background</b> in Settings to style your public page.</li>
               </ul>
             </div>
           </div>

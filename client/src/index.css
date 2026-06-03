@@ -1343,6 +1343,8 @@ img.avatar-img {
 
 /* Base: block-card overflow:hidden so border-radius on parent clips inner content */
 .block-card { overflow: hidden; }
+/* Inner block components use var(--block-radius) set by ProfilePage on the wrapper */
+.block-card > * { border-radius: var(--block-radius, var(--radius-lg)) !important; }
 
 .block-style-default .block-card { /* standard — no overrides */ }
 

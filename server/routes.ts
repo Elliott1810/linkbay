@@ -1225,14 +1225,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const userId = Number(req.body?.userId);
       const tier = String(req.body?.tier || "free").trim();
       if (!userId || !["free", "pro", "business"].includes(tier)) return res.status(400).send("Invalid input");
-      const db2 = new Database(DB_PATH);
-      const existing = db2.prepare("SELECT id FROM licences WHERE user_id = ?").get(userId);
-      if (existing) {
-        db2.prepare("UPDATE licences SET tier = ?, updated_at = ? WHERE user_id = ?").run(tier, new Date().toISOString(), userId);
-      } else {
-        db2.prepare("INSERT INTO licences (user_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?)").run(userId, tier, new Date().toISOString(), new Date().toISOString());
-      }
-      db2.close();
+      // Use users.licence column — no separate licences table needed
+      setUserLicence(userId, tier, null);
       res.redirect("/admin");
     } catch (e) { res.status(500).send("Failed to update licence"); }
   });
@@ -1326,12 +1320,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       ORDER BY l.created_at DESC LIMIT 20
     `).all() as any[];
 
-    // Licence data for admin panel
+    // Licence data for admin panel — read directly from users.licence column (no separate licences table)
     const licences = sqlite.prepare(`
-      SELECT u.id as user_id, u.name, u.email, l.tier, l.expires_at, l.stripe_subscription_id
+      SELECT u.id as user_id, u.name, u.email,
+        COALESCE(u.licence, 'free') as tier,
+        u.licence_expiry as expires_at,
+        u.stripe_subscription_id
       FROM users u
-      LEFT JOIN licences l ON l.user_id = u.id
-      ORDER BY CASE l.tier WHEN 'business' THEN 0 WHEN 'pro' THEN 1 ELSE 2 END, u.created_at DESC
+      ORDER BY CASE COALESCE(u.licence,'free') WHEN 'business' THEN 0 WHEN 'pro' THEN 1 ELSE 2 END, u.created_at DESC
     `).all() as any[];
     const licCountFree = licences.filter(l => !l.tier || l.tier === "free").length;
     const licCountPro = licences.filter(l => l.tier === "pro").length;

@@ -367,11 +367,13 @@ function OverviewPanel({
   // G12/G4: always 1 decimal place
   const clickRate = totalViews > 0 ? (Math.round((totalClicks / totalViews) * 1000) / 10).toFixed(1) : "0.0";
 
+  // G3a: 'All Time' label when days=0
+  const periodLabel = days === 0 ? "All time" : `${days}d window`;
   const statsData = [
-    { label: "Total Views", value: totalViews.toLocaleString(), delta: `${days}d window`, up: true },
-    { label: "Total Clicks", value: totalClicks.toLocaleString(), delta: `${days}d window`, up: true },
-    { label: "Click Rate", value: `${clickRate}%`, delta: `${days}d average`, up: true },
-    { label: "Total Leads", value: totalLeads.toLocaleString(), delta: `${days}d window`, up: true },
+    { label: "Total Views", value: totalViews.toLocaleString(), delta: periodLabel, up: true },
+    { label: "Total Clicks", value: totalClicks.toLocaleString(), delta: periodLabel, up: true },
+    { label: "Click Rate", value: `${clickRate}%`, delta: days === 0 ? "All time avg" : `${days}d average`, up: true },
+    { label: "Total Leads", value: totalLeads.toLocaleString(), delta: periodLabel, up: true },
   ];
 
   const topLinks = analytics?.topLinks ?? [];
@@ -534,7 +536,7 @@ function OverviewPanel({
         <div className="card" style={{ padding: "1.25rem", marginBottom: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
             <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>
-              {graphSeries === "views" ? "Views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — last {Math.min(14, days)} days
+              {graphSeries === "views" ? "Views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — {days === 0 ? "all time" : `last ${days} days`}
             </div>
             <select
               value={graphSeries}
@@ -583,19 +585,37 @@ function OverviewPanel({
               </div>
             );
             const liveBlockIds = (() => { try { return new Set((JSON.parse(page?.blocks || "[]") as any[]).map((b: any) => b.id)); } catch { return new Set(); } })();
-            const max = interactions[0]?.total ?? 1;
+            const max = Math.max(...interactions.map((i: any) => i.total ?? i.clickCount ?? 0), 1);
             return interactions.map((item: any) => {
               const isLive = !item.blockId || liveBlockIds.has(item.blockId);
+              const total = item.total ?? item.clickCount ?? 0;
+              const views = item.views ?? 0;
+              const interCount = item.interactions ?? total;
+              const viewPct = max > 0 ? Math.round((views / max) * 100) : 0;
+              const interPct = max > 0 ? Math.round((interCount / max) * 100) : 0;
               return (
-                <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.75rem" }}>
+                <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: "0.25rem", gap: "0.5rem" }}>
                     <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Link"}</span>
                     {!isLive && <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>past</span>}
-                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{item.total ?? item.clickCount} ×</span>
+                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{total} ×</span>
                   </div>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${max > 0 ? Math.round(((item.total ?? item.clickCount) / max) * 100) : 0}%`, background: isLive ? undefined : "var(--color-text-faint)" }} />
-                  </div>
+                  {/* G4b/4c: dual progress bars — views (amber) + interactions (orange) */}
+                  {item.isLink ? (
+                    <div className="progress-bar"><div className="progress-fill" style={{ width: `${interPct}%`, background: isLive ? "var(--color-primary)" : "var(--color-text-faint)" }} /></div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)", marginBottom: 2 }}>
+                        <span>Views: {views}</span><span>Interactions: {interCount}</span>
+                      </div>
+                      <div className="progress-bar" style={{ marginBottom: 2 }}>
+                        <div className="progress-fill" style={{ width: `${viewPct}%`, background: "#f59e0b" }} />
+                      </div>
+                      <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${interPct}%`, background: isLive ? "var(--color-primary)" : "var(--color-text-faint)" }} />
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             });

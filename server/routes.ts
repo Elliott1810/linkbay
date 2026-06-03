@@ -162,27 +162,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ─────────────────────────────────────────────────
 
   // GET a published page by username (public — used by ProfilePage)
+  // G1/G2 FIX: NO view tracking here — tracking moved to POST /api/pages/public/:username/view
+  // This prevents double/triple counts from TanStack Query refetches.
   app.get("/api/pages/public/:username", async (req, res) => {
     try {
       const page = await storage.getPageByUsername(req.params.username);
       if (!page) return res.status(404).json({ error: "Page not found" });
-      // Preview mode: allow unpublished pages to be viewed but skip analytics tracking entirely
       const isPreview = req.query.preview === "1";
       if (!page.published && !isPreview) return res.status(404).json({ error: "Page not found" });
-      // Generate hashed visitor ID from IP for unique visitor tracking
+      const links = await storage.getLinksByPage(page.id);
+      const owner = await storage.getUserByEmail(page.ownerEmail);
+      const { ownerEmail: _redacted, ...publicPage } = page as any;
+      res.json({ page: { ...publicPage, avatarUrl: owner?.avatarUrl ?? null }, links });
+    } catch { res.status(500).json({ error: "Server error" }); }
+  });
+
+  // POST record a single page view — called once per page mount by ProfilePage
+  // G1/G2 FIX: Separated from GET so refetches don't inflate view counts.
+  app.post("/api/pages/public/:username/view", async (req, res) => {
+    try {
+      const page = await storage.getPageByUsername(req.params.username);
+      if (!page || !page.published) return res.status(404).json({ error: "Not found" });
       const rawIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
       const visitorId = crypto.createHash("sha256").update(rawIp).digest("hex").slice(0, 16);
-      // Determine country: prefer Cloudflare header; otherwise leave null (will be back-filled async via ipapi.co)
       const cfCountry = ((req.headers["cf-ipcountry"] as string) || "").toUpperCase() || null;
-      // Track view event (skipped in preview)
-      if (!isPreview) {
-        await storage.incrementViewCount(page.id);
-        await storage.recordEvent({ pageId: page.id, type: "view", referrer: req.headers.referer || null, device: req.headers["user-agent"]?.includes("Mobile") ? "mobile" : "desktop", visitorId, country: cfCountry } as any);
-      }
-      // Best-effort async country lookup if no CF header and the IP looks publicly routable.
-      if (!isPreview && !cfCountry && rawIp && rawIp !== "127.0.0.1" && !rawIp.startsWith("192.168") && !rawIp.startsWith("10.") && !rawIp.startsWith("::1")) {
+      const ua = String(req.headers["user-agent"] || "");
+      const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
+      await storage.incrementViewCount(page.id);
+      await storage.recordEvent({ pageId: page.id, type: "view", referrer: req.headers.referer || null, device, visitorId, country: cfCountry } as any);
+      // Best-effort async country lookup
+      if (!cfCountry && rawIp && rawIp !== "127.0.0.1" && !rawIp.startsWith("192.168") && !rawIp.startsWith("10.") && !rawIp.startsWith("::1")) {
         try {
-          // Fire-and-forget; do not block the response.
           fetch(`https://ipapi.co/${rawIp}/country/`)
             .then(r => r.text())
             .then(c => {
@@ -190,22 +200,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               if (code && code.length === 2 && /^[A-Z]{2}$/.test(code)) {
                 try {
                   const db2 = new Database(DB_PATH);
-                  db2.prepare(
-                    "UPDATE page_events SET country = ? WHERE page_id = ? AND visitor_id = ? AND country IS NULL"
-                  ).run(code, page.id, visitorId);
+                  db2.prepare("UPDATE page_events SET country = ? WHERE page_id = ? AND visitor_id = ? AND country IS NULL").run(code, page.id, visitorId);
                   db2.close();
                 } catch {}
               }
-            })
-            .catch(() => {});
+            }).catch(() => {});
         } catch {}
       }
-      const links = await storage.getLinksByPage(page.id);
-      // Get owner avatar (public — only avatarUrl, no PII)
-      const owner = await storage.getUserByEmail(page.ownerEmail);
-      // Strip private owner email before sending to public (ownerName is intentionally public for display)
-      const { ownerEmail: _redacted, ...publicPage } = page as any;
-      res.json({ page: { ...publicPage, avatarUrl: owner?.avatarUrl ?? null }, links });
+      res.json({ success: true });
     } catch { res.status(500).json({ error: "Server error" }); }
   });
 
@@ -825,22 +827,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               interMap.set(`link-${link.id}`, { id: `link-${link.id}`, label: link.label || link.url, type: "link", total: link.clickCount, isLink: true, linkId: link.id });
             }
           }
-          // Block events (poll votes, FAQ expands, video plays, etc.)
-          const blockEventMap = new Map<string, { label: string; type: string; total: number }>();
+          // Block events — G4b: split into views vs interactions per block
+          const INTERACTION_EVENTS = new Set(["submit", "click", "vote", "expand", "play"]);
+          const VIEW_EVENTS = new Set(["view"]);
+          const blockEventMap = new Map<string, { label: string; type: string; views: number; interactions: number }>();
           for (const e of events) {
             const bid = (e as any).blockId ?? (e as any).block_id;
             const btype = (e as any).blockType ?? (e as any).block_type;
+            const etype = (e as any).type ?? "";
             if (!bid) continue;
             const key = `block-${bid}`;
             const meta = blockMeta.get(bid);
             const label = meta?.title || (btype ? btype.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "Block");
-            if (!blockEventMap.has(key)) blockEventMap.set(key, { label, type: meta?.type || btype || "block", total: 0 });
-            blockEventMap.get(key)!.total++;
+            if (!blockEventMap.has(key)) blockEventMap.set(key, { label, type: meta?.type || btype || "block", views: 0, interactions: 0 });
+            const entry = blockEventMap.get(key)!;
+            if (VIEW_EVENTS.has(etype)) entry.views++;
+            else if (INTERACTION_EVENTS.has(etype) || etype.startsWith("block_interact") || etype === "link_click") entry.interactions++;
+            else entry.interactions++; // default unknown events to interactions
           }
           blockEventMap.forEach((v, k) => {
-            interMap.set(k, { id: k, label: v.label, type: v.type, total: v.total, isLink: false });
+            const total = v.views + v.interactions;
+            interMap.set(k, { id: k, label: v.label, type: v.type, total, views: v.views, interactions: v.interactions, isLink: false } as any);
           });
-          return Array.from(interMap.values()).sort((a, b) => b.total - a.total).slice(0, 8);
+          return Array.from(interMap.values()).sort((a: any, b: any) => b.total - a.total).slice(0, 8);
         })(),
         events: events.slice(-200),
       });
@@ -997,12 +1006,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         try { fs.unlinkSync(oldPath); } catch {}
       }
 
-      // Compress and save new avatar as WebP, 400x400 max
+      // G9: Compress and save new avatar as WebP, 200x200 (smaller, faster to load)
       const filename = `avatar-${req.session.userId}-${Date.now()}.webp`;
       const filepath = path.join(uploadsDir, filename);
       await sharp(req.file.buffer)
-        .resize(400, 400, { fit: "cover", position: "centre" })
-        .webp({ quality: 80 })
+        .resize(200, 200, { fit: "cover", position: "centre" })
+        .webp({ quality: 82 })
         .toFile(filepath);
 
       const avatarUrl = `/uploads/avatars/${filename}`;

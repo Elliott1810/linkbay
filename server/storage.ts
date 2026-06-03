@@ -503,6 +503,22 @@ export class DatabaseStorage implements IStorage {
     ).all(pageId, since) as PageEvent[];
   }
   async getDailyViews(pageId: number, days = 30): Promise<Array<{ date: string; count: number }>> {
+    // G3b FIX: cap chart points at 60. For >60 days use weekly grouping.
+    const useWeekly = days > 60;
+    if (useWeekly) {
+      // Group by ISO week — return up to 52 weekly buckets
+      const since = days >= 3650
+        ? new Date(Date.now() - 365 * 2 * 86400000).toISOString().split("T")[0]  // 2 years max for All time
+        : new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+      const rows = sqlite.prepare(`
+        SELECT strftime('%Y-W%W', created_at) as date, COUNT(*) as count
+        FROM page_events
+        WHERE page_id = ? AND type = 'view' AND date(created_at) >= ?
+        GROUP BY strftime('%Y-W%W', created_at)
+        ORDER BY date(created_at) ASC
+      `).all(pageId, since) as Array<{ date: string; count: number }>;
+      return rows;
+    }
     const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
     const rows = sqlite.prepare(`
       SELECT date(created_at) as date, COUNT(*) as count

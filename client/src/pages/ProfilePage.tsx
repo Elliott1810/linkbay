@@ -329,10 +329,14 @@ function LeadForm({ pageId, accentColor, block }: { pageId: number; accentColor:
   const [done, setDone] = useState(false);
   const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const customFields = block?.customFields || [];
+  const viewTracked = useRef(false);
 
-  // Track on mount (form view)
+  // G4 FIX: track view only once per mount
   useEffect(() => {
-    if (block?.id) trackBlock(pageId, block.id, "lead-form", "view");
+    if (block?.id && !viewTracked.current) {
+      viewTracked.current = true;
+      trackBlock(pageId, block.id, "lead-form", "view");
+    }
   }, [block?.id, pageId]);
 
   const mutation = useMutation({
@@ -711,13 +715,21 @@ export default function ProfilePage() {
       return res.json();
     },
     retry: false,
-    staleTime: 30_000,
+    staleTime: Infinity, // G1/G2: never refetch during session — view tracked via POST on mount only
   });
 
   // Load Google Font once page data is available
   useEffect(() => {
     if (data?.page?.pageFont) loadGoogleFont(data.page.pageFont);
   }, [data?.page?.pageFont]);
+
+  // G1/G2 FIX: Record view exactly once per page mount via POST (never on refetch, never in preview)
+  const viewTracked = useRef(false);
+  useEffect(() => {
+    if (!data?.page || isPreview || viewTracked.current) return;
+    viewTracked.current = true;
+    apiRequest("POST", `/api/pages/public/${username}/view`).catch(() => {});
+  }, [data?.page?.id, isPreview, username]);
 
   if (isLoading) return <ProfileSkeleton />;
   if (isError || !data) return <PageNotFound username={username || ""} />;

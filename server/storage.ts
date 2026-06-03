@@ -102,10 +102,10 @@ sqlite.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     page_id INTEGER NOT NULL,
     poll_id TEXT NOT NULL,
-    voter_email TEXT NOT NULL,
+    voter_email TEXT,
+    voter_token TEXT,
     option_index INTEGER NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(poll_id, voter_email)
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
 
@@ -294,7 +294,7 @@ export interface IStorage {
   // Poll votes
   getPollVotes(pageId: number, pollId: string): Promise<Array<{ optionIndex: number; count: number }>>;
   castVote(data: { pageId: number; pollId: string; voterEmail: string; optionIndex: number }): Promise<void>;
-  hasVoted(pollId: string, voterEmail: string): Promise<boolean>;
+  hasVoted(pollId: string, voterEmail?: string | null, voterToken?: string | null): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -578,20 +578,31 @@ export class DatabaseStorage implements IStorage {
     ).all(pageId, pollId) as Array<{ optionIndex: number; count: number }>;
     return rows;
   }
-  async castVote(data: { pageId: number; pollId: string; voterEmail: string; optionIndex: number }): Promise<void> {
-    const existing = sqlite.prepare(
-      "SELECT id FROM poll_votes WHERE poll_id = ? AND voter_email = ?"
-    ).get(data.pollId, data.voterEmail);
-    if (existing) throw new Error("already voted");
-    sqlite.prepare(
-      "INSERT INTO poll_votes (page_id, poll_id, voter_email, option_index, created_at) VALUES (?, ?, ?, ?, ?)"
-    ).run(data.pageId, data.pollId, data.voterEmail, data.optionIndex, new Date().toISOString());
+  async castVote(data: { pageId: number; pollId: string; voterEmail?: string | null; voterToken?: string | null; optionIndex: number }): Promise<void> {
+    // Check existing by email (signed-in) or by token (anonymous)
+    if (data.voterEmail) {
+      const existing = sqlite.prepare("SELECT id FROM poll_votes WHERE poll_id = ? AND voter_email = ?").get(data.pollId, data.voterEmail);
+      if (existing) throw new Error("already voted");
+      sqlite.prepare(
+        "INSERT INTO poll_votes (page_id, poll_id, voter_email, voter_token, option_index, created_at) VALUES (?, ?, ?, NULL, ?, ?)"
+      ).run(data.pageId, data.pollId, data.voterEmail, data.optionIndex, new Date().toISOString());
+    } else if (data.voterToken) {
+      const existing = sqlite.prepare("SELECT id FROM poll_votes WHERE poll_id = ? AND voter_token = ?").get(data.pollId, data.voterToken);
+      if (existing) throw new Error("already voted");
+      sqlite.prepare(
+        "INSERT INTO poll_votes (page_id, poll_id, voter_email, voter_token, option_index, created_at) VALUES (?, ?, NULL, ?, ?, ?)"
+      ).run(data.pageId, data.pollId, data.voterToken, data.optionIndex, new Date().toISOString());
+    } else {
+      throw new Error("voter identity required");
+    }
   }
-  async hasVoted(pollId: string, voterEmail: string): Promise<boolean> {
-    const row = sqlite.prepare(
-      "SELECT id FROM poll_votes WHERE poll_id = ? AND voter_email = ?"
-    ).get(pollId, voterEmail);
-    return !!row;
+  async hasVoted(pollId: string, voterEmail?: string | null, voterToken?: string | null): Promise<boolean> {
+    if (voterEmail) {
+      return !!sqlite.prepare("SELECT id FROM poll_votes WHERE poll_id = ? AND voter_email = ?").get(pollId, voterEmail);
+    } else if (voterToken) {
+      return !!sqlite.prepare("SELECT id FROM poll_votes WHERE poll_id = ? AND voter_token = ?").get(pollId, voterToken);
+    }
+    return false;
   }
 }
 
@@ -638,3 +649,8 @@ try { sqlite.exec("ALTER TABLE users ADD COLUMN licence_expiry TEXT"); } catch {
 try { sqlite.exec("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE users ADD COLUMN stripe_price_id TEXT"); } catch {}
+// S6 #10: add voter_token for anonymous poll voting
+try { sqlite.exec("ALTER TABLE poll_votes ADD COLUMN voter_token TEXT"); } catch {}
+// S6 #10: create unique index for anonymous dedup (voter_token) and signed-in dedup (voter_email)
+try { sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_poll_votes_token ON poll_votes(poll_id, voter_token) WHERE voter_token IS NOT NULL"); } catch {}
+try { sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_poll_votes_email ON poll_votes(poll_id, voter_email) WHERE voter_email IS NOT NULL"); } catch {}

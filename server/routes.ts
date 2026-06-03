@@ -887,16 +887,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         })(),
         events: events.slice(-200),
         // Previous period comparison (for % change cards) — omitted when days=0 (all-time)
-        prevPeriod: days < 3650 ? {
-          views: (prevEvents as any[]).filter((e: any) => e.type === "view").length,
-          clicks: (prevEvents as any[]).filter((e: any) => e.type === "link_click").length,
-          leads: (prevEvents as any[]).filter((e: any) => e.type === "lead_submit").length,
-          uniqueVisitors: (() => {
+        prevPeriod: days < 3650 ? (() => {
+          const pViews = (prevEvents as any[]).filter((e: any) => e.type === "view").length;
+          const pClicks = (prevEvents as any[]).filter((e: any) => e.type === "link_click").length;
+          const pLeads = (prevEvents as any[]).filter((e: any) => e.type === "lead_submit").length;
+          const pUniqueVisitors = (() => {
             const s = new Set<string>();
             (prevEvents as any[]).filter((e: any) => e.type === "view").forEach((e: any) => { const v = e.visitorId ?? e.visitor_id; if (v) s.add(v); });
             return s.size;
-          })(),
-        } : null,
+          })();
+          const pRepeatVisitorMap = new Map<string, number>();
+          (prevEvents as any[]).filter((e: any) => e.type === "view").forEach((e: any) => { const v = e.visitorId ?? e.visitor_id; if (v) pRepeatVisitorMap.set(v, (pRepeatVisitorMap.get(v) || 0) + 1); });
+          let pRepeatVisitors = 0;
+          pRepeatVisitorMap.forEach(c => { if (c > 1) pRepeatVisitors++; });
+          return {
+            views: pViews,
+            clicks: pClicks,
+            leads: pLeads,
+            uniqueVisitors: pUniqueVisitors,
+            repeatVisitors: pRepeatVisitors,
+            clickRate: pViews > 0 ? Math.round((pClicks / pViews) * 1000) / 10 : 0,
+          };
+        })() : null,
       });
     } catch { res.status(500).json({ error: "Server error" }); }
   });
@@ -1671,18 +1683,20 @@ function filterTable(input,tbodyId){
   </div>
 
   <div class="section">
-    <h2>Recent connections — last 20 unique visitors (30 days)</h2>
-    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search by visitor ID, country, device…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
+    <h2>Recent connections — last 20 unique IPs</h2>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search by IP, page, user, location…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
     <table>
-      <thead><tr><th>Visitor ID</th><th>Country</th><th>Device</th><th>When</th></tr></thead>
+      <thead><tr><th>IP Address</th><th>Last Page</th><th>User</th><th>Location</th><th>Device / Browser</th><th>When</th></tr></thead>
       <tbody id="tbody-connections">
-        ${recentConnEvents.length ? recentConnEvents.map(e => `
+        ${ipsWithGeo.length ? ipsWithGeo.map(e => `
           <tr>
-            <td><code style="font-family:ui-monospace,monospace;font-size:11px">${escHtml((e.visitor_id || "").slice(0, 16))}…</code></td>
-            <td class="ts">${escHtml(e.country || "—")}</td>
-            <td class="ts" style="text-transform:capitalize">${escHtml(e.device || "—")}</td>
-            <td class="ts">${ago(e.created_at)}</td>
-          </tr>`).join("") : '<tr><td colspan="4" class="ts" style="text-align:center;padding:1rem">No visitor events recorded yet</td></tr>'}
+            <td><code style="font-family:ui-monospace,monospace;font-size:11px">${escHtml(e.ip || "—")}</code></td>
+            <td class="ts" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.path || '')}">${escHtml(e.path || "—")}</td>
+            <td class="ts" style="font-size:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.userEmail ? `<span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:4px;font-size:9px">👤</span> ${escHtml(e.userEmail)}` : '<span style="color:#aaa">anonymous</span>'}</td>
+            <td class="ts">${escHtml(e.location || "—")}</td>
+            <td class="ts">${escHtml(parseDevice(e.userAgent))} / ${escHtml(parseBrowser(e.userAgent))}</td>
+            <td class="ts">${ago(e.timestamp)}</td>
+          </tr>`).join("") : '<tr><td colspan="6" class="ts" style="text-align:center;padding:1rem">No connections recorded yet (resets on restart)</td></tr>'}
       </tbody>
     </table>
   </div>
@@ -1733,6 +1747,7 @@ export function registerLicenceRoutes(app: Express) {
           businessMonthly: process.env.STRIPE_BUSINESS_MONTHLY_PRICE_ID || "",
           businessAnnual: process.env.STRIPE_BUSINESS_ANNUAL_PRICE_ID || "",
         },
+        stripeConfigured: !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRO_MONTHLY_PRICE_ID),
         stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || process.env.VITE_STRIPE_PUBLISHABLE_KEY || "",
       });
     } catch (e) {
@@ -1923,15 +1938,18 @@ export function registerLicenceRoutes(app: Express) {
   app.post("/api/ai/generate-page", async (req: Request, res: Response) => {
     if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI not configured" });
 
-    // Rate limit: 5 per user/IP per hour — works for both authenticated and unauthenticated (builder flow)
-    const rateLimitKey = req.session.userId ?? (req.ip || "unknown");
-    const now = Date.now();
-    const bucket = aiRateLimit.get(rateLimitKey);
-    if (bucket && bucket.resetAt > now) {
-      if (bucket.count >= 5) return res.status(429).json({ error: "Rate limit: max 5 generations per hour" });
-      bucket.count++;
-    } else {
-      aiRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    // Rate limit: 20 per user per hour — use userId for authenticated users only
+    // IMPORTANT: Do NOT use req.ip as fallback — on Railway all requests share the same proxy IP
+    const rateLimitKey = req.session.userId ? `user:${req.session.userId}` : null;
+    if (rateLimitKey) {
+      const now = Date.now();
+      const bucket = aiRateLimit.get(rateLimitKey);
+      if (bucket && bucket.resetAt > now) {
+        if (bucket.count >= 20) return res.status(429).json({ error: "Rate limit: max 20 generations per hour" });
+        bucket.count++;
+      } else {
+        aiRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 60 * 60 * 1000 });
+      }
     }
 
     try {

@@ -2139,6 +2139,106 @@ function SmartBlockWizard({ onPick, onAddAll, onSkip }: { onPick: (kind: BlockKi
   );
 }
 
+// ─── AI Block Recommender — replaces Smart Block Wizard with real GPT-4o call ─
+function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock[]) => void; onSkip: () => void }) {
+  const { data: licData } = useLicence();
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [suggestions, setSuggestions] = useState<PageBlock[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [errorMsg, setErrorMsg] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
+
+  const tier = (licData as any)?.tier || "free";
+  const roleLabel = tier === "business" ? "Business" : tier === "pro" ? "Pro user" : "Creator";
+
+  const fetchSuggestions = () => {
+    setStatus("loading");
+    setErrorMsg("");
+    apiRequest("POST", "/api/ai/generate-page", {
+      answers: {
+        name: "My Page",
+        tagline: `${roleLabel} looking to grow engagement`,
+        goal: "Add engaging content blocks to my page",
+        industry: roleLabel,
+        style: "clean, modern, professional",
+      },
+    })
+      .then(r => r.json())
+      .then((data: any) => {
+        if (data.error) { setErrorMsg(data.error); setStatus("error"); return; }
+        // Map AI blocks to PageBlock shape
+        const genId = () => "blk-" + Math.random().toString(36).slice(2, 8);
+        const mapped: PageBlock[] = (data.blocks || []).flatMap((b: any): PageBlock[] => {
+          switch (b.type) {
+            case "text": return [{ id: genId(), type: "text", content: b.content || "" }];
+            case "poll": return [{ id: genId(), type: "poll", question: b.question || "Quick question", options: b.options || ["Option A", "Option B"] }];
+            case "lead_form": return [{ id: genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || "", buttonText: b.buttonText || "Send" } as any];
+            case "socials": return [{ id: genId(), type: "social-links", socials: (b.links || []).map((l: any) => ({ platform: l.platform, url: l.url })) } as any];
+            case "countdown": return [{ id: genId(), type: "countdown", title: b.title || "Coming soon", targetDate: b.targetDate || "2026-12-31" } as any];
+            default: return [];
+          }
+        }).slice(0, 6);
+        setSuggestions(mapped);
+        setSelected(new Set(mapped.map((_: PageBlock, i: number) => i)));
+        setStatus("done");
+      })
+      .catch(() => { setErrorMsg("Could not reach AI."); setStatus("error"); });
+  };
+
+  useEffect(() => { if (status === "idle" || retryCount > 0) fetchSuggestions(); }, [retryCount]);
+
+  const toggle = (i: number) => setSelected(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+
+  const blockIcon = (type: string) =>
+    type === "text" ? "📝" : type === "poll" ? "📊" : type === "lead-form" ? "📬" : type === "social-links" ? "🔗" : type === "countdown" ? "⏳" : "🧩";
+
+  if (status === "loading") return (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "1rem", background: "var(--color-primary-highlight)", borderRadius: "var(--radius-md)", marginBottom: "1rem" }}>
+      <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2.5px solid var(--color-primary)", borderTopColor: "transparent", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+      <span style={{ fontSize: "var(--text-sm)", color: "var(--color-primary)", fontWeight: 600 }}>GPT-4o is recommending blocks for you…</span>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  if (status === "error") return (
+    <div style={{ padding: "0.875rem 1rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+      <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", flex: 1 }}>🤖 {errorMsg || "AI unavailable"} — pick a block below or retry.</span>
+      <button className="btn btn-secondary btn-sm" onClick={() => setRetryCount(c => c + 1)}>Retry AI</button>
+      <button className="btn btn-secondary btn-sm" onClick={onSkip}>Skip</button>
+    </div>
+  );
+
+  if (status === "done") return (
+    <div style={{ marginBottom: "1rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+        <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>🤖 AI-recommended blocks</span>
+        <button style={{ background: "none", border: "none", fontSize: 11, color: "var(--color-text-faint)", cursor: "pointer" }} onClick={onSkip}>Dismiss</button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem", marginBottom: "0.625rem" }}>
+        {suggestions.map((b, i) => {
+          const active = selected.has(i);
+          return (
+            <button key={i} type="button" onClick={() => toggle(i)} style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary-highlight)" : "var(--color-surface)", cursor: "pointer", textAlign: "left" as const }}>
+              <div style={{ width: 16, height: 16, borderRadius: 3, border: `2px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>{active && "✓"}</div>
+              <span style={{ fontSize: 14 }}>{blockIcon((b as any).type)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: active ? "var(--color-primary)" : "var(--color-text)", textTransform: "capitalize" as const }}>{(b as any).type} block</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(b as any).content || (b as any).question || (b as any).title || ""}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button className="btn btn-secondary btn-sm" style={{ flex: 1, justifyContent: "center" }} onClick={onSkip}>Skip</button>
+        <button className="btn btn-primary btn-sm" style={{ flex: 2, justifyContent: "center" }} disabled={selected.size === 0} onClick={() => onAddAll(suggestions.filter((_, i) => selected.has(i)))}>Add {selected.size} block{selected.size !== 1 ? "s" : ""} →</button>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
 function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => void; onAddAll?: (blocks: PageBlock[]) => void; saving: boolean }) {
   const [blockType, setBlockType] = useState<BlockKind>("text");
   const [wizardSkipped, setWizardSkipped] = useState(false);
@@ -2246,10 +2346,8 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
       <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>+ Add a content block</div>
 
       {!wizardSkipped && (
-        <SmartBlockWizard
-          onPick={(kind) => { setBlockType(kind); setWizardSkipped(true); setError(""); }}
-          onAddAll={(kinds) => {
-            const blocks = kinds.map(k => defaultBlockFor(k));
+        <AIBlockRecommender
+          onAddAll={(blocks) => {
             if (onAddAll) onAddAll(blocks);
             else blocks.forEach(b => onAdd(b));
             setWizardSkipped(true);
@@ -4811,8 +4909,11 @@ function BillingPanel() {
                   <button
                     className="btn btn-primary btn-sm"
                     style={{ width: "100%", background: plan.color, borderColor: plan.color }}
-                    onClick={() => priceId && checkoutMutation.mutate(priceId)}
-                    disabled={checkoutMutation.isPending || !priceId}
+                    onClick={() => {
+                      if (!priceId) { setToast("⚠️ Payments not configured yet — contact support."); return; }
+                      checkoutMutation.mutate(priceId);
+                    }}
+                    disabled={checkoutMutation.isPending || isLoading}
                   >
                     {isLoading2 ? "Loading…" : "Upgrade"}
                   </button>

@@ -943,6 +943,8 @@ a, button, [role="button"] {
   .dashboard-sidebar {
     order: 2 !important;          /* below main content */
     width: 100% !important;
+    max-width: 100vw !important;  /* prevent spilling beyond viewport */
+    box-sizing: border-box !important;
     height: 58px !important;
     min-height: 58px !important;
     flex-direction: row !important;
@@ -956,6 +958,14 @@ a, button, [role="button"] {
     padding: 0 !important;
     gap: 0 !important;
     background: var(--color-surface) !important;
+  }
+
+  /* Outer shell must also be constrained */
+  .dashboard-shell {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    flex-direction: column !important;
   }
 
   /* Hide non-nav sidebar sections (logo, user, page switcher, bottom items) */
@@ -1077,11 +1087,16 @@ a, button, [role="button"] {
     padding: 0.625rem 1rem !important;
     background: var(--color-surface) !important;
     border-bottom: 1px solid var(--color-border) !important;
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 10 !important;
+    /* Use relative positioning instead of sticky since dashboard-main has overflow:hidden */
+    position: relative !important;
+    z-index: 20 !important;  /* above editor-settings-panel */
     width: 100% !important;
     box-sizing: border-box !important;
+    flex-shrink: 0 !important; /* never collapse */
+  }
+  /* Ensure editor settings panel never overlaps the context bar */
+  .editor-settings-panel {
+    z-index: 1 !important;
   }
 
   /* ─── Overview panel specific fixes ─── */
@@ -1321,36 +1336,84 @@ img.avatar-img {
 .bg-slate    { background: linear-gradient(135deg, #1e2a38 0%, #2d3f55 50%, #3d5a7a 100%); min-height: 100dvh; }
 .bg-twilight { background: linear-gradient(160deg, #0f0c29 0%, #302b63 50%, #24243e 100%); min-height: 100dvh; }
 
-/* ─────────────────────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────────────────────────────
    Block Styles — applied as block-style-{name} on each block wrapper in ProfilePage
-   ───────────────────────────────────────────────────────────────────────────── */
+   Fix: .block-card overflow:hidden clips inner component borderRadius; > * overrides inner styles
+   ───────────────────────────────────────────────────────────────────────────────────── */
+
+/* Base: block-card overflow:hidden so border-radius on parent clips inner content */
+.block-card { overflow: hidden; }
+
 .block-style-default .block-card { /* standard — no overrides */ }
 
 .block-style-rounded .block-card {
   border-radius: 1.5rem !important;
+  overflow: hidden !important;
 }
+.block-style-rounded .block-card > * {
+  border-radius: 1.5rem !important;
+}
+
 .block-style-sharp .block-card {
   border-radius: 0 !important;
+  overflow: hidden !important;
 }
+.block-style-sharp .block-card > * {
+  border-radius: 0 !important;
+}
+
 .block-style-bordered .block-card {
   border: 2px solid var(--color-primary, #e06b1a) !important;
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden !important;
 }
+.block-style-bordered .block-card > * {
+  border: none !important;
+  box-shadow: none !important;
+}
+
 .block-style-outlined .block-card {
   background: transparent !important;
   border: 2px solid currentColor !important;
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden !important;
 }
+.block-style-outlined .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 .block-style-elevated .block-card {
   box-shadow: 0 8px 32px rgba(0,0,0,0.22) !important;
   transform: translateY(-2px);
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden !important;
 }
+
 .block-style-ghost .block-card {
   background: rgba(255,255,255,0.10) !important;
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255,255,255,0.22) !important;
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden !important;
 }
+.block-style-ghost .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 .block-style-pill .block-card {
   border-radius: 9999px !important;
+  overflow: hidden !important;
 }
+.block-style-pill .block-card > * {
+  border-radius: 9999px !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+}
+
 .block-style-underline .block-card {
   background: transparent !important;
   border: none !important;
@@ -1358,9 +1421,23 @@ img.avatar-img {
   border-bottom: 2px solid var(--color-primary, #e06b1a) !important;
   border-radius: 0 !important;
 }
+.block-style-underline .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
 .block-style-gradient .block-card {
   background: linear-gradient(135deg, var(--color-primary, #e06b1a), color-mix(in srgb, var(--color-primary, #e06b1a) 60%, #000)) !important;
   color: #fff !important;
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden !important;
+}
+.block-style-gradient .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  color: inherit !important;
 }
 
 /* M3: Analytics detail grid — stacks to 1 column on mobile */

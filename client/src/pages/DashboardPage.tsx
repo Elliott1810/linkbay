@@ -2167,6 +2167,7 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
     setErrorMsg("");
     fetch("/api/ai/generate-page", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         answers: {
@@ -2179,8 +2180,9 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
       }),
     })
       .then(async r => {
-        const data = await r.json();
-        if (!r.ok || data.error) { setErrorMsg(data.error || "AI service returned an error. Please try again."); setStatus("error"); return; }
+        let data: any;
+        try { data = await r.json(); } catch { setErrorMsg(`AI service error (HTTP ${r.status}). Please try again.`); setStatus("error"); return; }
+        if (!r.ok || data.error) { setErrorMsg(data.error || `AI service error (${r.status}). Please try again.`); setStatus("error"); return; }
         // Map AI blocks to PageBlock shape
         const genId = () => "blk-" + Math.random().toString(36).slice(2, 8);
         const mapped: PageBlock[] = (data.blocks || []).flatMap((b: any): PageBlock[] => {
@@ -2197,7 +2199,7 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
         setSelected(new Set(mapped.map((_: PageBlock, i: number) => i)));
         setStatus("done");
       })
-      .catch(() => { setErrorMsg("Could not reach AI service. Please check your connection and try again."); setStatus("error"); });
+      .catch((err: any) => { setErrorMsg(`Could not reach AI service: ${err?.message || "network error"}. Please try again.`); setStatus("error"); });
   };
 
   useEffect(() => { if (status === "idle" || retryCount > 0) fetchSuggestions(); }, [retryCount]);

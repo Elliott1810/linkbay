@@ -603,24 +603,30 @@ function OverviewPanel({
               </div>
             );
             const liveBlockIds = (() => { try { return new Set((JSON.parse(page?.blocks || "[]") as any[]).map((b: any) => b.id)); } catch { return new Set(); } })();
-            const totalPageViews = analytics?.periodViews ?? analytics?.totalViews ?? 1;
+            const totalPageViews = Math.max(analytics?.periodViews ?? analytics?.totalViews ?? 1, 1);
             return interactions.map((item: any) => {
               const isLive = !item.blockId || liveBlockIds.has(item.blockId);
               const total = item.total ?? item.clickCount ?? 0;
-              const rate = totalPageViews > 0 ? Math.min(Math.round((total / totalPageViews) * 100), 100) : 0;
+              const interactionPct = Math.min(Math.round((total / totalPageViews) * 100), 100);
+              const viewsPct = 100; // views fill the bar; interactions overlay on top
+              const barColor = isLive ? "var(--color-primary)" : "var(--color-text-faint)";
               return (
                 <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
                     <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Link"}</span>
                     {!isLive && <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>past</span>}
-                    <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>{rate}%</span>
+                    <span style={{ fontWeight: 700, color: barColor, flexShrink: 0 }}>{interactionPct}%</span>
                     <span style={{ fontWeight: 700, flexShrink: 0, color: "var(--color-text-muted)" }}>{total} ×</span>
                   </div>
-                  {/* Interaction rate bar: % of page views that became interactions */}
-                  <div style={{ height: 6, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${rate}%`, background: isLive ? "var(--color-primary)" : "var(--color-text-faint)", borderRadius: 999, transition: "width 0.4s" }} />
+                  {/* Stacked bar: views (amber) + interactions (primary) as two segments */}
+                  <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                    <div style={{ height: "100%", width: `${Math.min(viewsPct - interactionPct, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
+                    <div style={{ height: "100%", width: `${interactionPct}%`, background: barColor, borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                   </div>
-                  <div style={{ fontSize: 9, color: "var(--color-text-faint)", marginTop: 2 }}>{total} interactions / {totalPageViews} views</div>
+                  <div style={{ display: "flex", gap: "0.75rem", fontSize: 9, color: "var(--color-text-faint)", marginTop: 3 }}>
+                    <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {totalPageViews}</span>
+                    <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: barColor, marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
+                  </div>
                 </div>
               );
             });
@@ -2677,15 +2683,17 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
               const sign = p >= 0 ? "+" : "";
               return { text: `${sign}${p}%`, up: p >= 0 };
             };
+            const prevClickRate = prev && prev.views > 0 ? Math.round((prev.clicks / prev.views) * 1000) / 10 : 0;
             const cards = [
               { label: days === 0 ? "Total views (all time)" : `Views (${days}d)`, value: (days === 0 ? analytics.totalViews : analytics.periodViews)?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodViews ?? 0, prev?.views ?? 0) },
               { label: days === 0 ? "Clicks (all time)" : `Clicks (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodClicks ?? 0, prev?.clicks ?? 0) },
-              { label: "Click rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%", delta: null },
+              { label: "Click rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%", delta: prev ? pctLabel(analytics.clickRate ?? 0, prevClickRate) : null },
               { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString(), delta: pctLabel(analytics.uniqueVisitors ?? 0, prev?.uniqueVisitors ?? 0) },
-              { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString(), delta: null },
+              { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString(), delta: prev ? pctLabel(analytics.repeatVisitors ?? 0, prev?.repeatVisitors ?? 0) : null },
               { label: "Best day", value: analytics.bestDay ? `${analytics.bestDay.count} views (${analytics.bestDay.label})` : "No data", delta: null },
               { label: days === 0 ? "Avg views (all time)" : `Avg views (${days}d)`, value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—", delta: null },
-              { label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0", delta: null },
+              // Only show the always-on total card when viewing a time-filtered window (not all-time, where first card already shows total)
+              ...(days !== 0 ? [{ label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0", delta: null }] : []),
             ];
             return (
               <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
@@ -2710,7 +2718,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
             <div className="card" style={{ padding: "1.25rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
                 <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>
-                  {graphSeries === "views" ? "Page views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — last {days} days
+                  {graphSeries === "views" ? "Page views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — {days === 0 ? "All time" : `last ${days} days`}
                 </div>
                 <select
                   value={graphSeries}
@@ -2753,22 +2761,26 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
               {(() => {
                 const interactions = analytics.topInteractions ?? analytics.topLinks ?? [];
                 if (interactions.length === 0) return <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No interactions yet.</div>;
-                const totalPageViews = analytics.periodViews ?? analytics.totalViews ?? 1;
+                const totalPageViews = Math.max(analytics.periodViews ?? analytics.totalViews ?? 1, 1);
                 return interactions.map((item: any) => {
                   const total = item.total ?? item.clickCount ?? 0;
-                  const rate = totalPageViews > 0 ? Math.min(Math.round((total / totalPageViews) * 100), 100) : 0;
+                  const interactionPct = Math.min(Math.round((total / totalPageViews) * 100), 100);
                   return (
                     <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
                         <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Interaction"}</span>
-                        <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>{rate}%</span>
+                        <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>{interactionPct}%</span>
                         <span style={{ fontWeight: 700, flexShrink: 0, color: "var(--color-text-muted)" }}>{total} ×</span>
                       </div>
-                      {/* Interaction rate bar: % of page views that triggered this interaction */}
-                      <div style={{ height: 6, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${rate}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
+                      {/* Stacked bar: views (amber) + interactions (primary) */}
+                      <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                        <div style={{ height: "100%", width: `${Math.min(100 - interactionPct, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
+                        <div style={{ height: "100%", width: `${interactionPct}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                       </div>
-                      <div style={{ fontSize: 9, color: "var(--color-text-faint)", marginTop: 2 }}>{total} interactions / {totalPageViews} views</div>
+                      <div style={{ display: "flex", gap: "0.75rem", fontSize: 9, color: "var(--color-text-faint)", marginTop: 3 }}>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {totalPageViews}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
+                      </div>
                     </div>
                   );
                 });
@@ -3217,22 +3229,27 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
                             <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{blockLabel(block)}</span>
                             <span style={{ fontSize: 11, fontWeight: 700, color: stats.count > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, marginLeft: "0.5rem" }}>{stats.count} ({pct}%)</span>
                           </div>
-                          {/* Interaction rate bar: % of total page views that interacted with this block */}
+                          {/* Stacked bar: views (amber) + interactions (primary) */}
                           {(() => {
-                            const viewCount = stats.eventTypes["view"] ?? 0;
-                            const interCount2 = stats.count - viewCount;
-                            const pageViewsTotal = (analytics as any)?.periodViews ?? (analytics as any)?.totalViews ?? 1;
-                            const interactionRate = pageViewsTotal > 0 ? Math.min(Math.round((interCount2 / pageViewsTotal) * 100), 100) : 0;
+                            const blockViewCount = stats.eventTypes["view"] ?? 0;
+                            const interCount2 = stats.count - blockViewCount;
+                            const pageViewsTotal = Math.max((analytics as any)?.periodViews ?? (analytics as any)?.totalViews ?? 1, 1);
+                            const interactionRate = Math.min(Math.round((interCount2 / pageViewsTotal) * 100), 100);
+                            const viewRate = Math.min(Math.round((blockViewCount / pageViewsTotal) * 100), 100);
                             return (
                               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 3 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)" }}>
-                                  <span>Interaction rate</span>
-                                  <span style={{ fontWeight: 700, color: interactionRate > 0 ? "var(--color-primary)" : "var(--color-text-faint)" }}>{interactionRate}%</span>
+                                  <span>Views vs Interactions</span>
+                                  <span style={{ fontWeight: 700, color: interactionRate > 0 ? "var(--color-primary)" : "var(--color-text-faint)" }}>{interactionRate}% interacted</span>
                                 </div>
-                                <div style={{ height: 6, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
-                                  <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
+                                <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                                  <div style={{ height: "100%", width: `${viewRate}%`, background: "#f59e0b", opacity: 0.5, transition: "width 0.4s" }} />
+                                  <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                                 </div>
-                                <div style={{ fontSize: 9, color: "var(--color-text-faint)" }}>{interCount2} interactions / {viewCount > 0 ? viewCount : pageViewsTotal} views</div>
+                                <div style={{ display: "flex", gap: "0.75rem", fontSize: 9, color: "var(--color-text-faint)" }}>
+                                  <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />{blockViewCount} views</span>
+                                  <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />{interCount2} interactions</span>
+                                </div>
                               </div>
                             );
                           })()}
@@ -3307,45 +3324,45 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
             </div>
           )}
 
-          {/* G6b: Hidden section — collapsed by default */}
-          {hiddenBlocks.length > 0 && (
-            <div className="card" style={{ padding: "1.25rem" }}>
-              <button
-                onClick={() => setHiddenOpen(o => !o)}
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-              >
-                <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700 }}>
-                  Hidden ({hiddenBlocks.length})
-                </h2>
-                <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{hiddenOpen ? "▲ Collapse" : "▼ Expand"}</span>
-              </button>
-              {hiddenOpen && (
-                <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Hidden blocks are permanently out of your live page. You can restore them to live if needed.</p>
-                  {hiddenBlocks.map((block: any) => {
-                    const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
-                    return (
-                      <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.6 }}>
-                        <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
-                          <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.count ?? 0} lifetime interactions</div>
-                        </div>
-                        <button
-                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })}
-                          disabled={archiveMutation.isPending}
-                          className="btn btn-secondary btn-sm"
-                          style={{ fontSize: 11, flexShrink: 0 }}
-                        >
-                          Restore to live
-                        </button>
+          {/* Hidden blocks section — always visible so users know it exists */}
+          <div className="card" style={{ padding: "1.25rem" }}>
+            <button
+              onClick={() => setHiddenOpen(o => !o)}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+            >
+              <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700 }}>
+                Hidden ({hiddenBlocks.length})
+              </h2>
+              <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{hiddenOpen ? "▲ Collapse" : "▼ Expand"}</span>
+            </button>
+            {hiddenOpen && (
+              <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Hidden blocks are permanently removed from your live page. Restore them to make them live again.</p>
+                {hiddenBlocks.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "1.25rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No hidden blocks.</div>
+                ) : hiddenBlocks.map((block: any) => {
+                  const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
+                  return (
+                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.7 }}>
+                      <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
+                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.count ?? 0} lifetime interactions</div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+                      <button
+                        onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })}
+                        disabled={archiveMutation.isPending}
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: 11, flexShrink: 0 }}
+                      >
+                        Restore to live
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
@@ -4831,7 +4848,7 @@ function UpgradeModal({ onClose, onBilling }: { onClose: () => void; onBilling: 
 // ────────────────────────────────────────────────────────────────────────
 function BillingPanel() {
   const { data: lic, isLoading } = useLicence();
-  const [annual, setAnnual] = useState(false);
+  const [annual, setAnnual] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
   // Success banner from Stripe redirect
@@ -4847,8 +4864,14 @@ function BillingPanel() {
   const checkoutMutation = useMutation({
     mutationFn: (priceId: string) =>
       apiRequest("POST", "/api/stripe/create-checkout", { priceId }).then(r => r.json()),
-    onSuccess: (data) => { if (data.url) window.location.href = data.url; },
-    onError: () => setToast("⚠️ Could not start checkout. Please try again."),
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      } else if (data.error) {
+        setToast(`⚠️ ${data.error}`);
+      }
+    },
+    onError: (err: any) => setToast(`⚠️ Could not start checkout: ${err?.message || "Please try again"}`),
   });
 
   const portalMutation = useMutation({
@@ -4944,13 +4967,24 @@ function BillingPanel() {
           const price = annual ? plan.annualPrice : plan.monthlyPrice;
           const priceId = annual ? plan.priceIdAnnual : plan.priceIdMonthly;
           const isLoading2 = checkoutMutation.isPending && checkoutMutation.variables === priceId;
+          const annualTotal = plan.annualPrice > 0 ? plan.annualPrice * 12 : 0;
+          const monthlySaving = plan.monthlyPrice > 0 && plan.annualPrice > 0 ? plan.monthlyPrice - plan.annualPrice : 0;
           return (
-            <div key={plan.id} style={{ border: `2px solid ${isCurrent ? plan.color : "var(--color-border)"}`, borderRadius: "var(--radius-xl)", padding: "1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem", background: isCurrent ? `color-mix(in srgb, ${plan.color} 6%, var(--color-surface))` : "var(--color-surface)" }}>
+            <div key={plan.id} style={{ border: `2px solid ${isCurrent ? plan.color : "var(--color-border)"}`, borderRadius: "var(--radius-xl)", padding: "1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem", background: isCurrent ? `color-mix(in srgb, ${plan.color} 6%, var(--color-surface))` : "var(--color-surface)", position: "relative" }}>
+              {annual && monthlySaving > 0 && (
+                <div style={{ position: "absolute", top: "-1px", right: "12px", background: "#10b981", color: "#fff", fontSize: 10, fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "0 0 var(--radius-md) var(--radius-md)", letterSpacing: "0.04em" }}>SAVE £{monthlySaving * 12}/yr</div>
+              )}
               <div style={{ fontSize: 12, fontWeight: 700, color: plan.color, textTransform: "uppercase", letterSpacing: "0.06em" }}>{plan.name}</div>
               <div style={{ fontSize: "var(--text-2xl)", fontWeight: 800, lineHeight: 1 }}>
                 {price === 0 ? "Free" : `£${price}`}
-                {price > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: "var(--color-text-muted)" }}>{annual ? "/mo, billed annually" : "/mo"}</span>}
+                {price > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: "var(--color-text-muted)" }}>{annual ? "/mo" : "/mo"}</span>}
               </div>
+              {price > 0 && annual && annualTotal > 0 && (
+                <div style={{ fontSize: 11, color: "#10b981", fontWeight: 600, marginTop: "-0.25rem" }}>£{annualTotal} billed annually</div>
+              )}
+              {price > 0 && !annual && plan.annualPrice > 0 && (
+                <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: "-0.25rem" }}>or £{plan.annualPrice}/mo billed annually</div>
+              )}
               <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.3rem" }}>
                 {plan.features.map(f => <li key={f} style={{ fontSize: 12, color: "var(--color-text-muted)" }}><span style={{ color: plan.color }}>✓</span> {f}</li>)}
               </ul>
@@ -4964,7 +4998,11 @@ function BillingPanel() {
                     className="btn btn-primary btn-sm"
                     style={{ width: "100%", background: plan.color, borderColor: plan.color }}
                     onClick={() => {
-                      if (!priceId) { setToast("⚠️ Payments not configured yet — contact support."); return; }
+                      if (!priceId) {
+                        // Stripe not configured in this environment
+                        window.location.href = "mailto:hello@linkbay.ai?subject=Upgrade%20to%20" + plan.name;
+                        return;
+                      }
                       checkoutMutation.mutate(priceId);
                     }}
                     disabled={checkoutMutation.isPending || isLoading}

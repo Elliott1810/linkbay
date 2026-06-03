@@ -15,7 +15,7 @@ const icons: Record<string, JSX.Element> = {
   chart: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
   users: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
   settings: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
-  billing: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>,
+  billing: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" ry="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
   external: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
   plus: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   link: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
@@ -401,12 +401,14 @@ function OverviewPanel({
   };
 
   // G2a/G2b: use the FULL range returned by the API (no artificial slice)
-  const chartData = dailyViews.map((d: { date: string; count: number }, i: number) => ({
+  // For All-time view, filter out buckets with zero views/clicks/leads so the graph isn't flooded with empty dates
+  const chartDataRaw = dailyViews.map((d: { date: string; count: number }, i: number) => ({
     date: parseDateLabel(d.date),
     Views: d.count,
     Clicks: (dailyClicks[i] as any)?.count ?? 0,
     Leads: (dailyLeads[i] as any)?.count ?? 0,
   }));
+  const chartData = days === 0 ? chartDataRaw.filter((d: { Views: number; Clicks: number; Leads: number }) => d.Views > 0 || d.Clicks > 0 || d.Leads > 0) : chartDataRaw;
 
   // Extra: Calculate current visitor streak (consecutive days with at least 1 view)
   const streak = (() => {
@@ -521,7 +523,7 @@ function OverviewPanel({
             </span>
           )}
           <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.6 }}>since midnight</span>
-          {streak > 1 && (
+          {streak > 1 && days !== 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, color: "var(--color-primary)", background: "rgba(224,107,26,0.12)", padding: "2px 7px", borderRadius: 999, flexShrink: 0 }}>🔥 {streak}d streak</span>
           )}
         </div>
@@ -608,22 +610,21 @@ function OverviewPanel({
               const isLive = !item.blockId || liveBlockIds.has(item.blockId);
               const total = item.total ?? item.clickCount ?? 0;
               const interactionPct = Math.min(Math.round((total / totalPageViews) * 100), 100);
-              const viewsPct = 100; // views fill the bar; interactions overlay on top
+              const viewsPct = 100;
               const barColor = isLive ? "var(--color-primary)" : "var(--color-text-faint)";
               return (
                 <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
                     <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Link"}</span>
                     {!isLive && <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>past</span>}
-                    <span style={{ fontWeight: 700, color: barColor, flexShrink: 0 }}>{interactionPct}%</span>
-                    <span style={{ fontWeight: 700, flexShrink: 0, color: "var(--color-text-muted)" }}>{total} ×</span>
+                    <span style={{ fontWeight: 700, color: barColor, flexShrink: 0 }}>Interaction rate: {interactionPct}%</span>
                   </div>
                   {/* Stacked bar: views (amber) + interactions (primary) as two segments */}
                   <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
                     <div style={{ height: "100%", width: `${Math.min(viewsPct - interactionPct, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
                     <div style={{ height: "100%", width: `${interactionPct}%`, background: barColor, borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                   </div>
-                  <div style={{ display: "flex", gap: "0.75rem", fontSize: 9, color: "var(--color-text-faint)", marginTop: 3 }}>
+                  <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
                     <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {totalPageViews}</span>
                     <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: barColor, marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
                   </div>
@@ -833,7 +834,7 @@ const BLOCK_STYLE_OPTIONS = [
   { value: "outlined",   label: "Outlined",     desc: "2px strong outline" },
   { value: "elevated",   label: "Elevated",     desc: "Layered shadow depth" },
   { value: "ghost",      label: "Ghost",        desc: "Transparent with border" },
-  { value: "pill",       label: "Pill",         desc: "Fully rounded buttons" },
+  { value: "floating",   label: "Floating",     desc: "Lifted cards with shadow" },
   { value: "underline",  label: "Underline",    desc: "Accent underline only" },
   { value: "gradient",   label: "Gradient",     desc: "Accent-tinted fill" },
 ];
@@ -1779,6 +1780,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
               onAdd={(block) => saveBlocksMutation.mutate([...(pageBlocks || []), block])}
               onAddAll={(newBlocks) => saveBlocksMutation.mutate([...(pageBlocks || []), ...newBlocks])}
               saving={saveBlocksMutation.isPending}
+              remainingSlots={editorTier === "free" ? Math.max(0, FREE_BLOCK_LIMIT - ((links?.length ?? 0) + pageBlocks.length)) : 999}
             />
           )}
         </div>
@@ -2160,11 +2162,40 @@ const BLOCK_GOAL_OPTIONS = [
   { value: "Build community",              icon: "👥" },
 ];
 
-function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock[]) => void; onSkip: () => void }) {
+// Follow-up question sets per goal
+const GOAL_FOLLOWUPS: Record<string, Array<{ key: string; question: string; options: string[] }>> = {
+  "Grow my email list": [
+    { key: "audience", question: "Who is your target audience?", options: ["General public", "Professionals / B2B", "Students", "Local community"] },
+    { key: "incentive", question: "What incentive will you offer?", options: ["Free guide / ebook", "Discount code", "Exclusive content", "Nothing yet"] },
+  ],
+  "Promote a product or service": [
+    { key: "productType", question: "What are you selling?", options: ["Physical product", "Digital product", "Service / consulting", "Subscription"] },
+    { key: "stage", question: "Where are you in your launch?", options: ["Pre-launch / waitlist", "Just launched", "Established", "Seasonal"] },
+  ],
+  "Boost engagement": [
+    { key: "contentType", question: "What kind of content do you share?", options: ["Videos / reels", "Blog / articles", "Podcasts", "Photos"] },
+    { key: "platform", question: "Where is your main audience?", options: ["Instagram", "TikTok", "YouTube", "LinkedIn"] },
+  ],
+  "Share an update or news": [
+    { key: "updateType", question: "What kind of update?", options: ["Product launch", "Company news", "Personal milestone", "Event announcement"] },
+  ],
+  "Announce a launch or event": [
+    { key: "eventType", question: "What are you announcing?", options: ["Live event / webinar", "Product launch", "Course / program", "Sale / promotion"] },
+    { key: "timeline", question: "When is it happening?", options: ["This week", "This month", "In 1–3 months", "Future / TBD"] },
+  ],
+  "Build community": [
+    { key: "community", question: "Where does your community live?", options: ["Discord / Slack", "Facebook Group", "Newsletter", "In-person"] },
+    { key: "size", question: "How big is your community?", options: ["Just starting out", "Under 1,000", "1,000–10,000", "10,000+"] },
+  ],
+};
+
+function AIBlockRecommender({ onAddAll, onSkip, remainingSlots }: { onAddAll: (blocks: PageBlock[]) => void; onSkip: () => void; remainingSlots: number }) {
   const { data: licData } = useLicence();
   const { data: userData } = useQuery({ queryKey: ["/api/auth/me"], queryFn: () => apiRequest("GET", "/api/auth/me").then(r => r.json()) });
-  const [phase, setPhase] = useState<"ask" | "loading" | "done" | "error">("ask");
+  const [phase, setPhase] = useState<"ask" | "followup" | "loading" | "done" | "error">("ask");
   const [blockGoal, setBlockGoal] = useState("");
+  const [followupStep, setFollowupStep] = useState(0);
+  const [followupAnswers, setFollowupAnswers] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<PageBlock[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [errorMsg, setErrorMsg] = useState("");
@@ -2172,9 +2203,11 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
   const tier = (licData as any)?.tier || "free";
   const userName = (userData as any)?.name || "";
 
-  const fetchSuggestions = (goal: string) => {
+  const fetchSuggestions = (goal: string, answers: Record<string, string>) => {
     setPhase("loading");
     setErrorMsg("");
+    const cap = remainingSlots > 0 ? Math.min(5, remainingSlots) : 5;
+    const answerContext = Object.entries(answers).map(([k, v]) => `${k}: ${v}`).join(", ");
     fetch("/api/ai/generate-page", {
       method: "POST",
       credentials: "include",
@@ -2187,6 +2220,8 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
           industry: tier === "business" ? "Business" : "Professional",
           style: "clean, modern",
           blockGoal: goal,
+          followupContext: answerContext,
+          maxBlocks: cap,
         },
       }),
     })
@@ -2204,7 +2239,7 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
             case "countdown": return [{ id: genId(), type: "countdown", title: b.title || "Coming soon", targetDate: b.targetDate || "2026-12-31" } as any];
             default: return [];
           }
-        }).slice(0, 5);
+        }).slice(0, cap);
         setSuggestions(mapped);
         setSelected(new Set(mapped.map((_: PageBlock, i: number) => i)));
         setPhase("done");
@@ -2234,9 +2269,50 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
           );
         })}
       </div>
-      <button className="btn btn-primary btn-sm" style={{ width: "100%", justifyContent: "center" }} disabled={!blockGoal} onClick={() => fetchSuggestions(blockGoal)}>✨ Show me AI-recommended blocks</button>
+      <button className="btn btn-primary btn-sm" style={{ width: "100%", justifyContent: "center" }} disabled={!blockGoal} onClick={() => {
+        const fqs = GOAL_FOLLOWUPS[blockGoal] ?? [];
+        if (fqs.length > 0) { setFollowupStep(0); setFollowupAnswers({}); setPhase("followup"); }
+        else fetchSuggestions(blockGoal, {});
+      }}>Next →</button>
     </div>
   );
+
+  // Phase: followup — 1-2 context questions
+  if (phase === "followup") {
+    const fqs = GOAL_FOLLOWUPS[blockGoal] ?? [];
+    const currentFQ = fqs[followupStep];
+    if (!currentFQ) { fetchSuggestions(blockGoal, followupAnswers); return null; }
+    const currentAnswer = followupAnswers[currentFQ.key] ?? "";
+    return (
+      <div style={{ marginBottom: "1rem", padding: "1rem", background: "var(--color-primary-highlight)", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+          <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>✨ {currentFQ.question}</span>
+          <span style={{ fontSize: 10, color: "var(--color-text-faint)" }}>{followupStep + 1}/{fqs.length}</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.375rem", marginBottom: "0.75rem" }}>
+          {currentFQ.options.map(opt => {
+            const active = currentAnswer === opt;
+            return (
+              <button key={opt} type="button" onClick={() => setFollowupAnswers(prev => ({ ...prev, [currentFQ.key]: opt }))} style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.625rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-surface)" : "var(--color-bg)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: 12, fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const }}>
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button className="btn btn-secondary btn-sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => {
+            if (followupStep === 0) { setPhase("ask"); } else { setFollowupStep(s => s - 1); }
+          }}>← Back</button>
+          <button className="btn btn-primary btn-sm" style={{ flex: 2, justifyContent: "center" }} disabled={!currentAnswer} onClick={() => {
+            const newAnswers = { ...followupAnswers, [currentFQ.key]: currentAnswer };
+            setFollowupAnswers(newAnswers);
+            if (followupStep + 1 < fqs.length) { setFollowupStep(s => s + 1); }
+            else { fetchSuggestions(blockGoal, newAnswers); }
+          }}>{ followupStep + 1 < fqs.length ? "Next →" : "✨ Generate blocks" }</button>
+        </div>
+      </div>
+    );
+  }
 
   // Phase: loading
   if (phase === "loading") return (
@@ -2251,7 +2327,7 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
   if (phase === "error") return (
     <div style={{ padding: "0.875rem 1rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" as const }}>
       <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", flex: 1 }}>🤖 {errorMsg || "AI unavailable"} — pick a block below or retry.</span>
-      <button className="btn btn-secondary btn-sm" onClick={() => fetchSuggestions(blockGoal)}>Retry AI</button>
+      <button className="btn btn-secondary btn-sm" onClick={() => fetchSuggestions(blockGoal, followupAnswers)}>Retry AI</button>
       <button className="btn btn-secondary btn-sm" onClick={onSkip}>Skip</button>
     </div>
   );
@@ -2288,7 +2364,7 @@ function AIBlockRecommender({ onAddAll, onSkip }: { onAddAll: (blocks: PageBlock
   return null;
 }
 
-function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => void; onAddAll?: (blocks: PageBlock[]) => void; saving: boolean }) {
+function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: PageBlock) => void; onAddAll?: (blocks: PageBlock[]) => void; saving: boolean; remainingSlots?: number }) {
   const [blockType, setBlockType] = useState<BlockKind>("text");
   const [wizardSkipped, setWizardSkipped] = useState(false);
   // Text
@@ -2402,6 +2478,7 @@ function AddBlockForm({ onAdd, onAddAll, saving }: { onAdd: (b: PageBlock) => vo
             setWizardSkipped(true);
           }}
           onSkip={() => setWizardSkipped(true)}
+          remainingSlots={remainingSlots ?? 999}
         />
       )}
 
@@ -2803,15 +2880,14 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                     <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
                         <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Interaction"}</span>
-                        <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>{interactionPct}%</span>
-                        <span style={{ fontWeight: 700, flexShrink: 0, color: "var(--color-text-muted)" }}>{total} ×</span>
+                        <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Interaction rate: {interactionPct}%</span>
                       </div>
                       {/* Stacked bar: views (amber) + interactions (primary) */}
                       <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
                         <div style={{ height: "100%", width: `${Math.min(100 - interactionPct, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
                         <div style={{ height: "100%", width: `${interactionPct}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                       </div>
-                      <div style={{ display: "flex", gap: "0.75rem", fontSize: 9, color: "var(--color-text-faint)", marginTop: 3 }}>
+                      <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
                         <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {totalPageViews}</span>
                         <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
                       </div>
@@ -3052,6 +3128,17 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
     queryFn: async () => {
       if (!selectedPageId) return null;
       const res = await apiRequest("GET", `/api/pages/${selectedPageId}/block-analytics?days=${effectiveDays}`);
+      return res.json();
+    },
+    enabled: !!selectedPageId,
+    staleTime: 30000,
+  });
+
+  const { data: pageLinks } = useQuery<any[]>({
+    queryKey: ["/api/pages", selectedPageId, "links"],
+    queryFn: async () => {
+      if (!selectedPageId) return [];
+      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/links`);
       return res.json();
     },
     enabled: !!selectedPageId,
@@ -3315,6 +3402,28 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
               </div>
             )}
           </div>
+
+          {/* Links section */}
+          {(pageLinks ?? []).length > 0 && (
+            <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
+              <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.75rem" }}>Links ({(pageLinks ?? []).length})</h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                {(pageLinks ?? []).sort((a: any, b: any) => a.position - b.position).map((link: any) => {
+                  const clickCount = link.clickCount ?? 0;
+                  return (
+                    <div key={link.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 0.75rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
+                      <span style={{ fontSize: "1rem" }}>🔗</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.label || link.url}</div>
+                        <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.url}</div>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: clickCount > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0 }}>{clickCount} clicks</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Archived blocks */}
           {archivedBlocks.length > 0 && (
@@ -3833,6 +3942,8 @@ function ContactsPanel() {
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermission | "unsupported">(typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported");
   // G13: track dismissed banner IDs in component state (so banner doesn't re-show on tab switch)
   const [dismissedOverdueIds, setDismissedOverdueIds] = useState<Set<number>>(new Set());
+  // #8: track contacts that already had a notification fired this session (in-memory ref, not state)
+  const sessionNotifiedIds = useRef<Set<number>>(new Set());
 
   const { data: contacts, isLoading } = useQuery<any[]>({
     queryKey: ["/api/contacts"],
@@ -4005,6 +4116,8 @@ function ContactsPanel() {
     const dueContacts = (contacts || []).filter((c: any) => {
       if (!c.followUpDate || c.followUpDone) return false;
       if (new Date(c.followUpDate).getTime() - Date.now() > 3600000) return false;
+      // Already fired a notification for this contact this session
+      if (sessionNotifiedIds.current.has(c.id)) return false;
       // Only notify if overdue_notified_at is null or was set more than 24h ago
       if (c.overdueNotifiedAt) {
         const lastNotified = new Date(c.overdueNotifiedAt).getTime();
@@ -4015,6 +4128,7 @@ function ContactsPanel() {
     dueContacts.forEach((c: any) => {
       try {
         new Notification("Follow-up due", { body: `${c.name} — ${c.followUpNote || "No details"}` });
+        sessionNotifiedIds.current.add(c.id);
         notifyMutation.mutate(c.id);
       } catch {}
     });
@@ -4351,16 +4465,15 @@ function ContactsPanel() {
 }
 
 // --- New page wizard ---
+// #14: Step 1 only asks for username/page name, then launches AI wizard directly
 function NewPageWizardModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (pageId: number) => void }) {
-  const [step, setStep] = useState(1);
   const [username, setUsername] = useState("");
-  const [title, setTitle] = useState("");
-  const [accent, setAccent] = useState("#e06b1a");
-  const [bg, setBg] = useState("none");
+  const [createdPageId, setCreatedPageId] = useState<number | null>(null);
+  const [showAIWizard, setShowAIWizard] = useState(false);
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/pages", { username, title, accentColor: accent, background: bg });
+      const res = await apiRequest("POST", "/api/pages", { username, title: username, accentColor: "#e06b1a", background: "none" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Failed to create page");
@@ -4371,70 +4484,66 @@ function NewPageWizardModal({ open, onClose, onCreated }: { open: boolean; onClo
       queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       const id = data?.page?.id || data?.id;
-      if (id) onCreated(id);
-      setStep(1); setUsername(""); setTitle(""); setAccent("#e06b1a"); setBg("none");
-      onClose();
+      if (id) {
+        setCreatedPageId(id);
+        onCreated(id);
+        setShowAIWizard(true);
+      } else {
+        onClose();
+      }
     },
   });
 
+  const reset = () => { setUsername(""); setCreatedPageId(null); setShowAIWizard(false); };
+
   if (!open) return null;
+
+  // After page is created, show the AI wizard to configure it
+  if (showAIWizard && createdPageId) {
+    return (
+      <AIWizardModal
+        onClose={() => { reset(); onClose(); }}
+        onApply={async (data: any) => {
+          try {
+            const updateData: any = {};
+            if (data.background) updateData.background = data.background;
+            if (data.accentColor) updateData.accentColor = data.accentColor;
+            if (data.title) updateData.title = data.title;
+            if (data.bio) updateData.bio = data.bio;
+            if (data.blocks) updateData.blocks = JSON.stringify(data.blocks);
+            await apiRequest("PATCH", `/api/pages/${createdPageId}`, updateData);
+            queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+            reset();
+            onClose();
+          } catch {}
+        }}
+      />
+    );
+  }
 
   return (
     <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={onClose}>
-      <div className="card" style={{ width: "100%", maxWidth: 480, padding: "1.5rem" }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-          {[1, 2, 3].map(n => (
-            <div key={n} style={{ flex: 1, height: 4, borderRadius: 999, background: step >= n ? "var(--color-primary)" : "var(--color-divider)" }} />
-          ))}
+      <div className="card" style={{ width: "100%", maxWidth: 440, padding: "1.5rem" }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ fontWeight: 800, marginBottom: "0.5rem", fontFamily: "Cabinet Grotesk, sans-serif" }}>Name your new page</h3>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>Choose a username for your page URL. The AI wizard will set everything else up.</p>
+        <input
+          className="input"
+          placeholder="yourname"
+          value={username}
+          onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+          data-testid="input-wizard-username"
+          autoFocus
+        />
+        <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: "0.5rem" }}>linkbay.ai/{username || "yourname"}</p>
+        {createMutation.error && <p style={{ color: "var(--color-error)", fontSize: "var(--text-sm)", marginTop: "0.5rem" }}>{(createMutation.error as Error).message}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.25rem" }}>
+          <button onClick={onClose} className="btn btn-secondary btn-sm">Cancel</button>
+          <button
+            onClick={() => createMutation.mutate()}
+            disabled={!username || username.length < 3 || createMutation.isPending}
+            className="btn btn-primary btn-sm"
+          >{createMutation.isPending ? "Creating…" : "Continue with AI ✨"}</button>
         </div>
-
-        {step === 1 && (
-          <>
-            <h3 style={{ fontWeight: 800, marginBottom: "0.5rem", fontFamily: "Cabinet Grotesk, sans-serif" }}>Pick a username</h3>
-            <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>This is your page's URL.</p>
-            <input className="input" placeholder="yourname" value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} data-testid="input-wizard-username" />
-            <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: "0.5rem" }}>linkbay.ai/{username || "yourname"}</p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1rem" }}>
-              <button onClick={onClose} className="btn btn-secondary btn-sm">Cancel</button>
-              <button onClick={() => setStep(2)} disabled={!username || username.length < 3} className="btn btn-primary btn-sm">Next →</button>
-            </div>
-          </>
-        )}
-
-        {step === 2 && (
-          <>
-            <h3 style={{ fontWeight: 800, marginBottom: "0.5rem", fontFamily: "Cabinet Grotesk, sans-serif" }}>Style your page</h3>
-            <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>You can change these later.</p>
-            <label style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.25rem" }}>Page title</label>
-            <input className="input" placeholder="My links" value={title} onChange={e => setTitle(e.target.value)} style={{ marginBottom: "0.75rem" }} />
-            <label style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.25rem" }}>Accent colour</label>
-            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
-              {["#e06b1a", "#0ea5e9", "#10b981", "#8b5cf6", "#ef4444", "#1e293b"].map(c => (
-                <button key={c} onClick={() => setAccent(c)} style={{ width: 32, height: 32, borderRadius: "50%", background: c, border: accent === c ? "3px solid var(--color-text)" : "2px solid var(--color-border)", cursor: "pointer" }} aria-label={`Accent ${c}`} />
-              ))}
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "1rem" }}>
-              <button onClick={() => setStep(1)} className="btn btn-secondary btn-sm">← Back</button>
-              <button onClick={() => setStep(3)} disabled={!title} className="btn btn-primary btn-sm">Next →</button>
-            </div>
-          </>
-        )}
-
-        {step === 3 && (
-          <>
-            <h3 style={{ fontWeight: 800, marginBottom: "0.5rem", fontFamily: "Cabinet Grotesk, sans-serif" }}>Confirm and create</h3>
-            <div style={{ background: "var(--color-surface-offset)", padding: "0.75rem 1rem", borderRadius: "var(--radius-md)", marginBottom: "1rem", fontSize: "var(--text-sm)" }}>
-              <div><strong>URL:</strong> linkbay.ai/{username}</div>
-              <div><strong>Title:</strong> {title}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><strong>Accent:</strong> <span style={{ width: 16, height: 16, borderRadius: "50%", background: accent, display: "inline-block" }} /></div>
-            </div>
-            {createMutation.error && <p style={{ color: "var(--color-error)", fontSize: "var(--text-sm)", marginBottom: "0.5rem" }}>{(createMutation.error as Error).message}</p>}
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <button onClick={() => setStep(2)} className="btn btn-secondary btn-sm">← Back</button>
-              <button onClick={() => createMutation.mutate()} disabled={createMutation.isPending} className="btn btn-primary btn-sm">{createMutation.isPending ? "Creating…" : "Create page"}</button>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

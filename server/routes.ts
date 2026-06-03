@@ -749,11 +749,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const pageId = parseInt(req.params.pageId);
       if (!await assertOwnsPage(req, res, pageId)) return;
       const days = parseInt(req.query.days as string) || 30;
-      const [page, events, links, dailyViews] = await Promise.all([
+      const [page, events, links, dailyViews, prevEvents] = await Promise.all([
         storage.getPageById(pageId),
         storage.getEventsByPage(pageId, days),
         storage.getLinksByPage(pageId),
         storage.getDailyViews(pageId, days),
+        // Previous period: same window shifted back by `days`
+        days < 3650 ? storage.getEventsByPage(pageId, days * 2).then((allE: any[]) => {
+          const periodStart = new Date(Date.now() - days * 2 * 86400000).toISOString();
+          const periodEnd = new Date(Date.now() - days * 86400000).toISOString();
+          return allE.filter((e: any) => {
+            const t = e.createdAt || e.created_at || "";
+            return t >= periodStart && t < periodEnd;
+          });
+        }) : Promise.resolve([]),
       ]);
 
       // Build dailyClicks and dailyLeads arrays aligned to the same date range as dailyViews
@@ -877,6 +886,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return Array.from(interMap.values()).sort((a: any, b: any) => b.total - a.total).slice(0, 8);
         })(),
         events: events.slice(-200),
+        // Previous period comparison (for % change cards) — omitted when days=0 (all-time)
+        prevPeriod: days < 3650 ? {
+          views: (prevEvents as any[]).filter((e: any) => e.type === "view").length,
+          clicks: (prevEvents as any[]).filter((e: any) => e.type === "link_click").length,
+          leads: (prevEvents as any[]).filter((e: any) => e.type === "lead_submit").length,
+          uniqueVisitors: (() => {
+            const s = new Set<string>();
+            (prevEvents as any[]).filter((e: any) => e.type === "view").forEach((e: any) => { const v = e.visitorId ?? e.visitor_id; if (v) s.add(v); });
+            return s.size;
+          })(),
+        } : null,
       });
     } catch { res.status(500).json({ error: "Server error" }); }
   });
@@ -1458,7 +1478,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   .email{color:#888;font-size:12px}
   .msg{color:#555;font-size:12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ts{color:#aaa;font-size:11px;white-space:nowrap}
-  @media(max-width:600px){.stats{grid-template-columns:1fr 1fr}.wrap{padding:1rem}}
+  @media(max-width:600px){
+    .stats{grid-template-columns:1fr 1fr}
+    .wrap{padding:0.75rem}
+    .topbar{padding:0.75rem 1rem;flex-direction:column;gap:0.25rem;align-items:flex-start}
+    .section{padding:1rem;overflow-x:auto}
+    table{font-size:12px}
+    th,td{padding:0.375rem 0.25rem;white-space:nowrap}
+    .stat .val{font-size:1.5rem}
+    h2{font-size:0.9rem}
+    .search-bar input{font-size:12px;padding:4px 8px}
+    /* Stack columns that overflow on mobile */
+    td.msg{max-width:150px}
+    .delbtn{padding:1px 4px;font-size:9px}
+  }
   .search-bar{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem}
   .search-bar input{flex:1;padding:6px 10px;border:1px solid #e5e3df;border-radius:6px;font-size:13px;background:#f8f7f5;outline:none;transition:border-color .15s}
   .search-bar input:focus{border-color:#e06b1a;background:#fff}
@@ -1638,21 +1671,18 @@ function filterTable(input,tbodyId){
   </div>
 
   <div class="section">
-    <h2>Recent connections (in-memory log — last 20 unique IPs)</h2>
-    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search by IP, email, device, browser…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
+    <h2>Recent connections — last 20 unique visitors (30 days)</h2>
+    <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search by visitor ID, country, device…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
     <table>
-      <thead><tr><th>IP Address</th><th>Logged-in as</th><th>Device</th><th>Browser</th><th>Location</th><th>Path</th><th>When</th></tr></thead>
+      <thead><tr><th>Visitor ID</th><th>Country</th><th>Device</th><th>When</th></tr></thead>
       <tbody id="tbody-connections">
-        ${ipsWithGeo.length ? ipsWithGeo.map(e => `
+        ${recentConnEvents.length ? recentConnEvents.map(e => `
           <tr>
-            <td><code style="font-family:ui-monospace,monospace;font-size:11px">${escHtml(e.ip)}</code></td>
-            <td class="email">${escHtml(e.userEmail || "—")}</td>
-            <td class="ts">${escHtml(parseDevice(e.userAgent))}</td>
-            <td class="ts">${escHtml(parseBrowser(e.userAgent))}</td>
-            <td class="ts">${escHtml(e.location || "—")}</td>
-            <td class="ts" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.path)}</td>
-            <td class="ts">${ago(e.timestamp)}</td>
-          </tr>`).join("") : '<tr><td colspan="7" class="ts" style="text-align:center;padding:1rem">No connections logged yet (resets on restart)</td></tr>'}
+            <td><code style="font-family:ui-monospace,monospace;font-size:11px">${escHtml((e.visitor_id || "").slice(0, 16))}…</code></td>
+            <td class="ts">${escHtml(e.country || "—")}</td>
+            <td class="ts" style="text-transform:capitalize">${escHtml(e.device || "—")}</td>
+            <td class="ts">${ago(e.created_at)}</td>
+          </tr>`).join("") : '<tr><td colspan="4" class="ts" style="text-align:center;padding:1rem">No visitor events recorded yet</td></tr>'}
       </tbody>
     </table>
   </div>

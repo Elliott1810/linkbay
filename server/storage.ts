@@ -597,5 +597,44 @@ export class DatabaseStorage implements IStorage {
 
 export const storage = new DatabaseStorage();
 
+// ─── Licence helpers ─────────────────────────────────────────────────────────
+export function getUserLicence(userId: number): { tier: string; expiry: string | null; stripeCustomerId: string | null; stripeSubscriptionId: string | null; stripePriceId: string | null } {
+  const row = sqlite.prepare("SELECT licence, licence_expiry, stripe_customer_id, stripe_subscription_id, stripe_price_id FROM users WHERE id = ?").get(userId) as any;
+  return {
+    tier: row?.licence || "free",
+    expiry: row?.licence_expiry || null,
+    stripeCustomerId: row?.stripe_customer_id || null,
+    stripeSubscriptionId: row?.stripe_subscription_id || null,
+    stripePriceId: row?.stripe_price_id || null,
+  };
+}
+
+export function setUserLicence(userId: number, tier: string, expiry: string | null, stripeCustomerId?: string, stripeSubscriptionId?: string, stripePriceId?: string): void {
+  sqlite.prepare(`
+    UPDATE users SET
+      licence = ?,
+      licence_expiry = ?,
+      stripe_customer_id = COALESCE(?, stripe_customer_id),
+      stripe_subscription_id = COALESCE(?, stripe_subscription_id),
+      stripe_price_id = COALESCE(?, stripe_price_id)
+    WHERE id = ?
+  `).run(tier, expiry, stripeCustomerId || null, stripeSubscriptionId || null, stripePriceId || null, userId);
+}
+
+export function getUserByStripeCustomerId(customerId: string): any {
+  return sqlite.prepare("SELECT * FROM users WHERE stripe_customer_id = ?").get(customerId);
+}
+
+export function getUserByStripeSubscriptionId(subscriptionId: string): any {
+  return sqlite.prepare("SELECT * FROM users WHERE stripe_subscription_id = ?").get(subscriptionId);
+}
+
 // Sprint migrations
 try { (sqlite as any).exec("ALTER TABLE contacts ADD COLUMN overdue_notified_at TEXT"); } catch {}
+
+// ─── Licence system migrations ────────────────────────────────────────────────
+try { sqlite.exec("ALTER TABLE users ADD COLUMN licence TEXT NOT NULL DEFAULT 'free'"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN licence_expiry TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN stripe_price_id TEXT"); } catch {}

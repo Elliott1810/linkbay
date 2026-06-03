@@ -1425,6 +1425,10 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
   const [editValues, setEditValues] = useState<any>({});
   // Mobile editor tab state (mobile-only). On desktop both panels are shown together.
   const [editorTab, setEditorTab] = useState<"blocks" | "add">("blocks");
+  // AI Wizard
+  const [aiWizardOpen, setAiWizardOpen] = useState(false);
+  const { data: licenceDataEditor } = useLicence();
+  const editorTier: "free" | "pro" | "business" = (licenceDataEditor as any)?.tier ?? "free";
 
   const page = pages.find((p: any) => p.id === selectedPageId) || pages[0];
 
@@ -1578,6 +1582,44 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
         <Link href={`/${page?.username}`} className="btn btn-secondary" style={{ width: "100%", justifyContent: "center", fontSize: "var(--text-xs)" }} data-testid="link-preview-page">
           {icons.external} Preview page
         </Link>
+
+        <div style={{ height: 1, background: "var(--color-divider)", margin: "1.25rem 0" }} />
+
+        {/* AI Generate button */}
+        <button
+          className="btn btn-primary"
+          style={{ width: "100%", justifyContent: "center", fontSize: "var(--text-xs)", gap: "0.375rem" }}
+          onClick={() => {
+            if (editorTier === "free") {
+              alert("Upgrade to Pro to use AI page generation.");
+              return;
+            }
+            setAiWizardOpen(true);
+          }}
+          data-testid="button-ai-generate"
+          title={editorTier === "free" ? "Pro feature — upgrade to use AI" : "Generate page with AI"}
+        >
+          ✨ Generate with AI
+          {editorTier === "free" && <span style={{ fontSize: 9, padding: "0.1rem 0.35rem", background: "rgba(255,255,255,0.2)", borderRadius: 999, fontWeight: 700 }}>PRO</span>}
+        </button>
+
+        {aiWizardOpen && (
+          <AIWizardModal
+            onClose={() => setAiWizardOpen(false)}
+            onApply={async (data: any) => {
+              try {
+                const updateData: any = {};
+                if (data.background) updateData.background = data.background;
+                if (data.accentColor) updateData.accentColor = data.accentColor;
+                if (data.title) updateData.title = data.title;
+                if (data.bio) updateData.bio = data.bio;
+                if (data.blocks) updateData.blocks = JSON.stringify(data.blocks);
+                await savePageMutation.mutateAsync(updateData);
+                setAiWizardOpen(false);
+              } catch {}
+            }}
+          />
+        )}
       </div>
 
       {/* Right panel — link editor + blocks */}
@@ -4566,15 +4608,365 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
 }
 
 // --- Main Dashboard ---
+// ────────────────────────────────────────────────────────────────────────
+// useLicence hook
+// ────────────────────────────────────────────────────────────────────────
+function useLicence() {
+  return useQuery({
+    queryKey: ["/api/me/licence"],
+    queryFn: () => apiRequest("GET", "/api/me/licence").then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// UpgradeModal
+// ────────────────────────────────────────────────────────────────────────
+function UpgradeModal({ onClose, onBilling }: { onClose: () => void; onBilling: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
+      <div style={{ background: "var(--color-surface)", borderRadius: "var(--radius-xl)", padding: "2rem", maxWidth: 480, width: "100%", boxShadow: "0 24px 64px rgba(0,0,0,0.24)" }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>Upgrade your plan</h2>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Unlock more pages, analytics, contacts and AI features.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+          {([
+            { tier: "Pro", price: "£5", period: "/mo", color: "#e06b1a", features: ["3 pages", "Unlimited blocks", "Analytics", "Contacts", "AI builder"] },
+            { tier: "Business", price: "£20", period: "/mo", color: "#0891b2", features: ["Unlimited pages", "Unlimited blocks", "Analytics", "Contacts", "AI builder"] },
+          ] as const).map(plan => (
+            <div key={plan.tier} style={{ border: `2px solid ${plan.color}`, borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: plan.color, marginBottom: "0.25rem" }}>{plan.tier}</div>
+              <div style={{ fontSize: "var(--text-2xl)", fontWeight: 800, lineHeight: 1 }}>{plan.price}<span style={{ fontSize: 13, fontWeight: 400, color: "var(--color-text-muted)" }}>{plan.period}</span></div>
+              <ul style={{ listStyle: "none", padding: 0, margin: "0.75rem 0 0", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                {plan.features.map(f => <li key={f} style={{ fontSize: 12, color: "var(--color-text-muted)" }}>✓ {f}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={onBilling}>View plans</button>
+          <button className="btn btn-secondary" onClick={onClose}>Maybe later</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// BillingPanel
+// ────────────────────────────────────────────────────────────────────────
+function BillingPanel() {
+  const { data: lic, isLoading } = useLicence();
+  const [annual, setAnnual] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Success banner from Stripe redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("billing") === "success") {
+      setToast("✓ Payment successful! Your plan has been upgraded.");
+      queryClient.invalidateQueries({ queryKey: ["/api/me/licence"] });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  const checkoutMutation = useMutation({
+    mutationFn: (priceId: string) =>
+      apiRequest("POST", "/api/stripe/create-checkout", { priceId }).then(r => r.json()),
+    onSuccess: (data) => { if (data.url) window.location.href = data.url; },
+    onError: () => setToast("⚠️ Could not start checkout. Please try again."),
+  });
+
+  const portalMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/stripe/create-portal", {}).then(r => r.json()),
+    onSuccess: (data) => { if (data.url) window.location.href = data.url; },
+    onError: () => setToast("⚠️ Could not open billing portal."),
+  });
+
+  const plans = [
+    {
+      id: "free",
+      name: "Free",
+      monthlyPrice: 0,
+      annualPrice: 0,
+      color: "var(--color-text-muted)",
+      features: ["1 page", "5 content blocks", "Basic profile"],
+      priceIdMonthly: "",
+      priceIdAnnual: "",
+    },
+    {
+      id: "pro",
+      name: "Pro",
+      monthlyPrice: 5,
+      annualPrice: 4,
+      color: "#e06b1a",
+      features: ["3 pages", "Unlimited blocks", "Analytics", "Contacts", "AI page builder", "Priority support"],
+      priceIdMonthly: lic?.priceIds?.proMonthly || "",
+      priceIdAnnual: lic?.priceIds?.proAnnual || "",
+    },
+    {
+      id: "business",
+      name: "Business",
+      monthlyPrice: 20,
+      annualPrice: 16,
+      color: "#0891b2",
+      features: ["Unlimited pages", "Unlimited blocks", "Analytics", "Contacts", "AI page builder", "Custom domain", "Priority support"],
+      priceIdMonthly: lic?.priceIds?.businessMonthly || "",
+      priceIdAnnual: lic?.priceIds?.businessAnnual || "",
+    },
+  ];
+
+  const currentTier = lic?.tier || "free";
+
+  return (
+    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto", maxWidth: 720 }}>
+      {toast && (
+        <div style={{ background: "var(--color-success-subtle, #d1fae5)", border: "1px solid var(--color-success, #10b981)", borderRadius: "var(--radius-md)", padding: "0.75rem 1rem", marginBottom: "1.25rem", fontSize: "var(--text-sm)", color: "var(--color-success, #065f46)" }}>
+          {toast}
+          <button onClick={() => setToast(null)} style={{ float: "right", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>×</button>
+        </div>
+      )}
+
+      <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "1.5rem" }}>Billing</h1>
+
+      {/* Current plan */}
+      {!isLoading && (
+        <div className="card" style={{ padding: "1.25rem", marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.25rem" }}>Current plan</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ padding: "0.2rem 0.6rem", borderRadius: "var(--radius-full)", fontSize: 11, fontWeight: 700, background: currentTier === "free" ? "var(--color-surface-offset)" : currentTier === "pro" ? "rgba(224,107,26,0.15)" : "rgba(8,145,178,0.15)", color: currentTier === "free" ? "var(--color-text-muted)" : currentTier === "pro" ? "#e06b1a" : "#0891b2", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                {currentTier}
+              </span>
+              {lic?.expiry && (
+                <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>Renews {new Date(lic.expiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+              )}
+            </div>
+          </div>
+          {currentTier !== "free" && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => portalMutation.mutate()}
+              disabled={portalMutation.isPending}
+            >
+              {portalMutation.isPending ? "Loading…" : "Manage subscription"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Monthly / Annual toggle */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
+        <button onClick={() => setAnnual(false)} style={{ padding: "0.25rem 0.625rem", borderRadius: "var(--radius-md)", fontSize: 11, fontWeight: 600, border: `1px solid ${!annual ? "var(--color-primary)" : "transparent"}`, background: !annual ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: !annual ? "var(--color-primary)" : "var(--color-text-faint)", cursor: "pointer" }}>Monthly</button>
+        <button onClick={() => setAnnual(true)}  style={{ padding: "0.25rem 0.625rem", borderRadius: "var(--radius-md)", fontSize: 11, fontWeight: 600, border: `1px solid ${annual  ? "var(--color-primary)" : "transparent"}`, background: annual  ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: annual  ? "var(--color-primary)" : "var(--color-text-faint)", cursor: "pointer" }}>Annual</button>
+        {annual && <span style={{ fontSize: 11, fontWeight: 600, color: "#10b981", background: "rgba(16,185,129,0.12)", padding: "0.2rem 0.5rem", borderRadius: "var(--radius-md)" }}>Save 20%</span>}
+      </div>
+
+      {/* Plan cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
+        {plans.map(plan => {
+          const isCurrent = currentTier === plan.id;
+          const price = annual ? plan.annualPrice : plan.monthlyPrice;
+          const priceId = annual ? plan.priceIdAnnual : plan.priceIdMonthly;
+          const isLoading2 = checkoutMutation.isPending && checkoutMutation.variables === priceId;
+          return (
+            <div key={plan.id} style={{ border: `2px solid ${isCurrent ? plan.color : "var(--color-border)"}`, borderRadius: "var(--radius-xl)", padding: "1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem", background: isCurrent ? `color-mix(in srgb, ${plan.color} 6%, var(--color-surface))` : "var(--color-surface)" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: plan.color, textTransform: "uppercase", letterSpacing: "0.06em" }}>{plan.name}</div>
+              <div style={{ fontSize: "var(--text-2xl)", fontWeight: 800, lineHeight: 1 }}>
+                {price === 0 ? "Free" : `£${price}`}
+                {price > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: "var(--color-text-muted)" }}>{annual ? "/mo, billed annually" : "/mo"}</span>}
+              </div>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                {plan.features.map(f => <li key={f} style={{ fontSize: 12, color: "var(--color-text-muted)" }}><span style={{ color: plan.color }}>✓</span> {f}</li>)}
+              </ul>
+              <div style={{ marginTop: "auto" }}>
+                {isCurrent ? (
+                  <div style={{ textAlign: "center", fontSize: 12, fontWeight: 600, color: plan.color, padding: "0.5rem" }}>Current plan</div>
+                ) : plan.id === "free" ? (
+                  <button className="btn btn-secondary btn-sm" style={{ width: "100%" }} onClick={() => portalMutation.mutate()} disabled={currentTier === "free"}>Downgrade</button>
+                ) : (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ width: "100%", background: plan.color, borderColor: plan.color }}
+                    onClick={() => priceId && checkoutMutation.mutate(priceId)}
+                    disabled={checkoutMutation.isPending || !priceId}
+                  >
+                    {isLoading2 ? "Loading…" : "Upgrade"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Feature comparison table */}
+      <div className="card" style={{ padding: "1.25rem", overflow: "auto" }}>
+        <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "1rem" }}>Feature comparison</div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: "0.5rem", color: "var(--color-text-muted)", fontWeight: 600 }}>Feature</th>
+              {["Free", "Pro", "Business"].map(t => <th key={t} style={{ textAlign: "center", padding: "0.5rem", color: "var(--color-text-muted)", fontWeight: 600 }}>{t}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {([
+              ["Pages", "1", "3", "Unlimited"],
+              ["Content blocks", "5", "Unlimited", "Unlimited"],
+              ["Analytics", "✕", "✓", "✓"],
+              ["Contacts", "✕", "✓", "✓"],
+              ["AI page builder", "✕", "✓", "✓"],
+              ["Custom domain", "✕", "✕", "✓"],
+              ["Priority support", "✕", "✓", "✓"],
+            ] as [string, string, string, string][]).map(([feature, free, pro, biz], i) => (
+              <tr key={feature} style={{ background: i % 2 === 0 ? "var(--color-surface-offset)" : undefined }}>
+                <td style={{ padding: "0.5rem" }}>{feature}</td>
+                {[free, pro, biz].map((v, j) => <td key={j} style={{ textAlign: "center", padding: "0.5rem", color: v === "✕" ? "var(--color-text-faint)" : v === "✓" ? "#10b981" : "var(--color-text)" }}>{v}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// AIWizardModal
+// ────────────────────────────────────────────────────────────────────────
+function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (page: any) => void }) {
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState({ name: "", tagline: "", goal: "", industry: "", style: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const questions = [
+    { key: "name",     label: "What's your name or brand?",         type: "text",   placeholder: "e.g. Sarah Johnson or Bloom Studio" },
+    { key: "tagline", label: "What do you do in one sentence?",      type: "text",   placeholder: "e.g. I help small businesses grow on social media" },
+    { key: "goal",    label: "What's the main goal of your page?",   type: "select", options: ["Get more followers", "Sell products or services", "Capture leads", "Share content", "Other"] },
+    { key: "industry",label: "What industry are you in?",            type: "select", options: ["Creator / Influencer", "Fitness & Health", "Business & Consulting", "Music & Arts", "Retail & E-commerce", "Tech & Software", "Other"] },
+    { key: "style",   label: "What style feels right?",              type: "pills",  options: ["Minimal", "Bold", "Professional", "Playful"] },
+  ];
+
+  const currentQ = questions[step];
+  const totalSteps = questions.length;
+  const canNext = answers[currentQ.key as keyof typeof answers].trim().length > 0;
+
+  async function handleGenerate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiRequest("POST", "/api/ai/generate-page", { answers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Generation failed");
+      onApply(data);
+    } catch (e: any) {
+      setError(e.message || "Something went wrong. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
+      <div style={{ background: "var(--color-surface)", borderRadius: "var(--radius-xl)", padding: "2rem", maxWidth: 460, width: "100%", boxShadow: "0 24px 64px rgba(0,0,0,0.24)" }} onClick={e => e.stopPropagation()}>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "2rem 0" }}>
+            <div style={{ fontSize: 40, marginBottom: "1rem", animation: "spin 1.5s linear infinite", display: "inline-block" }}>✨</div>
+            <div style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>Building your page…</div>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>AI is generating blocks tailored to your brand</div>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-faint)", marginBottom: "0.25rem" }}>Step {step + 1} of {totalSteps}</div>
+                <h2 style={{ fontSize: "var(--text-base)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", margin: 0 }}>{currentQ.label}</h2>
+              </div>
+              <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 20, lineHeight: 1 }}>×</button>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.5rem" }}>
+              <div style={{ height: "100%", width: `${((step + 1) / totalSteps) * 100}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.3s" }} />
+            </div>
+
+            {/* Input */}
+            {currentQ.type === "text" && (
+              <input
+                autoFocus
+                value={answers[currentQ.key as keyof typeof answers]}
+                onChange={e => setAnswers(a => ({ ...a, [currentQ.key]: e.target.value }))}
+                onKeyDown={e => { if (e.key === "Enter" && canNext) step < totalSteps - 1 ? setStep(s => s + 1) : handleGenerate(); }}
+                placeholder={currentQ.placeholder}
+                style={{ width: "100%", padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: "var(--text-sm)", marginBottom: "1.5rem", boxSizing: "border-box" }}
+              />
+            )}
+            {currentQ.type === "select" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
+                {currentQ.options!.map(opt => (
+                  <button key={opt} onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt }))} style={{ padding: "0.625rem 1rem", borderRadius: "var(--radius-md)", border: `1px solid ${answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-border)"}`, background: answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary-highlight)" : "var(--color-bg)", color: answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: 500, cursor: "pointer", textAlign: "left" }}>{opt}</button>
+                ))}
+              </div>
+            )}
+            {currentQ.type === "pills" && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1.5rem" }}>
+                {currentQ.options!.map(opt => (
+                  <button key={opt} onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt }))} style={{ padding: "0.5rem 1rem", borderRadius: "var(--radius-full)", border: `1px solid ${answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-border)"}`, background: answers[currentQ.key as keyof typeof answers] === opt ? "var(--color-primary)" : "var(--color-bg)", color: answers[currentQ.key as keyof typeof answers] === opt ? "#fff" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: 600, cursor: "pointer" }}>{opt}</button>
+                ))}
+              </div>
+            )}
+
+            {error && <div style={{ fontSize: 13, color: "var(--color-error, #dc2626)", marginBottom: "1rem", padding: "0.5rem", background: "rgba(220,38,38,0.08)", borderRadius: "var(--radius-sm)" }}>{error}</div>}
+
+            {/* Navigation */}
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => step > 0 ? setStep(s => s - 1) : onClose()} style={{ visibility: step === 0 ? "hidden" : "visible" }}>Back</button>
+              {step < totalSteps - 1 ? (
+                <button className="btn btn-primary btn-sm" onClick={() => setStep(s => s + 1)} disabled={!canNext}>Next</button>
+              ) : (
+                <button className="btn btn-primary btn-sm" onClick={handleGenerate} disabled={!canNext}>✨ Build my page</button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [activeNav, setActiveNav] = useState("overview");
   const [activePageId, setActivePageId] = useState<number | null>(null);
   const [newPageWizardOpen, setNewPageWizardOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const { user, pages, isLoading, logout, refetch } = useAuth();
+  const { data: licence } = useLicence();
   const [, navigate] = useLocation();
+
+  const licenceTier: "free" | "pro" | "business" = (licence as any)?.tier ?? "free";
+  const TIER_LIMITS_CLIENT = {
+    free:     { pages: 1,        analytics: false, contacts: false },
+    pro:      { pages: 3,        analytics: true,  contacts: true  },
+    business: { pages: Infinity, analytics: true,  contacts: true  },
+  } as const;
+  const tierLimits = TIER_LIMITS_CLIENT[licenceTier];
 
   // Goal 7: onboarding state driven by API
   const sharedLink = !!(user as any)?.onboardingSharedLink;
@@ -4655,35 +5047,38 @@ export default function DashboardPage() {
     switch (activeNav) {
       case "overview": return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
       case "editor": return <EditorPanel pages={pages} activePageId={activePageId} />;
-      case "analytics": return <AnalyticsPanel pages={pages} activePageId={activePageId} setActivePageId={setActivePageId} />;
+      case "analytics": return tierLimits.analytics
+        ? <AnalyticsPanel pages={pages} activePageId={activePageId} setActivePageId={setActivePageId} />
+        : (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "3rem 2rem" }}>
+            <div style={{ textAlign: "center", maxWidth: 360 }}>
+              <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📊</div>
+              <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>Analytics — Pro feature</h2>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginBottom: "1.5rem" }}>Upgrade to Pro to unlock detailed page analytics, click rates, unique visitors, and conversion insights.</p>
+              <button className="btn btn-primary" style={{ justifyContent: "center" }} onClick={() => { setActiveNav("billing"); }}>
+                Upgrade to Pro →
+              </button>
+            </div>
+          </div>
+        );
       case "blocks": return <BlockAnalysisPanel pages={pages} activePageId={activePageId} />;
       case "leads": return <LeadsPanel pages={pages} />;
-      case "contacts": return <ContactsPanel />;
-      case "settings": return <SettingsPanel user={user} pages={pages} onLogout={async () => { await logout(); navigate("/"); }} />;
-      case "billing": return (
-        <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
-          <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "1.5rem" }}>Billing</h1>
-          <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-              <div>
-                <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>Current plan</div>
-                <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>Free tier — upgrade for custom domain, analytics, and AI features</div>
-              </div>
-              <span className="badge badge-primary">Free</span>
+      case "contacts": return tierLimits.contacts
+        ? <ContactsPanel />
+        : (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "3rem 2rem" }}>
+            <div style={{ textAlign: "center", maxWidth: 360 }}>
+              <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>👥</div>
+              <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>Contacts — Pro feature</h2>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginBottom: "1.5rem" }}>Upgrade to Pro to manage your contacts CRM, see full lead history, and export contact data.</p>
+              <button className="btn btn-primary" style={{ justifyContent: "center" }} onClick={() => { setActiveNav("billing"); }}>
+                Upgrade to Pro →
+              </button>
             </div>
-            <Link href="/pricing" className="btn btn-primary btn-sm">Upgrade to Pro →</Link>
           </div>
-          <div className="card" style={{ padding: "1.5rem" }}>
-            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>Pro — £9/mo</h2>
-            {["Custom domain", "Unlimited pages", "Advanced analytics", "AI conversion tips", "Priority support"].map(f => (
-              <div key={f} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0", borderBottom: "1px solid var(--color-divider)", fontSize: "var(--text-sm)" }}>
-                <span style={{ color: "var(--color-success)" }}>✓</span> {f}
-              </div>
-            ))}
-            <Link href="/pricing" className="btn btn-primary" style={{ marginTop: "1.25rem", justifyContent: "center" }}>Get Pro</Link>
-          </div>
-        </div>
-      );
+        );
+      case "settings": return <SettingsPanel user={user} pages={pages} onLogout={async () => { await logout(); navigate("/"); }} />;
+      case "billing": return <BillingPanel />;
       default: return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
     }
   };
@@ -4776,13 +5171,22 @@ export default function DashboardPage() {
           ))}
           <div style={{ marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid var(--color-divider)" }}>
             <button
-              onClick={() => setNewPageWizardOpen(true)}
+              onClick={() => {
+                if (pages.length >= tierLimits.pages) {
+                  setUpgradeModalOpen(true);
+                } else {
+                  setNewPageWizardOpen(true);
+                }
+              }}
               className="sidebar-nav-item"
               style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", color: "var(--color-primary)", fontWeight: 600, justifyContent: sidebarCollapsed ? "center" : undefined }}
               data-testid="button-new-page-wizard"
               title={sidebarCollapsed ? "New page" : undefined}
             >
               {icons.plus} {!sidebarCollapsed && "New page"}
+              {pages.length >= tierLimits.pages && !sidebarCollapsed && (
+                <span style={{ marginLeft: "auto", fontSize: 9, padding: "0.1rem 0.35rem", background: "var(--color-primary-highlight)", color: "var(--color-primary)", borderRadius: 999, fontWeight: 700 }}>PRO</span>
+              )}
             </button>
           </div>
         </div>
@@ -4874,6 +5278,13 @@ export default function DashboardPage() {
         onClose={() => setNewPageWizardOpen(false)}
         onCreated={(id) => setActivePageId(id)}
       />
+
+      {upgradeModalOpen && (
+        <UpgradeModal
+          onClose={() => setUpgradeModalOpen(false)}
+          onBilling={() => { setUpgradeModalOpen(false); setActiveNav("billing"); }}
+        />
+      )}
 
       {/* Help drawer */}
       {helpOpen && (

@@ -484,6 +484,58 @@ function mapAiBlocks(aiBlocks: any[]): { links: PageLink[]; blocks: Block[] } {
   return { links, blocks };
 }
 
+// ─── AI Q&A wizard questions ─────────────────────────────────────────────────
+const AI_WIZARD_QUESTIONS = [
+  {
+    key: "tagline",
+    label: (name: string) => `What does ${name || "your brand"} do?`,
+    sublabel: "In one sentence — be specific.",
+    type: "text" as const,
+    placeholder: "e.g. I help startups raise their first £1M through pitch deck coaching",
+  },
+  {
+    key: "goal",
+    label: () => "What's the main goal of this page?",
+    sublabel: "Pick the one that matters most right now.",
+    type: "pills" as const,
+    options: [
+      { value: "Get clients or customers",    icon: "💼" },
+      { value: "Grow my audience",            icon: "📈" },
+      { value: "Capture leads & emails",      icon: "📬" },
+      { value: "Promote a launch or event",   icon: "🚀" },
+      { value: "Share my content",            icon: "🎥" },
+      { value: "Connect my socials",          icon: "🔗" },
+    ],
+  },
+  {
+    key: "colorMood",
+    label: () => "What vibe should your page have?",
+    sublabel: "This sets your background and accent colour.",
+    type: "color-pills" as const,
+    options: [
+      { value: "Warm & energetic",    preview: "linear-gradient(135deg,#b5451b,#e06b1a)",  text: "#fff" },
+      { value: "Cool & professional", preview: "linear-gradient(135deg,#0891b2,#e8f4f8)",  text: "#0891b2" },
+      { value: "Dark & dramatic",     preview: "linear-gradient(135deg,#1a1a2e,#7c3aed)",  text: "#fff" },
+      { value: "Light & minimal",     preview: "linear-gradient(135deg,#f5f0e8,#334155)",  text: "#334155" },
+      { value: "Natural & earthy",    preview: "linear-gradient(135deg,#d4c4a0,#059669)",  text: "#fff" },
+      { value: "Bold & creative",     preview: "linear-gradient(135deg,#4a0000,#e11d48)",  text: "#fff" },
+    ],
+  },
+  {
+    key: "fontStyle",
+    label: () => "How should your text feel?",
+    sublabel: "Sets the font across your whole page.",
+    type: "pills" as const,
+    options: [
+      { value: "Clean & modern",     icon: "Aa" },
+      { value: "Bold & editorial",   icon: "AB" },
+      { value: "Friendly & rounded", icon: "Oo" },
+      { value: "Elegant & serif",    icon: "Ꭺ" },
+      { value: "Technical & sharp",  icon: "{}" },
+    ],
+  },
+];
+
 function AISuggestionsStep({
   state,
   update,
@@ -494,24 +546,27 @@ function AISuggestionsStep({
   onContinue: () => void;
 }) {
   const roleLabel = USE_CASE_LABELS[state.useCase] || "Professional";
-  const [aiStatus, setAiStatus] = useState<"loading" | "done" | "error">("loading");
+  // qa = collecting answers | loading = waiting for AI | done = show results | error = show error
+  const [phase, setPhase] = useState<"qa" | "loading" | "done" | "error">("qa");
+  const [qaStep, setQaStep] = useState(0);
+  const [answers, setAnswers] = useState({ tagline: "", goal: "", colorMood: "", fontStyle: "" });
   const [aiResult, setAiResult] = useState<{ links: PageLink[]; blocks: Block[]; background?: string; accentColor?: string } | null>(null);
   const [aiError, setAiError] = useState("");
-  const [retryCount, setRetryCount] = useState(0);
 
-  // Fetch AI suggestions on mount and on retry
-  useEffect(() => {
-    let cancelled = false;
-    setAiStatus("loading");
-    setAiError("");
+  const questions = AI_WIZARD_QUESTIONS;
+  const currentQ = questions[qaStep];
+  const currentVal = answers[currentQ.key as keyof typeof answers];
+  const canAdvance = currentVal.trim().length > 0;
+
+  const handleGenerate = () => {
+    setPhase("loading");
     const useCaseGoals: Record<string, string> = {
-      consultant: "Get consulting clients and showcase expertise",
-      creator: "Grow audience and share content",
-      recruiter: "Connect with candidates and share job opportunities",
-      founder: "Attract investors and early users",
-      coach: "Book coaching sessions and share resources",
-      agency: "Showcase services and get leads",
-      other: "Share links and connect with people",
+      consultant: "Consulting / Coaching",
+      creator: "Content creator / Influencer",
+      recruiter: "Recruiter / HR professional",
+      founder: "Startup founder",
+      agency: "Agency",
+      other: "Professional",
     };
     fetch("/api/ai/generate-page", {
       method: "POST",
@@ -520,28 +575,25 @@ function AISuggestionsStep({
       body: JSON.stringify({
         answers: {
           name: state.name,
-          tagline: `${roleLabel} — ${useCaseGoals[state.useCase] || "Professional"}`,
-          goal: useCaseGoals[state.useCase] || "Share links and connect",
-          industry: roleLabel,
-          style: "clean, modern, professional",
+          tagline: answers.tagline,
+          goal: answers.goal,
+          industry: useCaseGoals[state.useCase] || roleLabel,
+          style: answers.fontStyle || "clean, modern",
+          colorMood: answers.colorMood,
+          fontStyle: answers.fontStyle,
         },
       }),
     })
       .then(async res => {
-        if (cancelled) return;
         let data: any;
-        try { data = await res.json(); } catch { setAiError(`AI service error (HTTP ${res.status}). Please try again.`); setAiStatus("error"); return; }
-        if (!res.ok || data.error) { setAiError(data.error || `AI service error (${res.status}). Please try again.`); setAiStatus("error"); return; }
+        try { data = await res.json(); } catch { setAiError(`AI service error (HTTP ${res.status}). Please try again.`); setPhase("error"); return; }
+        if (!res.ok || data.error) { setAiError(data.error || `AI service error (${res.status}). Please try again.`); setPhase("error"); return; }
         const { links, blocks } = mapAiBlocks(data.blocks || []);
         setAiResult({ links, blocks, background: data.background, accentColor: data.accentColor });
-        setAiStatus("done");
+        setPhase("done");
       })
-      .catch((err) => {
-        if (!cancelled) { setAiError(`Could not reach AI service: ${err?.message || "network error"}. Please try again.`); setAiStatus("error"); }
-      });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [retryCount]);
+      .catch(err => { setAiError(`Could not reach AI service: ${err?.message || "network error"}. Please try again.`); setPhase("error"); });
+  };
 
   const applyAndContinue = () => {
     if (!aiResult) return;
@@ -554,69 +606,136 @@ function AISuggestionsStep({
     onContinue();
   };
 
-  // Loading state
-  if (aiStatus === "loading") {
+  // ── Phase: Q&A ────────────────────────────────────────────────────────────
+  if (phase === "qa") {
+    const progress = ((qaStep + 1) / questions.length) * 100;
+    return (
+      <div>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>✨</div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>AI Page Builder · {qaStep + 1} of {questions.length}</div>
+            <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", margin: 0 }}>
+              {currentQ.label(state.name)}
+            </h2>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.5rem" }}>
+          <div style={{ height: "100%", width: `${progress}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.3s" }} />
+        </div>
+
+        {currentQ.sublabel && (
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem", marginTop: "-0.5rem" }}>{currentQ.sublabel}</p>
+        )}
+
+        {/* Text input */}
+        {currentQ.type === "text" && (
+          <textarea
+            autoFocus
+            rows={3}
+            value={currentVal}
+            onChange={e => setAnswers(a => ({ ...a, [currentQ.key]: e.target.value }))}
+            placeholder={currentQ.placeholder}
+            style={{ width: "100%", padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: "var(--text-sm)", resize: "none", boxSizing: "border-box" as const, marginBottom: "1.25rem", fontFamily: "inherit", lineHeight: 1.5 }}
+          />
+        )}
+
+        {/* Standard pills */}
+        {currentQ.type === "pills" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.25rem" }}>
+            {(currentQ.options as { value: string; icon: string }[]).map(opt => {
+              const active = currentVal === opt.value;
+              return (
+                <button key={opt.value} type="button" onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt.value }))} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.625rem 0.875rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary-highlight)" : "var(--color-surface)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const, transition: "all 0.15s" }}>
+                  <span style={{ fontSize: 14, minWidth: 20 }}>{opt.icon}</span>
+                  {opt.value}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Colour mood pills */}
+        {currentQ.type === "color-pills" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.25rem" }}>
+            {(currentQ.options as { value: string; preview: string; text: string }[]).map(opt => {
+              const active = currentVal === opt.value;
+              return (
+                <button key={opt.value} type="button" onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt.value }))} style={{ padding: "0.75rem", borderRadius: "var(--radius-md)", border: `2.5px solid ${active ? "var(--color-primary)" : "transparent"}`, background: opt.preview, cursor: "pointer", boxShadow: active ? "0 0 0 2px var(--color-primary)" : "0 1px 4px rgba(0,0,0,0.15)", transition: "all 0.15s", position: "relative" as const, overflow: "hidden" as const }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: opt.text, textShadow: "0 1px 3px rgba(0,0,0,0.3)", position: "relative" as const, zIndex: 1 }}>{opt.value}</div>
+                  {active && <div style={{ position: "absolute" as const, top: 4, right: 4, width: 16, height: 16, borderRadius: "50%", background: "var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "#fff", fontSize: 9, fontWeight: 800 }}>✓</span></div>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Nav */}
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          {qaStep === 0 ? (
+            <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }} data-testid="button-skip-suggestions">Skip AI</button>
+          ) : (
+            <button type="button" onClick={() => setQaStep(s => s - 1)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>← Back</button>
+          )}
+          {qaStep < questions.length - 1 ? (
+            <button type="button" onClick={() => setQaStep(s => s + 1)} disabled={!canAdvance} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-ai-next">Next →</button>
+          ) : (
+            <button type="button" onClick={handleGenerate} disabled={!canAdvance} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-ai-generate">✨ Build my page</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Phase: Loading ────────────────────────────────────────────────────────
+  if (phase === "loading") {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 300, gap: "1.25rem", textAlign: "center" }}>
-        <div style={{
-          width: 52, height: 52, borderRadius: "50%",
-          border: "3px solid var(--color-primary)",
-          borderTopColor: "transparent",
-          animation: "spin 0.9s linear infinite",
-        }} />
+        <div style={{ width: 52, height: 52, borderRadius: "50%", border: "3px solid var(--color-primary)", borderTopColor: "transparent", animation: "spin 0.9s linear infinite" }} />
         <div>
-          <div style={{ fontSize: "var(--text-lg)", fontWeight: 700, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: 4 }}>
-            Building your AI page...
-          </div>
-          <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
-            GPT-4o is personalising your {roleLabel} page
-          </div>
+          <div style={{ fontSize: "var(--text-lg)", fontWeight: 700, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: 4 }}>Building your page…</div>
+          <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>GPT-4o is crafting {state.name}'s personalised page</div>
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
-  // Error fallback
-  if (aiStatus === "error") {
+  // ── Phase: Error ──────────────────────────────────────────────────────────
+  if (phase === "error") {
     return (
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
           <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>🤖</div>
           <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>AI unavailable</h2>
         </div>
-        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>
-          {aiError || "AI generation failed."} You can continue without AI suggestions.
-        </p>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>{aiError || "AI generation failed."} You can continue without AI suggestions.</p>
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} data-testid="button-skip-suggestions">Start blank</button>
-          <button type="button" onClick={() => setRetryCount(c => c + 1)} className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }}>Retry</button>
+          <button type="button" onClick={() => { setPhase("loading"); handleGenerate(); }} className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }}>Retry</button>
         </div>
       </div>
     );
   }
 
-  // Done — show AI results
+  // ── Phase: Done ───────────────────────────────────────────────────────────
   const totalItems = (aiResult?.links.length ?? 0) + (aiResult?.blocks.length ?? 0);
   return (
     <div>
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
         <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>🤖</div>
         <div>
-          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>
-            Your AI-generated page
-          </h2>
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: 2 }}>
-            Personalised for a <strong>{roleLabel}</strong> by GPT-4o
-          </p>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>Your AI-generated page</h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: 2 }}>Personalised for <strong>{state.name}</strong> by GPT-4o</p>
         </div>
       </div>
       <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)", marginBottom: "1.25rem" }}>
-        GPT-4o has generated {totalItems} item{totalItems !== 1 ? "s" : ""} for your page — links, blocks, and a colour theme. You can edit everything in step 3.
+        {totalItems} item{totalItems !== 1 ? "s" : ""} generated — blocks, links, colours and fonts. You can edit everything in step 3.
       </p>
 
-      {/* Summary cards */}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
         {(aiResult?.links || []).map((l, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)", background: "var(--color-primary-highlight)" }}>
@@ -646,14 +765,9 @@ function AISuggestionsStep({
         )}
       </div>
 
-      {/* Actions */}
       <div style={{ display: "flex", gap: "0.75rem" }}>
-        <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }} data-testid="button-skip-suggestions">
-          Start blank
-        </button>
-        <button type="button" onClick={applyAndContinue} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-apply-suggestions">
-          Apply AI suggestions →
-        </button>
+        <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }} data-testid="button-skip-suggestions">Start blank</button>
+        <button type="button" onClick={applyAndContinue} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-apply-suggestions">Apply AI suggestions →</button>
       </div>
     </div>
   );

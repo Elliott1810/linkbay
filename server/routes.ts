@@ -207,6 +207,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const page = await storage.getPageByUsername(req.params.username);
       if (!page || !page.published) return res.status(404).json({ error: "Not found" });
+
+      // S6 #2: Never count a view when the page owner is viewing their own page
+      if (req.session?.userEmail && req.session.userEmail === page.ownerEmail) {
+        return res.json({ skipped: true });
+      }
+
       const rawIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
       const visitorId = crypto.createHash("sha256").update(rawIp).digest("hex").slice(0, 16);
       const cfCountry = ((req.headers["cf-ipcountry"] as string) || "").toUpperCase() || null;
@@ -288,6 +294,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/pages/:pageId/track-click", async (req, res) => {
     try {
       const pageId = parseInt(req.params.pageId);
+      // S6 #2: Skip tracking for page owner
+      const page = await storage.getPageById(pageId);
+      if (req.session?.userEmail && page?.ownerEmail === req.session.userEmail) return res.json({ skipped: true });
       const ua = String(req.headers["user-agent"] || "");
       const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
       await storage.recordEvent({ pageId, type: "link_click", device } as any);
@@ -299,6 +308,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/pages/:pageId/track-block", async (req, res) => {
     try {
       const pageId = parseInt(req.params.pageId);
+      // S6 #2: Skip tracking for page owner
+      const page = await storage.getPageById(pageId);
+      if (req.session?.userEmail && page?.ownerEmail === req.session.userEmail) return res.json({ skipped: true });
       const { blockId, blockType, eventType } = req.body as { blockId?: string; blockType?: string; eventType?: string };
       const ua = String(req.headers["user-agent"] || "");
       const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
@@ -428,6 +440,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         contactEmail: z.string().max(200).optional(),
         pageFont: z.string().max(60).optional(),
         archivedBlockIds: z.string().optional(),
+        hiddenBlockIds: z.string().optional(),
       });
       const data = allowedFields.parse(req.body);
       const page = await storage.updatePage(pageId, data);
@@ -1006,26 +1019,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pageId, pollId } = req.params;
       const votes = await storage.getPollVotes(parseInt(pageId), pollId);
-      res.json({ votes });
+      // S6 #10: check if this visitor already voted
+      const voterEmail = (req.session as any)?.userEmail || null;
+      const voterToken = (req.query.voterToken as string) || null;
+      const hasVoted = await storage.hasVoted(pollId, voterEmail, voterToken);
+      res.json({ votes, hasVoted });
     } catch { res.status(500).json({ error: "Server error" }); }
   });
 
-  // Cast a vote (signed-in users only)
-  app.post("/api/pages/:pageId/polls/:pollId/vote", requireAuth as any, async (req, res) => {
+  // Cast a vote — S6 #10: open to all visitors, deduplicated by email (signed-in) or IP hash (anonymous)
+  app.post("/api/pages/:pageId/polls/:pollId/vote", async (req, res) => {
     try {
       const { pageId, pollId } = req.params;
-      const { optionIndex } = req.body;
+      const { optionIndex, voterToken } = req.body;
       if (typeof optionIndex !== "number" || optionIndex < 0) {
         return res.status(400).json({ error: "Invalid option" });
       }
-      // Check page exists
       const page = await storage.getPageById(parseInt(pageId));
       if (!page) return res.status(404).json({ error: "Page not found" });
+
+      const voterEmail = req.session?.userEmail || null;
+      // Derive a stable anonymous token from IP + user-agent hash if not signed in
+      const rawIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+      const ua = String(req.headers["user-agent"] || "");
+      // Use client-supplied voterToken (localStorage UUID) first, then fall back to IP+UA hash
+      const anonToken = voterToken || crypto.createHash("sha256").update(rawIp + ua).digest("hex").slice(0, 24);
 
       await storage.castVote({
         pageId: parseInt(pageId),
         pollId,
-        voterEmail: req.session.userEmail!,
+        voterEmail,
+        voterToken: voterEmail ? null : anonToken,
         optionIndex,
       });
       const votes = await storage.getPollVotes(parseInt(pageId), pollId);
@@ -1543,7 +1567,6 @@ function filterTable(input,tbodyId){
     <div class="stat"><div class="val">${fmt(totalClicks)}</div><div class="lbl">Total clicks</div></div>
     <div class="stat"><div class="val">${fmt(totalLeads)}</div><div class="lbl">Total leads</div></div>
     <div class="stat"><div class="val">${fmt(totalContacts)}</div><div class="lbl">Total contacts</div></div>
-    <div class="stat"><div class="val">${fmt(totalEvents)}</div><div class="lbl">Total events</div></div>
   </div>
 
   <div class="section">

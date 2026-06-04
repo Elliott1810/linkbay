@@ -165,7 +165,7 @@ export default function PricingPage() {
                 <Link
                   href={plan.ctaHref}
                   className={`btn ${plan.featured ? "btn-primary" : "btn-secondary"}`}
-                  style={{ width: "100%", justifyContent: "center", marginBottom: "1.75rem", display: "flex" }}
+                  style={{ width: "100%", justifyContent: "center", marginBottom: "1.75rem", display: "flex", minHeight: "2.75rem", alignItems: "center" }}
                 >
                   {plan.cta}
                 </Link>

@@ -1447,6 +1447,20 @@ img.avatar-img {
   color: inherit !important;
 }
 
+/* #5: Glass info card — applied to profile main card + bio block */
+.block-style-glass-info {
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+/* #13: Avatar shape CSS classes for pentagon + diamond */
+.avatar-pentagon {
+  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+}
+.avatar-diamond {
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
 /* M3: Analytics detail grid — stacks to 1 column on mobile */
 @media (max-width: 640px) {
   .analytics-detail-grid {

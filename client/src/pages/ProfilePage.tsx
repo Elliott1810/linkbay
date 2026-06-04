@@ -143,8 +143,8 @@ const SOCIAL_ICON: Record<string, React.ComponentType<{ size?: number; style?: R
 function SocialLinksBlock({ block, accent, pageId }: { block: Block; accent: string; pageId: number }) {
   const items = (block.platforms || block.socials || []) as Array<{ platform: string; handle?: string; url: string }>;
   const track = (platform: string) => {
-    trackBlock(pageId, block.id, "social-links", "click");
-    apiRequest("POST", `/api/pages/${pageId}/track-click`).catch(() => {});
+    // S7 #6: removed duplicate track-click; #7c: pass platform as blockSubId
+    apiRequest("POST", `/api/pages/${pageId}/track-block`, { blockId: block.id, blockType: "social-links", eventType: "click", blockSubId: platform }).catch(() => {});
   };
   return (
     <div style={{ display: "flex", gap: "0.625rem", justifyContent: "center", flexWrap: "wrap", padding: "1rem", background: "var(--color-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
@@ -152,7 +152,7 @@ function SocialLinksBlock({ block, accent, pageId }: { block: Block; accent: str
         const key = s.platform.toLowerCase();
         const IconComponent = SOCIAL_ICON[key];
         return (
-          <a key={i} href={s.url} onClick={() => track(s.platform)} target="_blank" rel="noopener noreferrer"
+          <a key={i} href={s.url} onClick={() => track(s.platform.toLowerCase())} target="_blank" rel="noopener noreferrer"
              aria-label={s.platform}
              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, background: `${accent}18`, color: accent, textDecoration: "none", borderRadius: 999, border: `1px solid ${accent}35`, transition: "background 0.15s, transform 0.15s" }}
              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `${accent}30`; (e.currentTarget as HTMLElement).style.transform = "scale(1.1)"; }}
@@ -836,18 +836,22 @@ export default function ProfilePage() {
 
       <div style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
 
-        {/* Cover / hero card */}
-        <div className={blockStyle !== "divider" ? `block-style-${blockStyle}` : undefined} style={{
-          background: `linear-gradient(135deg, ${accent}18, ${accent}06)`,
+        {/* Cover / hero card — glass finish (#5) */}
+        <div className={blockStyle !== "divider" ? `block-style-${blockStyle} block-style-glass-info` : undefined} style={{
+          background: luminance === "dark" ? `rgba(255,255,255,0.12)` : `rgba(0,0,0,0.06)`,
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
           borderRadius: blockRadius,
           padding: "2.5rem 2rem",
           marginBottom: "1.25rem",
           textAlign: "center",
-          border: "1px solid var(--color-border)"
+          border: `1px solid ${luminance === "dark" ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)"}`
         }}>
           {/* Avatar */}
           {(() => {
-            const avatarRadius = (page as any).avatarShape === "rounded" ? "var(--radius-lg)" : "50%";
+            const shape = (page as any).avatarShape || "circle";
+            const avatarRadius = shape === "rounded" ? "var(--radius-lg)" : shape === "pentagon" || shape === "diamond" ? 0 : "50%";
+            const avatarClipPath = shape === "pentagon" ? "polygon(50% 0%,100% 38%,82% 100%,18% 100%,0% 38%)" : shape === "diamond" ? "polygon(50% 0%,100% 50%,50% 100%,0% 50%)" : undefined;
             const avatarSize = isPreview ? 36 : 72;
             const avatarFontSize = isPreview ? "1.25rem" : "1.75rem";
             return page.avatarUrl ? (
@@ -857,25 +861,27 @@ export default function ProfilePage() {
                 className="avatar-img"
                 style={{
                   width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
+                  clipPath: avatarClipPath,
                   objectFit: "cover",
                   margin: "0 auto 0.75rem",
                   display: "block",
                   flexShrink: 0,
                   minWidth: 0,
                   maxWidth: "100%",
-                  border: "3px solid var(--color-surface)",
+                  border: avatarClipPath ? undefined : "3px solid var(--color-surface)",
                   boxShadow: "var(--shadow-md)"
                 }}
               />
             ) : (
               <div style={{
                 width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
+                clipPath: avatarClipPath,
                 background: accent,
                 color: "#fff",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: avatarFontSize, fontWeight: 800,
                 margin: "0 auto 0.75rem",
-                border: "3px solid var(--color-surface)",
+                border: avatarClipPath ? undefined : "3px solid var(--color-surface)",
                 boxShadow: "var(--shadow-md)"
               }}>
                 {page.ownerName.charAt(0).toUpperCase()}
@@ -933,9 +939,20 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Bio */}
+        {/* Bio — glass finish (#5a) */}
         {page.bio && (
-          <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: blockRadius, marginBottom: "1.25rem" }}>
+          <div
+            className={blockStyle !== "divider" ? `block-style-${blockStyle} block-style-glass-info` : undefined}
+            style={{
+              padding: "1.25rem",
+              background: luminance === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: `1px solid ${luminance === "dark" ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)"}`,
+              borderRadius: blockRadius,
+              marginBottom: "1.25rem"
+            }}
+          >
             <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: "var(--color-text)", fontFamily }}>{page.bio}</p>
           </div>
         )}

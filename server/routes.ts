@@ -311,7 +311,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // S6 #2: Skip tracking for page owner
       const page = await storage.getPageById(pageId);
       if (req.session?.userEmail && page?.ownerEmail === req.session.userEmail) return res.json({ skipped: true });
-      const { blockId, blockType, eventType } = req.body as { blockId?: string; blockType?: string; eventType?: string };
+      const { blockId, blockType, eventType, blockSubId } = req.body as { blockId?: string; blockType?: string; eventType?: string; blockSubId?: string };
       const ua = String(req.headers["user-agent"] || "");
       const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
       await storage.recordEvent({
@@ -320,6 +320,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         device,
         blockId: blockId || null,
         blockType: blockType || null,
+        blockSubId: blockSubId || null,
       } as any);
       res.json({ success: true });
     } catch { res.json({ success: false }); }
@@ -762,9 +763,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const pageId = parseInt(req.params.pageId);
       if (!await assertOwnsPage(req, res, pageId)) return;
       const days = parseInt(req.query.days as string) || 30;
+      // S7 #8: for All-time (days=3650), fetch from page creation date not 10yrs ago
+      const pageForDate = await storage.getPageById(pageId);
+      const allTimeSince = (pageForDate?.createdAt || undefined) as string | undefined;
+      const eventsSinceOverride = days >= 3650 ? allTimeSince : undefined;
       const [page, events, links, dailyViews, prevEvents] = await Promise.all([
-        storage.getPageById(pageId),
-        storage.getEventsByPage(pageId, days),
+        Promise.resolve(pageForDate),
+        storage.getEventsByPage(pageId, days, eventsSinceOverride),
         storage.getLinksByPage(pageId),
         storage.getDailyViews(pageId, days),
         // Previous period: same window shifted back by `days`
@@ -836,7 +841,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         periodViews: views,
         periodClicks: clicks,
         periodLeads: formLeads,
-        clickRate: views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0, // G12: always 1dp
+        clickRate: views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0,
         uniqueVisitors,
         repeatVisitors,
         avgSessionViews: uniqueVisitors > 0 ? Math.round((views / uniqueVisitors) * 10) / 10 : 0,
@@ -847,11 +852,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         dailyClicks,
         dailyLeads,
         bestDay,
+        // S7 #8: expose page creation date for All-time label
+        pageCreatedAt: page?.createdAt ?? (page as any)?.created_at ?? null,
         // Top interactions: merge link clicks (by linkId→block) with block-level events
         // G3: build a blockTitle lookup from the page's blocks JSON so we show real titles
         topInteractions: (() => {
-          // Build blockId → { title, type } map from page.blocks JSON
-          const blockMeta = new Map<string, { title: string; type: string }>();
+          // S7 #9: normalise block titles — preserve original casing for user-entered titles
+          // Build blockId → { title, type, platforms? } map from page.blocks JSON
+          const blockMeta = new Map<string, { title: string; type: string; platforms?: Array<{ platform: string; url: string }> }>();
           try {
             const rawBlocks: any[] = JSON.parse((page as any)?.blocks || "[]");
             const BLOCK_TYPE_LABELS: Record<string, string> = {
@@ -861,42 +869,63 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             };
             for (const b of rawBlocks) {
               const typeLabel = BLOCK_TYPE_LABELS[b.type] || (b.type ? b.type.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "Block");
-              const title = b.title || b.label || b.question || "";
-              const displayLabel = title ? `${typeLabel} — ${title}` : typeLabel;
-              blockMeta.set(b.id, { title: displayLabel, type: typeLabel });
+              // S7 #9: use the block's own title as-is (user-entered, preserve case)
+              const rawTitle = b.title || b.label || b.question || "";
+              const displayLabel = rawTitle ? `${typeLabel} — ${rawTitle}` : typeLabel;
+              const platforms = b.type === "social-links" ? (b.platforms || b.socials || []) : undefined;
+              blockMeta.set(b.id, { title: displayLabel, type: typeLabel, platforms });
             }
           } catch {}
 
-          const interMap = new Map<string, { id: string; label: string; type: string; total: number; isLink: boolean; linkId?: number }>();
+          const interMap = new Map<string, { id: string; label: string; type: string; total: number; isLink: boolean; linkId?: number; views?: number; interactions?: number }>();
           // Link clicks
           for (const link of links) {
             if (link.clickCount > 0) {
               interMap.set(`link-${link.id}`, { id: `link-${link.id}`, label: link.label || link.url, type: "link", total: link.clickCount, isLink: true, linkId: link.id });
             }
           }
-          // Block events — G4b: split into views vs interactions per block
+          // Block events — split into views vs interactions per block
           const INTERACTION_EVENTS = new Set(["submit", "click", "vote", "expand", "play"]);
           const VIEW_EVENTS = new Set(["view"]);
+          // S7 #7: per-social-platform map
+          const socialPlatformMap = new Map<string, { label: string; views: number; interactions: number }>();
           const blockEventMap = new Map<string, { label: string; type: string; views: number; interactions: number }>();
           for (const e of events) {
             const bid = (e as any).blockId ?? (e as any).block_id;
             const btype = (e as any).blockType ?? (e as any).block_type;
             const etype = (e as any).type ?? "";
+            const bSubId = (e as any).blockSubId ?? (e as any).block_sub_id ?? null;
             if (!bid) continue;
             const key = `block-${bid}`;
             const meta = blockMeta.get(bid);
             const label = meta?.title || (btype ? btype.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "Block");
+            const isInteract = INTERACTION_EVENTS.has(etype) || etype.startsWith("block_interact") || etype === "link_click";
+            const isView = VIEW_EVENTS.has(etype);
+            // S7 #7: social-links block → expand into per-platform entries
+            if ((btype === "social-links" || meta?.type === "Social Links") && bSubId) {
+              const platKey = `social-${bid}-${bSubId}`;
+              const platLabel = `${bSubId.charAt(0).toUpperCase()}${bSubId.slice(1)}`;
+              if (!socialPlatformMap.has(platKey)) socialPlatformMap.set(platKey, { label: `Social — ${platLabel}`, views: 0, interactions: 0 });
+              const pe = socialPlatformMap.get(platKey)!;
+              if (isView) pe.views++; else pe.interactions++;
+              continue; // don't also add to blockEventMap — avoid double counting
+            }
             if (!blockEventMap.has(key)) blockEventMap.set(key, { label, type: meta?.type || btype || "block", views: 0, interactions: 0 });
             const entry = blockEventMap.get(key)!;
-            if (VIEW_EVENTS.has(etype)) entry.views++;
-            else if (INTERACTION_EVENTS.has(etype) || etype.startsWith("block_interact") || etype === "link_click") entry.interactions++;
-            else entry.interactions++; // default unknown events to interactions
+            if (isView) entry.views++;
+            else if (isInteract) entry.interactions++;
+            else entry.interactions++;
           }
           blockEventMap.forEach((v, k) => {
             const total = v.views + v.interactions;
             interMap.set(k, { id: k, label: v.label, type: v.type, total, views: v.views, interactions: v.interactions, isLink: false } as any);
           });
-          return Array.from(interMap.values()).sort((a: any, b: any) => b.total - a.total).slice(0, 8);
+          // S7 #7: merge per-platform social entries
+          socialPlatformMap.forEach((v, k) => {
+            const total = v.views + v.interactions;
+            if (total > 0) interMap.set(k, { id: k, label: v.label, type: "social", total, views: v.views, interactions: v.interactions, isLink: false } as any);
+          });
+          return Array.from(interMap.values()).sort((a: any, b: any) => b.total - a.total).slice(0, 10);
         })(),
         events: events.slice(-200),
         // Previous period comparison (for % change cards) — omitted when days=0 (all-time)

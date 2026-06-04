@@ -16,7 +16,7 @@ interface PageLink {
 }
 
 // Block types stored in pages.blocks JSON column
-type BlockType = "link" | "text" | "poll" | "lead-form";
+type BlockType = "link" | "text" | "poll" | "lead-form" | "social-links" | "image" | "video" | "countdown" | "button" | "testimonial" | "faq" | "divider";
 
 interface Block {
   id: string;          // client-side UUID
@@ -37,6 +37,27 @@ interface Block {
   title?: string;        // Form heading
   formDescription?: string;  // Form subtitle
   buttonText?: string;   // Submit button label
+  // social-links block
+  platforms?: string;    // JSON array of {platform, url}
+  // image block
+  imageUrl?: string;
+  alt?: string;
+  caption?: string;
+  // video block
+  videoUrl?: string;
+  // countdown block
+  targetDate?: string;
+  // button block
+  buttonLabel?: string;
+  buttonUrl?: string;
+  // testimonial block
+  quote?: string;
+  author?: string;
+  role?: string;
+  // faq block
+  faqs?: string;         // JSON array of {question, answer}
+  // divider block — no extra fields
+  [key: string]: unknown;
 }
 
 interface BuilderState {
@@ -508,30 +529,34 @@ const AI_WIZARD_QUESTIONS = [
     ],
   },
   {
+    key: "fontStyle",
+    label: () => "How should your text feel?",
+    sublabel: "Sets the font across your whole page.",
+    type: "font-pills" as const,
+    options: [
+      { value: "Clean & modern",     icon: "Aa", fontFamily: "'Cabinet Grotesk', 'General Sans', sans-serif" },
+      { value: "Bold & editorial",   icon: "AB", fontFamily: "'Playfair Display', Georgia, serif" },
+      { value: "Friendly & rounded", icon: "Oo", fontFamily: "'Nunito', 'DM Sans', sans-serif" },
+      { value: "Elegant & serif",    icon: "\u1b0a", fontFamily: "'Cormorant Garamond', 'Lora', serif" },
+      { value: "Technical & sharp",  icon: "{}", fontFamily: "'IBM Plex Mono', 'JetBrains Mono', monospace" },
+    ],
+  },
+  {
     key: "colorMood",
     label: () => "What vibe should your page have?",
     sublabel: "This sets your background and accent colour.",
     type: "color-pills" as const,
     options: [
       { value: "Warm & energetic",    preview: "linear-gradient(135deg,#b5451b,#e06b1a)",  text: "#fff" },
-      { value: "Cool & professional", preview: "linear-gradient(135deg,#0891b2,#e8f4f8)",  text: "#0891b2" },
+      { value: "Cool & professional", preview: "linear-gradient(135deg,#2d6a8a,#c8e6f5)",  text: "#fff" },
       { value: "Dark & dramatic",     preview: "linear-gradient(135deg,#1a1a2e,#7c3aed)",  text: "#fff" },
-      { value: "Light & minimal",     preview: "linear-gradient(135deg,#f5f0e8,#334155)",  text: "#334155" },
+      { value: "Light & minimal",     preview: "linear-gradient(135deg,#f5f0e8,#e2d9cc)",  text: "#334155" },
       { value: "Natural & earthy",    preview: "linear-gradient(135deg,#d4c4a0,#059669)",  text: "#fff" },
       { value: "Bold & creative",     preview: "linear-gradient(135deg,#4a0000,#e11d48)",  text: "#fff" },
-    ],
-  },
-  {
-    key: "fontStyle",
-    label: () => "How should your text feel?",
-    sublabel: "Sets the font across your whole page.",
-    type: "pills" as const,
-    options: [
-      { value: "Clean & modern",     icon: "Aa" },
-      { value: "Bold & editorial",   icon: "AB" },
-      { value: "Friendly & rounded", icon: "Oo" },
-      { value: "Elegant & serif",    icon: "Ꭺ" },
-      { value: "Technical & sharp",  icon: "{}" },
+      { value: "Bold & Energetic",    preview: "linear-gradient(135deg,#f97316,#ef4444)",  text: "#fff" },
+      { value: "Soft & Minimal",      preview: "linear-gradient(135deg,#f8fafc,#e2e8f0)",  text: "#334155" },
+      { value: "Playful & Fun",       preview: "linear-gradient(135deg,#a855f7,#ec4899)",  text: "#fff" },
+      { value: "Luxe & Premium",      preview: "linear-gradient(135deg,#1c1917,#d4af37)",  text: "#fff" },
     ],
   },
 ];
@@ -658,6 +683,21 @@ function AISuggestionsStep({
           </div>
         )}
 
+        {/* Font pills — each button label rendered in the actual font (#30b) */}
+        {currentQ.type === "font-pills" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.25rem" }}>
+            {(currentQ.options as { value: string; icon: string; fontFamily: string }[]).map(opt => {
+              const active = currentVal === opt.value;
+              return (
+                <button key={opt.value} type="button" onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt.value }))} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.625rem 0.875rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary-highlight)" : "var(--color-surface)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const, transition: "all 0.15s", fontFamily: opt.fontFamily }}>
+                  <span style={{ fontSize: 14, minWidth: 20, fontFamily: "inherit" }}>{opt.icon}</span>
+                  {opt.value}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Colour mood pills */}
         {currentQ.type === "color-pills" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.25rem" }}>
@@ -732,9 +772,13 @@ function AISuggestionsStep({
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: 2 }}>Personalised for <strong>{state.name}</strong> by GPT-4o</p>
         </div>
       </div>
-      <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)", marginBottom: "1.25rem" }}>
-        {totalItems} item{totalItems !== 1 ? "s" : ""} generated — blocks, links, colours and fonts. You can edit everything in step 3.
+      <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>
+        {totalItems} item{totalItems !== 1 ? "s" : ""} generated — blocks, links, colours and fonts.
       </p>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-md)", background: "var(--color-primary-highlight)", border: "1px solid var(--color-primary)", marginBottom: "1.25rem" }}>
+        <span style={{ fontSize: 14 }}>✏️</span>
+        <span style={{ fontSize: "var(--text-sm)", color: "var(--color-primary)", fontWeight: 600 }}>These blocks can be edited with your info in step 3</span>
+      </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
         {(aiResult?.links || []).map((l, i) => (
@@ -767,7 +811,7 @@ function AISuggestionsStep({
 
       <div style={{ display: "flex", gap: "0.75rem" }}>
         <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }} data-testid="button-skip-suggestions">Start blank</button>
-        <button type="button" onClick={applyAndContinue} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-apply-suggestions">Apply AI suggestions →</button>
+        <button type="button" onClick={applyAndContinue} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }} data-testid="button-apply-suggestions">Apply AI suggestions →</button>
       </div>
     </div>
   );
@@ -1018,7 +1062,7 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
 
 // ─── Step 3: Add links & blocks ──────────────────────────────
 function Step3({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
-  const [editing, setEditing] = useState<number | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [addMode, setAddMode] = useState<BlockType | null>(null);
 
   // New link form state
@@ -1099,38 +1143,39 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
       <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>
         Build your page
       </h2>
-      <p style={{ color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Add links, free text blocks, and polls. You can edit them later in your dashboard.</p>
+      <p style={{ color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>Add and edit your links and content blocks below.</p>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-md)", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", marginBottom: "1.25rem" }}>
+        <span style={{ fontSize: 13 }}>✏️</span>
+        <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>Click any block to edit its content. Use the ↑ ↓ arrows to reorder. Everything can be changed again in your dashboard.</span>
+      </div>
 
-      {/* Existing links */}
+      {/* Existing links — with reorder (#30g) and inline edit (#30f) */}
       {state.links.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1rem" }}>
           {state.links.map((link, idx) => (
             <div key={idx} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => setEditing(editing === idx ? null : idx)}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => setEditing(editing === `link-${idx}` ? null : `link-${idx}`)}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
+                  <button type="button" onClick={e => { e.stopPropagation(); if (idx > 0) { const arr = [...state.links]; [arr[idx-1],arr[idx]] = [arr[idx],arr[idx-1]]; update({ links: arr }); }}} style={{ background: "none", border: "none", cursor: idx > 0 ? "pointer" : "default", color: idx > 0 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9650;</button>
+                  <button type="button" onClick={e => { e.stopPropagation(); if (idx < state.links.length-1) { const arr = [...state.links]; [arr[idx],arr[idx+1]] = [arr[idx+1],arr[idx]]; update({ links: arr }); }}} style={{ background: "none", border: "none", cursor: idx < state.links.length-1 ? "pointer" : "default", color: idx < state.links.length-1 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9660;</button>
+                </div>
                 <span style={{ fontSize: 18, minWidth: 24, textAlign: "center" }}>{link.icon || "—"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.label}</div>
                   <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.url}</div>
                 </div>
-                <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: link.style === "featured" ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: link.style === "featured" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>
-                  link
-                </span>
+                <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: link.style === "featured" ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: link.style === "featured" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>link</span>
                 <button onClick={e => { e.stopPropagation(); removeLink(idx); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove link">×</button>
               </div>
-              {editing === idx && (
+              {editing === `link-${idx}` && (
                 <div style={{ padding: "0.875rem 1rem", borderTop: "1px solid var(--color-divider)", background: "var(--color-surface-offset)", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
                   <input className="input" placeholder="Label" value={link.label} onChange={e => updateLink(idx, "label", e.target.value)} style={{ fontSize: 13 }} />
                   <input className="input" placeholder="URL (https://...)" value={link.url} onChange={e => updateLink(idx, "url", e.target.value)} style={{ fontSize: 13 }} />
                   <input className="input" placeholder="Short description (optional)" value={link.description || ""} onChange={e => updateLink(idx, "description", e.target.value)} style={{ fontSize: 13 }} />
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.375rem" }}>Icon (none by default):</div>
-                    <IconPicker value={link.icon} onChange={v => updateLink(idx, "icon", v)} />
-                  </div>
+                  <div><div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.375rem" }}>Icon:</div><IconPicker value={link.icon} onChange={v => updateLink(idx, "icon", v)} /></div>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
                     {["default", "featured", "outline"].map(style => (
-                      <button key={style} type="button" onClick={() => updateLink(idx, "style", style)} style={{ flex: 1, padding: "0.375rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${link.style === style ? "var(--color-primary)" : "var(--color-border)"}`, background: link.style === style ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 11, fontWeight: 600, color: link.style === style ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>
-                        {style}
-                      </button>
+                      <button key={style} type="button" onClick={() => updateLink(idx, "style", style)} style={{ flex: 1, padding: "0.375rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${link.style === style ? "var(--color-primary)" : "var(--color-border)"}`, background: link.style === style ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 11, fontWeight: 600, color: link.style === style ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>{style}</button>
                     ))}
                   </div>
                 </div>
@@ -1140,41 +1185,78 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
         </div>
       )}
 
-      {/* Existing blocks */}
+      {/* Existing blocks — reorder + full inline editing (#30f/#30g) */}
       {state.blocks.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1rem" }}>
-          {state.blocks.map(block => (
-            <div key={block.id} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "0.75rem 1rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-              <span style={{ fontSize: 18, marginTop: 2 }}>{block.type === "text" ? "📝" : block.type === "poll" ? "🗳️" : "📧"}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {block.type === "text" && (
-                  <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } as any}>
-                    {block.content}
-                  </div>
-                )}
-                {block.type === "poll" && (
-                  <div>
-                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.question}</div>
-                    <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 2 }}>{block.options?.join(" / ")}</div>
-                  </div>
-                )}
-                {block.type === "lead-form" && (
-                  <div>
-                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.title || "Lead Capture Form"}</div>
-                    <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 2 }}>{block.buttonText || "Send message"}</div>
-                  </div>
-                )}
+          {state.blocks.map((block, bIdx) => (
+            <div key={block.id} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => setEditing(editing === `block-${block.id}` ? null : `block-${block.id}`)}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
+                  <button type="button" onClick={e => { e.stopPropagation(); if (bIdx > 0) { const arr = [...state.blocks]; [arr[bIdx-1],arr[bIdx]] = [arr[bIdx],arr[bIdx-1]]; update({ blocks: arr }); }}} style={{ background: "none", border: "none", cursor: bIdx > 0 ? "pointer" : "default", color: bIdx > 0 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9650;</button>
+                  <button type="button" onClick={e => { e.stopPropagation(); if (bIdx < state.blocks.length-1) { const arr = [...state.blocks]; [arr[bIdx],arr[bIdx+1]] = [arr[bIdx+1],arr[bIdx]]; update({ blocks: arr }); }}} style={{ background: "none", border: "none", cursor: bIdx < state.blocks.length-1 ? "pointer" : "default", color: bIdx < state.blocks.length-1 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9660;</button>
+                </div>
+                <span style={{ fontSize: 18, marginTop: 2 }}>{block.type === "text" ? "📝" : block.type === "poll" ? "🗳️" : block.type === "lead-form" ? "📧" : block.type === "social-links" ? "🔗" : block.type === "image" ? "🖼️" : block.type === "video" ? "🎥" : block.type === "countdown" ? "⏳" : block.type === "button" ? "🔘" : block.type === "testimonial" ? "💬" : block.type === "faq" ? "❓" : block.type === "divider" ? "━" : "🧩"}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {block.type === "text" && <div style={{ fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.content}</div>}
+                  {block.type === "poll" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.question}</div>}
+                  {block.type === "lead-form" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.title || "Lead Capture Form"}</div>}
+                  {block.type === "social-links" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>Social links block</div>}
+                  {block.type === "image" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{block.imageUrl ? "Image added" : "Image block"}</div>}
+                  {block.type === "video" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{block.videoUrl || "Video block"}</div>}
+                  {block.type === "countdown" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>Countdown to {block.targetDate || "set date"}</div>}
+                  {block.type === "button" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{block.buttonLabel || "Button"}</div>}
+                  {block.type === "testimonial" && <div style={{ fontSize: "var(--text-sm)", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{block.quote || "Testimonial"}"</div>}
+                  {block.type === "faq" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>FAQ block</div>}
+                  {block.type === "divider" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)" }}>Divider</div>}
+                </div>
+                <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: block.type === "lead-form" ? "rgba(224,107,26,0.1)" : "var(--color-surface-offset)", color: block.type === "lead-form" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>{block.type}</span>
+                <button onClick={e => { e.stopPropagation(); removeBlock(block.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove block">×</button>
               </div>
-              <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: block.type === "lead-form" ? "rgba(224,107,26,0.1)" : "var(--color-surface-offset)", color: block.type === "lead-form" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>
-                {block.type}
-              </span>
-              <button onClick={() => removeBlock(block.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove block">×</button>
+              {editing === `block-${block.id}` && (
+                <div style={{ padding: "0.875rem 1rem", borderTop: "1px solid var(--color-divider)", background: "var(--color-surface-offset)", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+                  {block.type === "text" && <textarea className="input" rows={4} placeholder="Block content" value={block.content || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, content: e.target.value } : b) })} style={{ resize: "vertical", fontSize: 13 }} />}
+                  {block.type === "poll" && (<>
+                    <input className="input" placeholder="Poll question" value={block.question || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, question: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    {(block.options || ["",""]).map((opt: string, oi: number) => (
+                      <input key={oi} className="input" placeholder={`Option ${oi+1}`} value={opt} onChange={e => { const opts = [...(block.options || ["",""])]; opts[oi] = e.target.value; update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, options: opts } : b) }); }} style={{ fontSize: 13 }} />
+                    ))}
+                  </>)}
+                  {block.type === "lead-form" && (<>
+                    <input className="input" placeholder="Form title" value={block.title || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, title: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Description" value={block.formDescription || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, formDescription: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Button text" value={block.buttonText || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, buttonText: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                  </>)}
+                  {block.type === "image" && (<>
+                    <input className="input" placeholder="Image URL (https://...)" value={block.imageUrl || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, imageUrl: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Alt text" value={block.alt || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, alt: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Caption (optional)" value={block.caption || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, caption: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                  </>)}
+                  {block.type === "video" && <input className="input" placeholder="YouTube / Vimeo URL" value={block.videoUrl || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, videoUrl: e.target.value } : b) })} style={{ fontSize: 13 }} />}
+                  {block.type === "countdown" && (<>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)" }}>Target date &amp; time</label>
+                    <input className="input" type="datetime-local" value={block.targetDate || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, targetDate: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Countdown title (optional)" value={block.title || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, title: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                  </>)}
+                  {block.type === "button" && (<>
+                    <input className="input" placeholder="Button label" value={block.buttonLabel || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, buttonLabel: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Button URL (https://...)" value={block.buttonUrl || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, buttonUrl: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                  </>)}
+                  {block.type === "testimonial" && (<>
+                    <textarea className="input" rows={3} placeholder="Quote" value={block.quote || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, quote: e.target.value } : b) })} style={{ resize: "vertical", fontSize: 13 }} />
+                    <input className="input" placeholder="Author name" value={block.author || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, author: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Role / company (optional)" value={block.role || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, role: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                  </>)}
+                  {(block.type === "faq" || block.type === "social-links" || block.type === "divider") && (
+                    <p style={{ fontSize: 12, color: "var(--color-text-faint)" }}>Edit this block from your dashboard after publishing.</p>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* Add block type selector */}
+      {/* Add block type selector — all types (#30h) */}
       {addMode === null && (
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           {[
@@ -1182,16 +1264,24 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
             { type: "text" as BlockType, icon: "📝", label: "Free text" },
             { type: "poll" as BlockType, icon: "🗳️", label: "Poll" },
             { type: "lead-form" as BlockType, icon: "📧", label: "Lead form" },
+            { type: "social-links" as BlockType, icon: "🌐", label: "Social links" },
+            { type: "image" as BlockType, icon: "🖼️", label: "Image" },
+            { type: "video" as BlockType, icon: "🎥", label: "Video" },
+            { type: "countdown" as BlockType, icon: "⏳", label: "Countdown" },
+            { type: "button" as BlockType, icon: "🔘", label: "Button" },
+            { type: "testimonial" as BlockType, icon: "💬", label: "Testimonial" },
+            { type: "faq" as BlockType, icon: "❓", label: "FAQ" },
+            { type: "divider" as BlockType, icon: "━", label: "Divider" },
           ].map(opt => (
             <button
               key={opt.type}
               type="button"
               onClick={() => setAddMode(opt.type)}
-              className="btn btn-secondary"
-              style={{ gap: "0.375rem" }}
+              className="btn btn-secondary btn-sm"
+              style={{ gap: "0.375rem", fontSize: 12 }}
               data-testid={`button-add-${opt.type}`}
             >
-              {opt.icon} Add {opt.label}
+              {opt.icon} {opt.label}
             </button>
           ))}
         </div>
@@ -1330,6 +1420,99 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
               <button type="button" onClick={addLeadFormBlock} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-add-lead-form">Add lead form</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick-add for simple block types that just need to exist (#30h) */}
+      {["social-links", "divider", "faq"].includes(addMode || "") && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>
+            {addMode === "social-links" ? "🌐 Social links block" : addMode === "faq" ? "❓ FAQ block" : "━ Divider"}
+          </div>
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.875rem" }}>
+            {addMode === "social-links" ? "Add your social profile URLs from the dashboard after publishing." : addMode === "faq" ? "Add FAQ questions and answers from the dashboard after publishing." : "A horizontal rule to separate sections."}
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+            <button type="button" onClick={() => { const block: Block = { id: genId(), type: addMode as BlockType }; update({ blocks: [...state.blocks, block] }); setAddMode(null); }} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add block</button>
+          </div>
+        </div>
+      )}
+
+      {/* Add image form */}
+      {addMode === "image" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🖼️ Image block</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <input className="input" placeholder="Image URL (https://...)" value={(newLeadForm as any).imageUrl || ""} onChange={e => setNewLeadForm(f => ({ ...f, imageUrl: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Alt text / description" value={(newLeadForm as any).alt || ""} onChange={e => setNewLeadForm(f => ({ ...f, alt: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Caption (optional)" value={(newLeadForm as any).caption || ""} onChange={e => setNewLeadForm(f => ({ ...f, caption: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "image", imageUrl: (newLeadForm as any).imageUrl, alt: (newLeadForm as any).alt, caption: (newLeadForm as any).caption }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add image</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add video form */}
+      {addMode === "video" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🎥 Video block</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <input className="input" placeholder="YouTube or Vimeo URL" value={(newLeadForm as any).videoUrl || ""} onChange={e => setNewLeadForm(f => ({ ...f, videoUrl: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "video", videoUrl: (newLeadForm as any).videoUrl }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).videoUrl} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add video</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add countdown form */}
+      {addMode === "countdown" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>⏳ Countdown block</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)" }}>Target date &amp; time</label>
+            <input className="input" type="datetime-local" value={(newLeadForm as any).targetDate || ""} onChange={e => setNewLeadForm(f => ({ ...f, targetDate: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Countdown title (e.g. Big launch!)" value={(newLeadForm as any).cdTitle || ""} onChange={e => setNewLeadForm(f => ({ ...f, cdTitle: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "countdown", targetDate: (newLeadForm as any).targetDate, title: (newLeadForm as any).cdTitle }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).targetDate} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add countdown</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add button form */}
+      {addMode === "button" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🔘 Button block</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <input className="input" placeholder="Button label (e.g. Book a call)" value={(newLeadForm as any).buttonLabel || ""} onChange={e => setNewLeadForm(f => ({ ...f, buttonLabel: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Button URL (https://...)" value={(newLeadForm as any).buttonUrl || ""} onChange={e => setNewLeadForm(f => ({ ...f, buttonUrl: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "button", buttonLabel: (newLeadForm as any).buttonLabel, buttonUrl: (newLeadForm as any).buttonUrl }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).buttonLabel || !(newLeadForm as any).buttonUrl} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add button</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add testimonial form */}
+      {addMode === "testimonial" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>💬 Testimonial block</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <textarea className="input" rows={3} placeholder="Quote text" value={(newLeadForm as any).quote || ""} onChange={e => setNewLeadForm(f => ({ ...f, quote: e.target.value } as any))} style={{ resize: "vertical", fontSize: 13 }} />
+            <input className="input" placeholder="Author name" value={(newLeadForm as any).author || ""} onChange={e => setNewLeadForm(f => ({ ...f, author: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Role / company (optional)" value={(newLeadForm as any).role || ""} onChange={e => setNewLeadForm(f => ({ ...f, role: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "testimonial", quote: (newLeadForm as any).quote, author: (newLeadForm as any).author, role: (newLeadForm as any).role }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).quote} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add testimonial</button>
             </div>
           </div>
         </div>
@@ -1524,7 +1707,7 @@ export default function BuilderPage() {
           {step < 4 && !showSuggestions && (
             <div style={{ display: "flex", gap: "0.75rem", marginTop: "2rem" }}>
               {step > 1 && (
-                <button onClick={() => { setStep(s => s - 1); setError(""); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>
+                <button onClick={() => { setStep(s => s - 1); setError(""); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", minHeight: "2.75rem" }}>
                   ← Back
                 </button>
               )}
@@ -1543,7 +1726,7 @@ export default function BuilderPage() {
                   }}
                   disabled={!(canNext as any)[step]?.()}
                   className="btn btn-primary"
-                  style={{ flex: 2, justifyContent: "center" }}
+                  style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }}
                   data-testid="button-next"
                 >
                   Continue →
@@ -1553,7 +1736,7 @@ export default function BuilderPage() {
                   onClick={() => { setError(""); publishMutation.mutate(); }}
                   disabled={publishMutation.isPending}
                   className="btn btn-primary"
-                  style={{ flex: 2, justifyContent: "center" }}
+                  style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }}
                   data-testid="button-publish"
                 >
                   {publishMutation.isPending ? "Publishing…" : "🚀 Publish my page"}

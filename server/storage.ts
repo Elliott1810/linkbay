@@ -140,6 +140,8 @@ try { sqlite.exec("ALTER TABLE users ADD COLUMN newsletter_optin INTEGER DEFAULT
 // Sprint: archived block IDs (JSON array stored per page)
 try { sqlite.exec("ALTER TABLE pages ADD COLUMN archived_block_ids TEXT DEFAULT '[]'"); } catch {}
 try { sqlite.exec("ALTER TABLE pages ADD COLUMN hidden_block_ids TEXT DEFAULT '[]'"); } catch {}
+// Sprint 7: per-social-icon tracking sub-ID
+try { sqlite.exec("ALTER TABLE page_events ADD COLUMN block_sub_id TEXT"); } catch {}
 
 // Contacts table (idempotent)
 sqlite.exec(`
@@ -287,7 +289,7 @@ export interface IStorage {
   convertLeadToContact(leadId: number, ownerEmail: string): Promise<Contact>;
   // Events
   recordEvent(data: InsertPageEvent): Promise<void>;
-  getEventsByPage(pageId: number, days?: number): Promise<PageEvent[]>;
+  getEventsByPage(pageId: number, days?: number, sinceOverride?: string): Promise<PageEvent[]>;
   getDailyViews(pageId: number, days?: number): Promise<Array<{ date: string; count: number }>>;
   // Dashboard
   getDashboardStats(userEmail: string, days?: number): Promise<{ totalViews: number; totalClicks: number; totalLeads: number; totalPages: number; todayViews: number; todayLeads: number }>;
@@ -496,8 +498,8 @@ export class DatabaseStorage implements IStorage {
   async recordEvent(data: InsertPageEvent): Promise<void> {
     db.insert(schema.pageEvents).values({ ...data, createdAt: new Date().toISOString() }).run();
   }
-  async getEventsByPage(pageId: number, days = 30): Promise<PageEvent[]> {
-    const since = new Date(Date.now() - days * 86400000).toISOString();
+  async getEventsByPage(pageId: number, days = 30, sinceOverride?: string): Promise<PageEvent[]> {
+    const since = sinceOverride ?? new Date(Date.now() - days * 86400000).toISOString();
     return sqlite.prepare(
       "SELECT * FROM page_events WHERE page_id = ? AND created_at >= ? ORDER BY created_at ASC"
     ).all(pageId, since) as PageEvent[];

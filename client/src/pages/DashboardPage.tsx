@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, resolveMediaUrl } from "@/lib/queryClient";
 import { useTheme, useAuth } from "@/App";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, Cell } from "recharts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { BACKGROUND_OPTIONS } from "./BuilderPage";
 import { QRCodeSVG } from "qrcode.react";
@@ -369,10 +369,11 @@ function OverviewPanel({
 
   // G3a: 'All Time' label when days=0
   const periodLabel = days === 0 ? "All time" : `${days}d window`;
+  // S7 #21/#21b: rename Clicks → Interactions, Click Rate → Interaction Rate
   const statsData = [
     { label: "Total Views", value: totalViews.toLocaleString(), delta: periodLabel, up: true },
-    { label: "Total Clicks", value: totalClicks.toLocaleString(), delta: periodLabel, up: true },
-    { label: "Click Rate", value: `${clickRate}%`, delta: days === 0 ? "All time avg" : `${days}d average`, up: true },
+    { label: "Total Interactions", value: totalClicks.toLocaleString(), delta: periodLabel, up: true },
+    { label: "Interaction Rate", value: `${clickRate}%`, delta: days === 0 ? "All time avg" : `${days}d average`, up: true },
     { label: "Total Leads", value: totalLeads.toLocaleString(), delta: periodLabel, up: true },
   ];
 
@@ -556,7 +557,7 @@ function OverviewPanel({
         <div className="card" style={{ padding: "1.25rem", marginBottom: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
             <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>
-              {graphSeries === "views" ? "Views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — {days === 0 ? "all time" : `last ${days} days`}
+              {graphSeries === "views" ? "Views" : graphSeries === "clicks" ? "Interactions" : "Leads"} — {days === 0 ? "all time" : `last ${days} days`}
             </div>
             <select
               value={graphSeries}
@@ -566,7 +567,7 @@ function OverviewPanel({
               data-testid="select-overview-graph-series"
             >
               <option value="views">Views</option>
-              <option value="clicks">Clicks</option>
+              <option value="clicks">Interactions</option>
               <option value="leads">Leads</option>
             </select>
           </div>
@@ -609,7 +610,7 @@ function OverviewPanel({
             return interactions.map((item: any) => {
               const isLive = !item.blockId || liveBlockIds.has(item.blockId);
               const total = item.total ?? item.clickCount ?? 0;
-              const interactionPct = Math.min(Math.round((total / totalPageViews) * 100), 100);
+              const interactionPct = Math.min(Math.round((total / totalPageViews) * 1000) / 10, 100);
               const viewsPct = 100;
               const barColor = isLive ? "var(--color-primary)" : "var(--color-text-faint)";
               return (
@@ -617,7 +618,7 @@ function OverviewPanel({
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
                     <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Link"}</span>
                     {!isLive && <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>past</span>}
-                    <span style={{ fontWeight: 700, color: barColor, flexShrink: 0 }}>Interaction rate: {interactionPct}%</span>
+                    <span style={{ fontWeight: 700, color: barColor, flexShrink: 0 }}>Interaction rate: {interactionPct.toFixed(1)}%</span>
                   </div>
                   {/* Stacked bar: views (amber) + interactions (primary) as two segments */}
                   <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
@@ -862,8 +863,12 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
     }
   };
 
+  // #14: only reset fields when the page actually changes (different page ID)
+  // Track the last page ID we synced from so we don't reset on refetch of same page
+  const syncedPageIdRef = React.useRef<number | null>(null);
   useEffect(() => {
-    if (page) {
+    if (page && page.id !== syncedPageIdRef.current) {
+      syncedPageIdRef.current = page.id;
       setTitle(page.title ?? "");
       setBio(page.bio ?? "");
       setLocation(page.location ?? "");
@@ -902,11 +907,30 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
       </div>
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Accent colour</label>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           {["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].map(c => (
             <button key={c} type="button" onClick={() => setAccentColor(c)} style={{ width: 24, height: 24, borderRadius: "50%", background: c, border: `2.5px solid ${accentColor === c ? "var(--color-text)" : "transparent"}`, cursor: "pointer" }} />
           ))}
-          <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ width: 24, height: 24, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0 }} />
+          {/* #12a: Custom colour label + swatch + picker */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", marginLeft: "0.25rem" }}>
+            <div style={{ width: 18, height: 18, borderRadius: "50%", background: accentColor, border: "1.5px solid var(--color-border)", flexShrink: 0 }} />
+            <label style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", cursor: "pointer", whiteSpace: "nowrap" }}>
+              Custom
+              <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: 1, height: 1, pointerEvents: "none" }} />
+            </label>
+          </div>
+        </div>
+        {/* #12: hex input */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
+          <div style={{ width: 18, height: 18, borderRadius: 4, background: accentColor, border: "1px solid var(--color-border)", flexShrink: 0 }} />
+          <input
+            className="input"
+            value={accentColor}
+            onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setAccentColor(e.target.value); }}
+            placeholder="#e06b1a"
+            style={{ fontSize: 12, width: 90, fontFamily: "monospace", padding: "0.2rem 0.4rem" }}
+          />
+          <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid var(--color-border)", cursor: "pointer", padding: 0, background: "none" }} title="Open colour picker" />
         </div>
       </div>
       {/* ─── Background picker — 20 CSS gradient swatches ─── */}
@@ -946,12 +970,15 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Profile picture shape</label>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          {([{ v: "circle", l: "Circle" }, { v: "rounded", l: "Rounded box" }] as const).map(opt => (
+          {[{ v: "circle", l: "Circle" }, { v: "rounded", l: "Rounded" }, { v: "pentagon", l: "Pentagon" }, { v: "diamond", l: "Diamond" }].map(opt => (
             <button key={opt.v} type="button" onClick={() => setAvatarShape(opt.v)}
-              style={{ flex: 1, padding: "0.5rem", fontSize: 12, fontWeight: 600, borderRadius: "var(--radius-sm)", border: `2px solid ${avatarShape === opt.v ? "var(--color-primary)" : "var(--color-border)"}`, background: avatarShape === opt.v ? "var(--color-primary-highlight)" : "var(--color-surface)", color: avatarShape === opt.v ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}
+              style={{ flex: 1, padding: "0.5rem", fontSize: 11, fontWeight: 600, borderRadius: "var(--radius-sm)", border: `2px solid ${avatarShape === opt.v ? "var(--color-primary)" : "var(--color-border)"}`, background: avatarShape === opt.v ? "var(--color-primary-highlight)" : "var(--color-surface)", color: avatarShape === opt.v ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
               data-testid={`button-avatar-shape-${opt.v}`}
             >
-              <span style={{ display: "inline-block", width: 18, height: 18, background: "var(--color-text-faint)", borderRadius: opt.v === "circle" ? "50%" : 4, verticalAlign: "middle", marginRight: 6 }} />{opt.l}
+              <span style={{ display: "inline-block", width: 16, height: 16, background: "var(--color-text-faint)",
+                borderRadius: opt.v === "circle" ? "50%" : opt.v === "rounded" ? 4 : undefined,
+                clipPath: opt.v === "pentagon" ? "polygon(50% 0%,100% 38%,82% 100%,18% 100%,0% 38%)" : opt.v === "diamond" ? "polygon(50% 0%,100% 50%,50% 100%,0% 50%)" : undefined,
+              }} />{opt.l}
             </button>
           ))}
         </div>
@@ -1044,7 +1071,7 @@ interface PageBlock {
   thickness?: "1px" | "2px" | "3px" | "4px" | "6px";
 }
 
-function BlockEditor({ pageId, blocks, onSave, saving }: { pageId: number; blocks: PageBlock[]; onSave: (blocks: PageBlock[]) => void; saving: boolean }) {
+function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: number; blocks: PageBlock[]; onSave: (blocks: PageBlock[]) => void; saving: boolean; newBlockIds?: Set<string> }) {
   const [localBlocks, setLocalBlocks] = useState<PageBlock[]>(blocks);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<PageBlock>>({});
@@ -1064,10 +1091,20 @@ function BlockEditor({ pageId, blocks, onSave, saving }: { pageId: number; block
     onSave(arr);
   };
 
-  const deleteBlock = (id: string) => {
+  const deleteBlock = async (id: string) => {
     const arr = localBlocks.filter(b => b.id !== id);
     setLocalBlocks(arr);
     onSave(arr);
+    // #3: also archive the block so it shows up in Archived section
+    try {
+      const pageRes = await apiRequest("GET", `/api/pages/${pageId}`);
+      const pageData = await pageRes.json();
+      const existing: string[] = (() => { try { return JSON.parse(pageData.archivedBlockIds || "[]"); } catch { return []; } })();
+      if (!existing.includes(id)) {
+        await apiRequest("PATCH", `/api/pages/${pageId}`, { archivedBlockIds: JSON.stringify([...existing, id]) });
+        queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+      }
+    } catch { /* non-critical */ }
   };
 
   const startEdit = (block: PageBlock) => {
@@ -1408,6 +1445,9 @@ function BlockEditor({ pageId, blocks, onSave, saving }: { pageId: number; block
                     {block.type === "faq" && "FAQ block"}
                   </div>
                 </div>
+                {newBlockIds?.has(block.id) && (
+                  <span style={{ fontSize: 9, padding: "0.15rem 0.5rem", borderRadius: 999, background: "#e06b1a22", color: "#e06b1a", fontWeight: 700, flexShrink: 0, border: "1px solid #e06b1a44" }}>New</span>
+                )}
                 <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>
                   {block.type}
                 </span>
@@ -1430,13 +1470,18 @@ function BlockEditor({ pageId, blocks, onSave, saving }: { pageId: number; block
 // --- Real Editor Panel ---
 function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: number | null }) {
   const [selectedPageId, setSelectedPageId] = useState<number | null>(activePageId ?? pages[0]?.id ?? null);
-  useEffect(() => { if (activePageId) setSelectedPageId(activePageId); }, [activePageId]);
   const [saveMsg, setSaveMsg] = useState("");
   const [newLink, setNewLink] = useState({ label: "", url: "", icon: "🔗", style: "default" as string });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<any>({});
   // Mobile editor tab state (mobile-only). On desktop both panels are shown together.
   const [editorTab, setEditorTab] = useState<"blocks" | "add">("blocks");
+  // #10: collapsed panels
+  const [addLinkOpen, setAddLinkOpen] = useState(false);
+  const [addBlockOpen, setAddBlockOpen] = useState(false);
+  // #16: track newly added block IDs for amber highlight
+  const [newBlockIds, setNewBlockIds] = useState<Set<string>>(new Set());
+  useEffect(() => { if (activePageId) { setSelectedPageId(activePageId); setNewBlockIds(new Set()); } }, [activePageId]);
   // AI Wizard
   const [aiWizardOpen, setAiWizardOpen] = useState(false);
   const { data: licenceDataEditor } = useLicence();
@@ -1699,8 +1744,12 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
         )}
 
         {/* Add new link */}
-        <div style={{ background: "var(--color-surface-2)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>+ Add a link</div>
+        <div style={{ background: "var(--color-surface-2)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)" }}>
+          <button type="button" onClick={() => setAddLinkOpen(o => !o)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: "0.875rem 1.25rem", textAlign: "left" }}>
+            <span style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>+ Add a link</span>
+            <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{addLinkOpen ? "▲" : "▼"}</span>
+          </button>
+          {addLinkOpen && <div style={{ padding: "0 1.25rem 1.25rem" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <input className="input" placeholder="Label (e.g. Book a call)" value={newLink.label} onChange={e => setNewLink(l => ({ ...l, label: e.target.value }))} style={{ flex: 1, fontSize: 13 }} data-testid="input-new-link-label" />
@@ -1744,6 +1793,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
               </>
             )}
           </div>
+          </div>}
         </div>
 
         {/* Mobile tab bar for blocks vs add-block (hidden on desktop) */}
@@ -1777,8 +1827,8 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
             </div>
           ) : (
             <AddBlockForm
-              onAdd={(block) => saveBlocksMutation.mutate([...(pageBlocks || []), block])}
-              onAddAll={(newBlocks) => saveBlocksMutation.mutate([...(pageBlocks || []), ...newBlocks])}
+              onAdd={(block) => { setNewBlockIds(prev => new Set(Array.from(prev).concat(block.id))); saveBlocksMutation.mutate([...(pageBlocks || []), block]); }}
+              onAddAll={(newBlocks) => { setNewBlockIds(prev => new Set(Array.from(prev).concat(newBlocks.map(b => b.id)))); saveBlocksMutation.mutate([...(pageBlocks || []), ...newBlocks]); }}
               saving={saveBlocksMutation.isPending}
               remainingSlots={editorTier === "free" ? Math.max(0, FREE_BLOCK_LIMIT - ((links?.length ?? 0) + pageBlocks.length)) : 999}
             />
@@ -1793,6 +1843,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
               blocks={pageBlocks}
               onSave={(blocks) => saveBlocksMutation.mutate(blocks)}
               saving={saveBlocksMutation.isPending}
+              newBlockIds={newBlockIds}
             />
           )}
         </div>
@@ -2239,6 +2290,14 @@ function AIBlockRecommender({ onAddAll, onSkip, remainingSlots }: { onAddAll: (b
             case "countdown": return [{ id: genId(), type: "countdown", title: b.title || "Coming soon", targetDate: b.targetDate || "2026-12-31" } as any];
             default: return [];
           }
+        // #15: filter out blocks with no meaningful content (would be invisible on page)
+        }).filter((block: PageBlock) => {
+          const b = block as any;
+          if (block.type === "text" && !b.content?.trim()) return false;
+          if (block.type === "poll" && !b.question?.trim()) return false;
+          if (block.type === "lead-form" && !b.title?.trim()) return false;
+          if (block.type === "social-links" && (!b.socials?.length || b.socials.every((s: any) => !s.url))) return false;
+          return true;
         }).slice(0, cap);
         setSuggestions(mapped);
         setSelected(new Set(mapped.map((_: PageBlock, i: number) => i)));
@@ -2365,6 +2424,7 @@ function AIBlockRecommender({ onAddAll, onSkip, remainingSlots }: { onAddAll: (b
 }
 
 function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: PageBlock) => void; onAddAll?: (blocks: PageBlock[]) => void; saving: boolean; remainingSlots?: number }) {
+  const [collapsed, setCollapsed] = useState(true); // #10: collapsed by default
   const [blockType, setBlockType] = useState<BlockKind>("text");
   const [wizardSkipped, setWizardSkipped] = useState(false);
   // Text
@@ -2378,6 +2438,8 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
   const [leadDescription, setLeadDescription] = useState("");
   const [leadButtonText, setLeadButtonText] = useState("Send message");
   const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
+  // #4: raw text for dropdown options to allow typing commas freely
+  const [dropdownTexts, setDropdownTexts] = useState<Record<number, string>>({});
   // image / video
   const [mediaSrc, setMediaSrc] = useState("");
   const [mediaAlt, setMediaAlt] = useState("");
@@ -2467,8 +2529,12 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
   };
 
   return (
-    <div style={{ background: "var(--color-surface-2)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem", marginTop: "1.5rem" }}>
-      <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>+ Add a content block</div>
+    <div style={{ background: "var(--color-surface-2)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", marginTop: "1.5rem" }}>
+      <button type="button" onClick={() => setCollapsed(o => !o)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: "0.875rem 1.25rem", textAlign: "left" }}>
+        <span style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>+ Add a content block</span>
+        <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{collapsed ? "▼" : "▲"}</span>
+      </button>
+      {!collapsed && <div style={{ padding: "0 1.25rem 1.25rem" }}>
 
       {!wizardSkipped && (
         <AIBlockRecommender
@@ -2569,9 +2635,15 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
               {f.type === "dropdown" && (
                 <input
                   className="input"
-                  placeholder="Comma-separated options"
-                  value={(f.options || []).join(", ")}
-                  onChange={e => { const arr = [...customFields]; arr[idx] = { ...arr[idx], options: e.target.value.split(",").map(s => s.trim()).filter(Boolean) }; setCustomFields(arr); }}
+                  placeholder="Comma-separated options (e.g. Option 1, Option 2)"
+                  value={dropdownTexts[idx] !== undefined ? dropdownTexts[idx] : (f.options || []).join(", ")}
+                  onChange={e => setDropdownTexts(t => ({ ...t, [idx]: e.target.value }))}
+                  onBlur={e => {
+                    const arr = [...customFields];
+                    arr[idx] = { ...arr[idx], options: e.target.value.split(",").map(s => s.trim()).filter(Boolean) };
+                    setCustomFields(arr);
+                    setDropdownTexts(t => { const n = { ...t }; delete n[idx]; return n; });
+                  }}
                   style={{ fontSize: 12 }}
                 />
               )}
@@ -2686,6 +2758,7 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
       >
         {saving ? "Adding…" : `Add ${blockType.replace("-", " ")} block`}
       </button>
+      </div>}
     </div>
   );
 }
@@ -2693,7 +2766,9 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
 // --- Analytics Panel with Recharts ---
 function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]; activePageId: number | null; setActivePageId: (id: number) => void }) {
   const [scope, setScope] = useState<"page" | "all">("page");
-  const [selectedPageId, setSelectedPageId] = useState<number | null>(pages[0]?.id ?? null);
+  // #17: initialise from activePageId so the current page is shown by default
+  const [selectedPageId, setSelectedPageId] = useState<number | null>(activePageId ?? pages[0]?.id ?? null);
+  useEffect(() => { if (activePageId && !selectedPageId) setSelectedPageId(activePageId); }, [activePageId]);
   // G10: 7d/14d/30d/60d/All (0=All)
   const [days, setDays] = useState<number>(7);
   const [graphSeries, setGraphSeries] = useState<"views" | "clicks" | "leads">("views");
@@ -2797,14 +2872,14 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
             const prevClickRate = prev && prev.views > 0 ? Math.round((prev.clicks / prev.views) * 1000) / 10 : 0;
             const cards = [
               { label: days === 0 ? "Total views (all time)" : `Views (${days}d)`, value: (days === 0 ? analytics.totalViews : analytics.periodViews)?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodViews ?? 0, prev?.views ?? 0) },
-              { label: days === 0 ? "Clicks (all time)" : `Clicks (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodClicks ?? 0, prev?.clicks ?? 0) },
-              { label: "Click rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%", delta: prev ? pctLabel(analytics.clickRate ?? 0, prevClickRate) : null },
+              { label: days === 0 ? "Interactions (all time)" : `Interactions (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodClicks ?? 0, prev?.clicks ?? 0) },
+              { label: "Interaction rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%", delta: prev ? pctLabel(analytics.clickRate ?? 0, prevClickRate) : null },
               { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString(), delta: pctLabel(analytics.uniqueVisitors ?? 0, prev?.uniqueVisitors ?? 0) },
               { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString(), delta: prev ? pctLabel(analytics.repeatVisitors ?? 0, prev?.repeatVisitors ?? 0) : null },
               { label: "Best day", value: analytics.bestDay ? `${analytics.bestDay.count} views (${analytics.bestDay.label})` : "No data", delta: null },
               { label: days === 0 ? "Avg views (all time)" : `Avg views (${days}d)`, value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—", delta: null },
-              // Only show the always-on total card when viewing a time-filtered window (not all-time, where first card already shows total)
-              ...(days !== 0 ? [{ label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0", delta: null }] : []),
+              // #20: Only show the all-time total card when on All-time view (days === 0)
+              ...(days === 0 ? [{ label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0", delta: null }] : []),
             ];
             return (
               <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
@@ -2829,7 +2904,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
             <div className="card" style={{ padding: "1.25rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
                 <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>
-                  {graphSeries === "views" ? "Page views" : graphSeries === "clicks" ? "Clicks" : "Leads"} — {days === 0 ? "All time" : `last ${days} days`}
+                  {graphSeries === "views" ? "Page views" : graphSeries === "clicks" ? "Interactions" : "Leads"} — {days === 0 ? "All time" : `last ${days} days`}
                 </div>
                 <select
                   value={graphSeries}
@@ -2839,7 +2914,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                   data-testid="select-analytics-graph-series"
                 >
                   <option value="views">Views</option>
-                  <option value="clicks">Clicks</option>
+                  <option value="clicks">Interactions</option>
                   <option value="leads">Leads</option>
                 </select>
               </div>
@@ -2875,12 +2950,12 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                 const totalPageViews = Math.max(analytics.periodViews ?? analytics.totalViews ?? 1, 1);
                 return interactions.map((item: any) => {
                   const total = item.total ?? item.clickCount ?? 0;
-                  const interactionPct = Math.min(Math.round((total / totalPageViews) * 100), 100);
+                  const interactionPct = Math.min(Math.round((total / totalPageViews) * 1000) / 10, 100);
                   return (
                     <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
                         <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Interaction"}</span>
-                        <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Interaction rate: {interactionPct}%</span>
+                        <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Interaction rate: {interactionPct.toFixed(1)}%</span>
                       </div>
                       {/* Stacked bar: views (amber) + interactions (primary) */}
                       <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
@@ -2921,16 +2996,19 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                 ) : (
                   (analytics.topCountries || []).map((c: any) => {
                     const code = (c.country || "").trim().toUpperCase();
-                    // Convert ISO-3166-1 alpha-2 code to flag emoji using regional indicator symbols
+                    // S7 #18: show full country name using Intl.DisplayNames
+                    const getCountryName = (iso: string) => {
+                      if (!iso || iso.length !== 2) return "Unknown";
+                      try { return new Intl.DisplayNames(["en"], { type: "region" }).of(iso) || iso; } catch { return iso; }
+                    };
                     const flag = code.length === 2
                       ? String.fromCodePoint(127397 + code.charCodeAt(0), 127397 + code.charCodeAt(1))
                       : "🌍";
                     return (
                       <div key={code || "unknown"} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid var(--color-divider)" }}>
                         <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                          {/* D1: emoji font-family ensures flags render on desktop (Windows/Linux) */}
-                      <span style={{ fontSize: 18, fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif' }}>{flag}</span>
-                          <span>{code || "Unknown"}</span>
+                          <span style={{ fontSize: 18, fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif' }}>{flag}</span>
+                          <span>{getCountryName(code)}</span>
                         </span>
                         <span style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{c.count} views</span>
                       </div>
@@ -3118,6 +3196,10 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
   const [selectedPageId, setSelectedPageId] = useState<number | null>(activePageId ?? pages[0]?.id ?? null);
   const [days, setDays] = useState(30);
   const [hiddenOpen, setHiddenOpen] = useState(false);
+  // #28: search state
+  const [searchLive, setSearchLive] = useState("");
+  const [searchArchived, setSearchArchived] = useState("");
+  const [searchHidden, setSearchHidden] = useState("");
 
   // G6b: "hidden" = archived from the hidden section; stays out of live even after restore attempt
   // We store hiddenBlockIds in page.hiddenBlockIds (same pattern as archivedBlockIds)
@@ -3239,27 +3321,29 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
   const periodEvents: any[] = analytics?.periodEvents ?? [];
   const allTimeBlocks: any[] = analytics?.allTimeBlocks ?? [];
 
-  // Aggregate per-block stats
+  // Aggregate per-block stats — periodEvents are pre-aggregated rows (block_id, block_type, type, count)
   const blockStats: Map<string, { count: number; eventTypes: Record<string, number> }> = new Map();
   for (const e of periodEvents) {
     const bid = e.blockId || e.block_id;
     if (!bid) continue;
+    const rowCount: number = e.count ?? 1; // server returns aggregated count
     if (!blockStats.has(bid)) blockStats.set(bid, { count: 0, eventTypes: {} });
     const s = blockStats.get(bid)!;
-    s.count++;
+    s.count += rowCount;
     const et = e.eventType || e.type || "interaction";
-    s.eventTypes[et] = (s.eventTypes[et] || 0) + 1;
+    s.eventTypes[et] = (s.eventTypes[et] || 0) + rowCount;
   }
 
   // G6d: also aggregate per platform for social-links blocks
   const socialPlatformStats: Map<string, Map<string, number>> = new Map();
   for (const e of periodEvents) {
     const bid = e.blockId || e.block_id;
-    const platform = e.platform;
+    const platform = e.platform || e.block_sub_id;
     if (!bid || !platform) continue;
+    const rowCount: number = e.count ?? 1;
     if (!socialPlatformStats.has(bid)) socialPlatformStats.set(bid, new Map());
     const pm = socialPlatformStats.get(bid)!;
-    pm.set(platform, (pm.get(platform) || 0) + 1);
+    pm.set(platform, (pm.get(platform) || 0) + rowCount);
   }
 
   const liveBlocks = pageBlocks.filter((b: any) => !archivedIds.includes(b.id) && !hiddenIds.includes(b.id));
@@ -3269,7 +3353,8 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
   // G6c: for display, filter out non-interaction types from live list
   const displayLiveBlocks = liveBlocks.filter((b: any) => !NON_INTERACTION_TYPES.has(b.type));
 
-  const totalInteractions = periodEvents.length;
+  // #24: sum aggregated counts, not row count
+  const totalInteractions = periodEvents.reduce((sum: number, e: any) => sum + (e.count ?? 1), 0);
 
   // G5: unified pill style — matches Overview and Analytics panels exactly
   const pillStyle = (active: boolean): React.CSSProperties => ({
@@ -3292,7 +3377,7 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
           {pages.length > 1 && (
-            <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
+            <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} className="input" style={{ fontSize: 11, width: "auto", padding: "0.25rem 0.625rem", height: "auto" }}>
               {pages.map((p: any) => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
           )}
@@ -3324,11 +3409,59 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
         </div>
       ) : (
         <>
+          {/* #27: Block stats charts */}
+          {displayLiveBlocks.length > 0 && (() => {
+            const barData = displayLiveBlocks.map((block: any) => ({
+              name: (block.title || block.question || block.type || "Block").slice(0, 16),
+              interactions: blockStats.get(block.id)?.count ?? 0,
+            }));
+            const lineData = displayLiveBlocks.map((block: any) => ({
+              name: (block.title || block.question || block.type || "Block").slice(0, 16),
+              rate: (() => {
+                const cnt = blockStats.get(block.id)?.count ?? 0;
+                const views = Math.max((analytics as any)?.periodViews ?? 1, 1);
+                return Math.min(Math.round((cnt / views) * 1000) / 10, 100);
+              })(),
+            }));
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+                <div className="card" style={{ padding: "1rem" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.75rem" }}>Interactions by block</div>
+                  <ResponsiveContainer width="100%" height={150}>
+                    <BarChart data={barData} margin={{ top: 4, right: 4, bottom: 20, left: -20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-divider)" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: "var(--color-text-faint)" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" interval={0} />
+                      <YAxis tick={{ fontSize: 9, fill: "var(--color-text-faint)" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 11 }} />
+                      <Bar dataKey="interactions" radius={[4, 4, 0, 0]}>
+                        {barData.map((_: any, i: number) => <Cell key={i} fill="#e06b1a" opacity={0.7 + (i % 3) * 0.1} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="card" style={{ padding: "1rem" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.75rem" }}>Interaction rate (%)</div>
+                  <ResponsiveContainer width="100%" height={150}>
+                    <LineChart data={lineData} margin={{ top: 4, right: 4, bottom: 20, left: -20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-divider)" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: "var(--color-text-faint)" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" interval={0} />
+                      <YAxis tick={{ fontSize: 9, fill: "var(--color-text-faint)" }} axisLine={false} tickLine={false} unit="%" />
+                      <Tooltip contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 11 }} formatter={(v: any) => [`${v}%`, "Rate"]} />
+                      <Line type="monotone" dataKey="rate" stroke="#e06b1a" strokeWidth={2} dot={{ r: 3, fill: "#e06b1a" }} activeDot={{ r: 5 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Live blocks — G6c: filter non-interaction types */}
           <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
             <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>
               Live blocks ({displayLiveBlocks.length})
             </h2>
+            {/* #28: search */}
+            <input className="input" placeholder="Search live blocks…" value={searchLive} onChange={e => setSearchLive(e.target.value)} style={{ fontSize: 12, marginBottom: "0.75rem" }} />
             {liveBlocks.length > displayLiveBlocks.length && (
               <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>Text, Image, Divider, and Testimonial blocks are excluded from interaction tracking.</p>
             )}
@@ -3336,7 +3469,7 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
               <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No trackable blocks on this page.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {displayLiveBlocks.map((block: any) => {
+                {displayLiveBlocks.filter((block: any) => !searchLive || blockLabel(block).toLowerCase().includes(searchLive.toLowerCase())).map((block: any) => {
                   const stats = blockStats.get(block.id) ?? { count: 0, eventTypes: {} };
                   const pct = totalInteractions > 0 ? Math.round((stats.count / totalInteractions) * 100) : 0;
                   const isSocial = block.type === "social-links";
@@ -3355,13 +3488,13 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
                             const blockViewCount = stats.eventTypes["view"] ?? 0;
                             const interCount2 = stats.count - blockViewCount;
                             const pageViewsTotal = Math.max((analytics as any)?.periodViews ?? (analytics as any)?.totalViews ?? 1, 1);
-                            const interactionRate = Math.min(Math.round((interCount2 / pageViewsTotal) * 100), 100);
-                            const viewRate = Math.min(Math.round((blockViewCount / pageViewsTotal) * 100), 100);
+                            const interactionRate = Math.min(Math.round((interCount2 / pageViewsTotal) * 1000) / 10, 100);
+                            const viewRate = Math.min(Math.round((blockViewCount / pageViewsTotal) * 1000) / 10, 100);
                             return (
                               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 3 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)" }}>
                                   <span>Views vs Interactions</span>
-                                  <span style={{ fontWeight: 700, color: interactionRate > 0 ? "var(--color-primary)" : "var(--color-text-faint)" }}>{interactionRate}% interacted</span>
+                                  <span style={{ fontWeight: 700, color: interactionRate > 0 ? "var(--color-primary)" : "var(--color-text-faint)" }}>{interactionRate.toFixed(1)}% interacted</span>
                                 </div>
                                 <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
                                   <div style={{ height: "100%", width: `${viewRate}%`, background: "#f59e0b", opacity: 0.5, transition: "width 0.4s" }} />
@@ -3380,7 +3513,7 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
                               {Array.from(platformMap.entries()).sort((a, b) => b[1] - a[1]).map(([platform, cnt]) => (
                                 <div key={platform} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--color-text-muted)", paddingLeft: "0.5rem" }}>
                                   <span>{SOCIAL_PLATFORM_LABELS[platform] || platform}</span>
-                                  <span style={{ fontWeight: 600 }}>{cnt} clicks</span>
+                                  <span style={{ fontWeight: 600 }}>{cnt} interactions</span>
                                 </div>
                               ))}
                             </div>
@@ -3425,14 +3558,19 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
             </div>
           )}
 
-          {/* Archived blocks */}
-          {archivedBlocks.length > 0 && (
-            <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
-              <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>
-                Archived ({archivedBlocks.length})
-              </h2>
+          {/* Archived blocks — always visible even when empty */}
+          <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
+            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "1rem" }}>
+              Archived ({archivedBlocks.length})
+            </h2>
+            {archivedBlocks.length > 0 && (
+              <input className="input" placeholder="Search archived blocks…" value={searchArchived} onChange={e => setSearchArchived(e.target.value)} style={{ fontSize: 12, marginBottom: "0.75rem" }} />
+            )}
+            {archivedBlocks.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "1.25rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No archived blocks. Archive a block from the Live section to remove it from your page.</div>
+            ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {archivedBlocks.map((block: any) => {
+                {archivedBlocks.filter((block: any) => !searchArchived || blockLabel(block).toLowerCase().includes(searchArchived.toLowerCase())).map((block: any) => {
                   const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
                   return (
                     <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.75 }}>
@@ -3464,8 +3602,8 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
                   );
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Hidden blocks section — always visible so users know it exists */}
           <div className="card" style={{ padding: "1.25rem" }}>
@@ -3481,9 +3619,12 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
             {hiddenOpen && (
               <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Hidden blocks are permanently removed from your live page. Restore them to make them live again.</p>
+                {hiddenBlocks.length > 0 && (
+                  <input className="input" placeholder="Search hidden blocks…" value={searchHidden} onChange={e => setSearchHidden(e.target.value)} style={{ fontSize: 12, marginBottom: "0.75rem" }} />
+                )}
                 {hiddenBlocks.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "1.25rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No hidden blocks.</div>
-                ) : hiddenBlocks.map((block: any) => {
+                ) : hiddenBlocks.filter((block: any) => !searchHidden || blockLabel(block).toLowerCase().includes(searchHidden.toLowerCase())).map((block: any) => {
                   const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
                   return (
                     <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.7 }}>
@@ -5460,6 +5601,14 @@ export default function DashboardPage() {
   useEffect(() => {
     if (pages.length && activePageId == null) setActivePageId(pages[0].id);
   }, [pages, activePageId]);
+
+  // #19: when active page changes, invalidate page-specific stats so panels refresh
+  useEffect(() => {
+    if (activePageId != null) {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pages", activePageId, "analytics"] });
+    }
+  }, [activePageId]);
 
   // Escape key closes help drawer
   useEffect(() => {

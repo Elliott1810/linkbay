@@ -298,19 +298,86 @@ function LivePreview({ state }: { state: BuilderState }) {
             </div>
           ))}
 
-          {state.links.length === 0 && (
+          {/* #2: All block types preview */}
+          {state.blocks.slice(0, 5).map((block) => {
+            if (block.type === "text") return (
+              <div key={block.id} style={{ fontSize: 11, color: "#6b6966", lineHeight: 1.6, marginBottom: "0.5rem", padding: "0.5rem 0.75rem", background: "#f7f6f4", borderRadius: 8 }}>
+                {(block.content || "Text block").slice(0, 80)}
+              </div>
+            );
+            if (block.type === "lead-form") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.75rem", background: "#f7f6f4", borderRadius: 8, border: "1px solid #e2e1de" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#6b6966", marginBottom: "0.375rem" }}>{block.title || "Send a message"}</div>
+                <div style={{ height: 20, background: "white", borderRadius: 4, border: "1px solid #d8d7d4", marginBottom: "0.25rem" }} />
+                <div style={{ height: 20, background: "white", borderRadius: 4, border: "1px solid #d8d7d4", marginBottom: "0.375rem" }} />
+                <div style={{ height: 22, background: accent, borderRadius: 4 }} />
+              </div>
+            );
+            if (block.type === "poll") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.5rem 0.75rem", background: "#f7f6f4", borderRadius: 8, border: `1px solid ${accent}40` }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: accent, marginBottom: "0.375rem" }}>{block.question || "Poll"}</div>
+                {(block.options || ["",""]).slice(0, 3).map((opt: string, oi: number) => (
+                  <div key={oi} style={{ fontSize: 10, padding: "0.25rem 0.5rem", background: "white", borderRadius: 4, border: "1px solid #e2e1de", marginBottom: "0.25rem" }}>{opt || `Option ${oi + 1}`}</div>
+                ))}
+              </div>
+            );
+            if (block.type === "social-links") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", display: "flex", gap: 4, justifyContent: "center", flexWrap: "wrap" }}>
+                {((block.socials as any[]) || [{ platform: "twitter", url: "" }, { platform: "instagram", url: "" }]).slice(0, 5).map((s: any, si: number) => (
+                  <div key={si} style={{ width: 24, height: 24, borderRadius: "50%", background: accent, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700 }}>{(s.platform || "?").charAt(0).toUpperCase()}</div>
+                ))}
+              </div>
+            );
+            if (block.type === "countdown") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.5rem", background: `${accent}10`, border: `1px solid ${accent}30`, borderRadius: 8, textAlign: "center" }}>
+                <div style={{ fontSize: 9, color: accent, fontWeight: 700, marginBottom: 4 }}>{block.title || "Countdown"}</div>
+                <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
+                  {["00d", "00h", "00m"].map(t => (
+                    <div key={t} style={{ background: accent, color: "#fff", borderRadius: 4, padding: "2px 5px", fontSize: 10, fontWeight: 800 }}>{t}</div>
+                  ))}
+                </div>
+              </div>
+            );
+            if (block.type === "button") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.5rem 1rem", background: accent, color: "#fff", borderRadius: 8, textAlign: "center", fontSize: 11, fontWeight: 700 }}>
+                {block.buttonLabel || block.title || "Button"} →
+              </div>
+            );
+            if (block.type === "testimonial") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.625rem 0.75rem", background: "#f7f6f4", borderRadius: 8, border: `1px solid ${accent}20` }}>
+                <div style={{ fontSize: 10, color: "#6b6966", fontStyle: "italic", marginBottom: 3 }}>"{(block.quote || "Great testimonial").slice(0, 60)}"</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: accent }}>— {(block.author as string) || "Author"}</div>
+              </div>
+            );
+            if (block.type === "faq") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.5rem 0.75rem", background: "#f7f6f4", borderRadius: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#1a1917" }}>FAQ block</div>
+                <div style={{ fontSize: 9, color: "#6b6966" }}>{((block.faqs as unknown as any[]) || []).length} questions</div>
+              </div>
+            );
+            if (block.type === "image") {
+              const src = (block.imageUrl as string) || undefined;
+              return src ? (
+                <img key={block.id} src={src} alt={(block.alt as string) || ""} style={{ width: "100%", borderRadius: 8, marginBottom: "0.5rem", display: "block" }} />
+              ) : (
+                <div key={block.id} style={{ height: 60, background: "#e2e1de", borderRadius: 8, marginBottom: "0.5rem", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#6b6966" }}>Image</div>
+              );
+            }
+            if (block.type === "divider") return (
+              <hr key={block.id} style={{ border: "none", borderTop: `1px solid ${accent}30`, margin: "0.5rem 0" }} />
+            );
+            return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.4rem 0.75rem", background: "#f7f6f4", borderRadius: 8, fontSize: 10, color: "#6b6966" }}>
+                {block.type} block
+              </div>
+            );
+          })}
+
+          {state.links.length === 0 && state.blocks.length === 0 && (
             <div style={{ textAlign: "center", padding: "1rem", color: "#b0aeab", fontSize: 11 }}>
-              Add links in step 3
+              Add links &amp; blocks in step 3
             </div>
           )}
-
-          {/* Lead form preview */}
-          <div style={{ marginTop: "0.75rem", padding: "0.75rem", background: "#f7f6f4", borderRadius: 8, border: "1px solid #e2e1de" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#6b6966", marginBottom: "0.375rem" }}>Send a message</div>
-            <div style={{ height: 22, background: "white", borderRadius: 4, border: "1px solid #d8d7d4", marginBottom: "0.375rem" }} />
-            <div style={{ height: 22, background: "white", borderRadius: 4, border: "1px solid #d8d7d4", marginBottom: "0.5rem" }} />
-            <div style={{ height: 26, background: accent, borderRadius: 4 }} />
-          </div>
 
           {/* Powered by */}
           <div style={{ textAlign: "center", marginTop: "0.75rem", fontSize: 9, color: "#b0aeab" }}>
@@ -1061,9 +1128,14 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 // ─── Step 3: Add links & blocks ──────────────────────────────
+const FREE_BLOCK_LIMIT = 5;
+
 function Step3({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [addMode, setAddMode] = useState<BlockType | null>(null);
+
+  const totalItems = state.links.length + state.blocks.length;
+  const atLimit = totalItems >= FREE_BLOCK_LIMIT;
 
   // New link form state
   const [newLink, setNewLink] = useState<Partial<PageLink>>({ label: "", url: "", icon: "", style: "default", description: "" });
@@ -1146,7 +1218,10 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
       <p style={{ color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>Add and edit your links and content blocks below.</p>
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-md)", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", marginBottom: "1.25rem" }}>
         <span style={{ fontSize: 13 }}>✏️</span>
-        <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>Click any block to edit its content. Use the ↑ ↓ arrows to reorder. Everything can be changed again in your dashboard.</span>
+        <span style={{ fontSize: 12, color: "var(--color-text-muted)", flex: 1 }}>Click any block to edit its content. Use the ↑ ↓ arrows to reorder. Everything can be changed again in your dashboard.</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: atLimit ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, background: atLimit ? "rgba(224,107,26,0.1)" : "var(--color-surface)", padding: "0.15rem 0.5rem", borderRadius: 999, border: `1px solid ${atLimit ? "rgba(224,107,26,0.3)" : "var(--color-border)"}` }}>
+          {totalItems}/{FREE_BLOCK_LIMIT} blocks
+        </span>
       </div>
 
       {/* Existing links — with reorder (#30g) and inline edit (#30f) */}
@@ -1256,9 +1331,21 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
         </div>
       )}
 
+      {/* Free tier limit banner */}
+      {atLimit && addMode === null && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", padding: "1rem 1.125rem", borderRadius: "var(--radius-lg)", background: "rgba(224,107,26,0.08)", border: "1.5px solid rgba(224,107,26,0.35)", marginBottom: "1rem" }}>
+          <span style={{ fontSize: 20, flexShrink: 0 }}>🔒</span>
+          <div>
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)", marginBottom: "0.25rem" }}>Free plan limit reached ({FREE_BLOCK_LIMIT} blocks)</div>
+            <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.5rem" }}>You've added {totalItems} of {FREE_BLOCK_LIMIT} blocks. Upgrade to Pro to add unlimited blocks and access premium features.</div>
+            <a href="/pricing" className="btn btn-primary btn-sm" style={{ display: "inline-flex", textDecoration: "none" }}>Upgrade to Pro →</a>
+          </div>
+        </div>
+      )}
+
       {/* Add block type selector — all types (#30h) */}
       {addMode === null && (
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", opacity: atLimit ? 0.4 : 1, pointerEvents: atLimit ? "none" : "auto" }}>
           {[
             { type: "link" as BlockType, icon: "🔗", label: "Link" },
             { type: "text" as BlockType, icon: "📝", label: "Free text" },

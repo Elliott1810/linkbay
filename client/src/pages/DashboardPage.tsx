@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, resolveMediaUrl } from "@/lib/queryClient";
 import { useTheme, useAuth } from "@/App";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, Cell } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, Cell, PieChart, Pie } from "recharts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { BACKGROUND_OPTIONS } from "./BuilderPage";
 import { QRCodeSVG } from "qrcode.react";
@@ -28,6 +28,8 @@ const icons: Record<string, JSX.Element> = {
   down: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>,
   close: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   blocks: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="8" height="5" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="3" y="11" width="8" height="5" rx="1"/><rect x="13" y="11" width="8" height="5" rx="1"/><rect x="3" y="19" width="18" height="2" rx="1"/></svg>,
+  share: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
+  ai: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>,
 };
 
 const LINK_ICONS = ["🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇️", "⭐", "💬", "🌐", "📊"];
@@ -35,13 +37,13 @@ const LINK_ICONS = ["🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇
 // --- Nav items (leads dot injected dynamically) ---
 const navItems = [
   { id: "overview", label: "Overview", icon: "grid" },
-  { id: "editor", label: "Page Editor", icon: "edit" },
-  { id: "analytics", label: "Analytics", icon: "chart" },
   { id: "blocks", label: "Blocks", icon: "blocks" },
+  { id: "analytics", label: "Analytics", icon: "chart" },
+  { id: "editor", label: "Page Editor", icon: "edit" },
   { id: "leads", label: "Leads", icon: "users" },
-  { id: "contacts", label: "Contacts", icon: "users" },
   { id: "settings", label: "Settings", icon: "settings" },
   { id: "billing", label: "Billing", icon: "billing" },
+  { id: "referrals", label: "Referrals", icon: "share" },
 ];
 
 // --- Empty state when user has no pages ---
@@ -704,14 +706,13 @@ function OverviewPanel({
             {/* QR Code */}
             <QRCodeCard url={pageUrl} username={page?.username} />
 
-            {/* G5: URL display — copy WITHOUT https:// */}
+            {/* G5: URL display — copy WITHOUT https:// + #12 native share */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.625rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", marginBottom: "0.625rem" }}>
               <span style={{ flex: 1, fontSize: 11, color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 linkbay.ai/{page?.username}
               </span>
               <button
                 onClick={() => {
-                  // G5: copy short URL (no https://)
                   const shortUrl = `linkbay.ai/${page?.username}`;
                   navigator.clipboard?.writeText(shortUrl).then(() => {
                     setShareUrlCopied(true);
@@ -723,6 +724,19 @@ function OverviewPanel({
               >
                 {shareUrlCopied ? icons.check : icons.copy}
               </button>
+              {/* #12: Native Web Share API button — shows on mobile, hidden on desktop if unsupported */}
+              {typeof navigator !== "undefined" && "share" in navigator && (
+                <button
+                  onClick={() => {
+                    navigator.share({ title: page?.title || "My Linkbay", url: `https://linkbay.ai/${page?.username}` }).catch(() => {});
+                  }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", flexShrink: 0, display: "flex", alignItems: "center" }}
+                  title="Share"
+                  data-testid="button-native-share"
+                >
+                  {icons.share}
+                </button>
+              )}
             </div>
             {/* G5a: Social share buttons — added Facebook */}
             <div style={{ display: "flex", gap: "0.375rem" }}>
@@ -851,15 +865,36 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
   const [avatarShape, setAvatarShape] = useState<string>(page?.avatarShape ?? "circle");
   const [pageFont, setPageFont] = useState<string>(page?.pageFont ?? "inter");
 
-  // G7: blockStyle stored inside background JSON
-  const bgParsed = (() => { try { return JSON.parse(background); } catch { return {}; } })();
+  // G7/#7e: blockStyle stored inside background JSON
+  // Parse the background field — if it's a plain string like "none" or a gradient, keep it separately
+  const bgIsJson = (() => { try { JSON.parse(background); return true; } catch { return false; } })();
+  const bgParsed = bgIsJson ? (() => { try { return JSON.parse(background); } catch { return {}; } })() : {};
   const blockStyle: string = bgParsed.blockStyle ?? "default";
   const setBlockStyle = (s: string) => {
+    // Preserve the existing background value and only update blockStyle
     const merged = { ...bgParsed, blockStyle: s };
-    if (!merged.pattern && !merged.color) {
-      setBackground(JSON.stringify({ blockStyle: s }));
+    // If there's a non-JSON background (e.g. a gradient string), store it under a "bgValue" key
+    if (!bgIsJson && background !== "none" && background !== "") {
+      merged.bgValue = background;
+    }
+    setBackground(JSON.stringify(merged));
+  };
+  // When background picker is clicked, we must not clobber blockStyle
+  // (already handled: BACKGROUND_OPTIONS onClick calls setBackground directly)
+  // But when user picks a background that is a plain string, merge blockStyle in
+  const handleSetBackground = (val: string) => {
+    // If the selected value looks like JSON, try to merge blockStyle into it
+    const isJson = (() => { try { JSON.parse(val); return true; } catch { return false; } })();
+    if (isJson) {
+      const parsed = (() => { try { return JSON.parse(val); } catch { return {}; } })();
+      setBackground(JSON.stringify({ ...parsed, blockStyle }));
     } else {
-      setBackground(JSON.stringify(merged));
+      // Plain value ("none", gradient string) — store with blockStyle preserved
+      if (blockStyle !== "default") {
+        setBackground(JSON.stringify({ bgValue: val, blockStyle }));
+      } else {
+        setBackground(val);
+      }
     }
   };
 
@@ -911,16 +946,14 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           {["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].map(c => (
             <button key={c} type="button" onClick={() => setAccentColor(c)} style={{ width: 24, height: 24, borderRadius: "50%", background: c, border: `2.5px solid ${accentColor === c ? "var(--color-text)" : "transparent"}`, cursor: "pointer" }} />
           ))}
-          {/* #12a: Custom colour label + swatch + picker */}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", marginLeft: "0.25rem" }}>
-            <div style={{ width: 18, height: 18, borderRadius: "50%", background: accentColor, border: "1.5px solid var(--color-border)", flexShrink: 0 }} />
-            <label style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", cursor: "pointer", whiteSpace: "nowrap" }}>
-              Custom
-              <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: 1, height: 1, pointerEvents: "none" }} />
-            </label>
-          </div>
+          {/* #7c: Custom colour icon — square (not round), inline with accent pills */}
+          <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer", position: "relative" }} title="Custom colour">
+            <div style={{ width: 24, height: 24, borderRadius: 4, background: accentColor, border: `2.5px solid ${!["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].includes(accentColor) ? "var(--color-text)" : "transparent"}`, flexShrink: 0, cursor: "pointer" }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Custom</span>
+            <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer", top: 0, left: 0 }} />
+          </label>
         </div>
-        {/* #12: hex input */}
+        {/* #7c: hex input under the swatch row */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
           <div style={{ width: 18, height: 18, borderRadius: 4, background: accentColor, border: "1px solid var(--color-border)", flexShrink: 0 }} />
           <input
@@ -929,8 +962,8 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
             onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setAccentColor(e.target.value); }}
             placeholder="#e06b1a"
             style={{ fontSize: 12, width: 90, fontFamily: "monospace", padding: "0.2rem 0.4rem" }}
+            data-testid="input-accent-hex"
           />
-          <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid var(--color-border)", cursor: "pointer", padding: 0, background: "none" }} title="Open colour picker" />
         </div>
       </div>
       {/* ─── Background picker — 20 CSS gradient swatches ─── */}
@@ -938,12 +971,12 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background</label>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
           {BACKGROUND_OPTIONS.map(opt => {
-            const isActive = background === opt.value || (!background && opt.value === "none");
+            const isActive = background === opt.value || (!background && opt.value === "none") || (() => { try { const p = JSON.parse(background); return (p.bgValue === opt.value || (!p.bgValue && opt.value === "none")); } catch { return false; } })();
             return (
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => setBackground(opt.value)}
+                onClick={() => handleSetBackground(opt.value)}
                 title={opt.label}
                 data-testid={`button-dash-bg-${opt.value}`}
                 style={{
@@ -970,15 +1003,13 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Profile picture shape</label>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          {[{ v: "circle", l: "Circle" }, { v: "rounded", l: "Rounded" }, { v: "pentagon", l: "Pentagon" }, { v: "diamond", l: "Diamond" }].map(opt => (
+          {/* #7d: Pentagon and Diamond removed */}
+          {[{ v: "circle", l: "Circle", br: "50%", cp: undefined }, { v: "rounded", l: "Rounded", br: "4px", cp: undefined }, { v: "square", l: "Square", br: "0", cp: undefined }].map(opt => (
             <button key={opt.v} type="button" onClick={() => setAvatarShape(opt.v)}
               style={{ flex: 1, padding: "0.5rem", fontSize: 11, fontWeight: 600, borderRadius: "var(--radius-sm)", border: `2px solid ${avatarShape === opt.v ? "var(--color-primary)" : "var(--color-border)"}`, background: avatarShape === opt.v ? "var(--color-primary-highlight)" : "var(--color-surface)", color: avatarShape === opt.v ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
               data-testid={`button-avatar-shape-${opt.v}`}
             >
-              <span style={{ display: "inline-block", width: 16, height: 16, background: "var(--color-text-faint)",
-                borderRadius: opt.v === "circle" ? "50%" : opt.v === "rounded" ? 4 : undefined,
-                clipPath: opt.v === "pentagon" ? "polygon(50% 0%,100% 38%,82% 100%,18% 100%,0% 38%)" : opt.v === "diamond" ? "polygon(50% 0%,100% 50%,50% 100%,0% 50%)" : undefined,
-              }} />{opt.l}
+              <span style={{ display: "inline-block", width: 16, height: 16, background: "var(--color-text-faint)", borderRadius: opt.br }} />{opt.l}
             </button>
           ))}
         </div>
@@ -2764,6 +2795,19 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
 }
 
 // --- Analytics Panel with Recharts ---
+// WCAG AA contrast helper — returns white or black for sufficient contrast on given bg
+function autoContrastColor(bg: string): string {
+  if (!bg || bg.length < 4) return "#ffffff";
+  const h = bg.replace("#", "");
+  const full = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  const toLinear = (c: number) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  const lum = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+  return lum > 0.179 ? "#0a0a0b" : "#ffffff";
+}
+
 function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]; activePageId: number | null; setActivePageId: (id: number) => void }) {
   const [scope, setScope] = useState<"page" | "all">("page");
   // #17: initialise from activePageId so the current page is shown by default
@@ -2772,6 +2816,9 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
   // G10: 7d/14d/30d/60d/All (0=All)
   const [days, setDays] = useState<number>(7);
   const [graphSeries, setGraphSeries] = useState<"views" | "clicks" | "leads">("views");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const effectiveDays = days === 0 ? 3650 : days;
 
@@ -2855,7 +2902,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
         </div>
       ) : analytics ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          {/* Stats row */}
+          {/* Stats row — order: Views, Avg Views, Interactions, Interaction Rate, Unique Visitors, Repeat Visitors, Best Day, Leads Captured */}
           {(() => {
             const prev = analytics.prevPeriod;
             const pctChange = (curr: number, prevVal: number) => {
@@ -2870,16 +2917,26 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
               return { text: `${sign}${p}%`, up: p >= 0 };
             };
             const prevClickRate = prev && prev.views > 0 ? Math.round((prev.clicks / prev.views) * 1000) / 10 : 0;
+            // #8a: "Total Views All Time" card only shown when days===0; doesn't linger
+            // #8b: card order: Views, Avg Views, Interactions, Interaction Rate, Unique Visitors, Repeat Visitors, Best Day, Leads Captured
+            // #8: Best day — safe date parsing (T00:00:00 suffix already in parseDateLabel but bestDay.label is pre-formatted)
+            const bestDayLabel = analytics.bestDay
+              ? (() => {
+                  const raw = analytics.bestDay.date || analytics.bestDay.label || "";
+                  const d = new Date(raw.length === 10 ? raw + "T00:00:00" : raw);
+                  const label = isNaN(d.getTime()) ? raw : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+                  return `${analytics.bestDay.count} views (${label})`;
+                })()
+              : "No data";
             const cards = [
               { label: days === 0 ? "Total views (all time)" : `Views (${days}d)`, value: (days === 0 ? analytics.totalViews : analytics.periodViews)?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodViews ?? 0, prev?.views ?? 0) },
+              { label: days === 0 ? "Avg views (all time)" : `Avg views (${days}d)`, value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—", delta: null },
               { label: days === 0 ? "Interactions (all time)" : `Interactions (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodClicks ?? 0, prev?.clicks ?? 0) },
               { label: "Interaction rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%", delta: prev ? pctLabel(analytics.clickRate ?? 0, prevClickRate) : null },
               { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString(), delta: pctLabel(analytics.uniqueVisitors ?? 0, prev?.uniqueVisitors ?? 0) },
               { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString(), delta: prev ? pctLabel(analytics.repeatVisitors ?? 0, prev?.repeatVisitors ?? 0) : null },
-              { label: "Best day", value: analytics.bestDay ? `${analytics.bestDay.count} views (${analytics.bestDay.label})` : "No data", delta: null },
-              { label: days === 0 ? "Avg views (all time)" : `Avg views (${days}d)`, value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—", delta: null },
-              // #20: Only show the all-time total card when on All-time view (days === 0)
-              ...(days === 0 ? [{ label: "Total views (all time)", value: analytics.totalViews?.toLocaleString() ?? "0", delta: null }] : []),
+              { label: "Best day", value: bestDayLabel, delta: null },
+              { label: "Leads captured", value: (analytics.leadsCount ?? 0).toLocaleString(), delta: null },
             ];
             return (
               <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
@@ -2979,14 +3036,24 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                 {Object.entries(analytics.devices || {}).length === 0 ? (
                   <div style={{ textAlign: "center", padding: "1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No data yet.</div>
                 ) : (
-                  Object.entries(analytics.devices || {}).map(([device, count]: [string, any]) => (
-                    <div key={device} style={{ display: "flex", justifyContent: "space-between", padding: "0.5rem 0", borderBottom: "1px solid var(--color-divider)" }}>
-                      <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", textTransform: "capitalize" }}>
-                        {device === "mobile" ? "📱" : "💻"} {device}
-                      </span>
-                      <span style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{count} events</span>
-                    </div>
-                  ))
+                  Object.entries(analytics.devices || {}).map(([device, count]: [string, any]) => {
+                    const pct = analytics.devicePct?.[device];
+                    return (
+                      <div key={device} style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--color-divider)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", textTransform: "capitalize" }}>
+                            {device === "mobile" ? "📱" : "💻"} {device}
+                          </span>
+                          <span style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{count} {pct != null ? <span style={{ color: "var(--color-primary)", fontWeight: 700 }}>({pct}%)</span> : null}</span>
+                        </div>
+                        {pct != null && (
+                          <div style={{ height: 5, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${pct}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.4s" }} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
               <div className="card" style={{ padding: "1.25rem" }}>
@@ -3035,6 +3102,42 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                   </div>
                   <span style={{ fontSize: 16, color: "var(--color-text-faint)" }}>↓</span>
                 </button>
+              </div>
+              {/* #8d: AI Analysis button — cached per page per day server-side */}
+              <div className="card" style={{ padding: "1.25rem" }}>
+                <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>AI page analysis</div>
+                <button
+                  className="btn btn-secondary"
+                  style={{ width: "100%", justifyContent: "center", gap: "0.5rem" }}
+                  onClick={async () => {
+                    if (!selectedPageId) return;
+                    setAiLoading(true); setAiResult(null); setAiError(null);
+                    try {
+                      const res = await fetch(`/api/pages/${selectedPageId}/ai-analysis`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                      });
+                      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
+                      const d = await res.json();
+                      setAiResult(d.analysis || "No analysis returned.");
+                    } catch (err: any) {
+                      setAiError(err.message || "Failed to fetch AI analysis.");
+                    } finally {
+                      setAiLoading(false);
+                    }
+                  }}
+                  disabled={aiLoading}
+                  data-testid="button-ai-analysis"
+                >
+                  {icons.ai}{aiLoading ? "Analysing…" : "Get AI analysis"}
+                </button>
+                {aiError && <p style={{ color: "#ef4444", fontSize: 12, marginTop: "0.5rem" }}>{aiError}</p>}
+                {aiResult && (
+                  <div style={{ marginTop: "0.875rem", padding: "0.875rem", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", color: "var(--color-text-muted)" }}>
+                    {aiResult}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -3192,7 +3295,7 @@ function LeadDetailModal({ lead, onClose, onStatusChange, onNotesSave, onConvert
 
 // --- Leads Panel ---
 // ─── Block Analysis Panel (General 9) ───────────────────────────────────────
-function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageId: number | null }) {
+function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]; activePageId: number | null; licenceTier?: string }) {
   const [selectedPageId, setSelectedPageId] = useState<number | null>(activePageId ?? pages[0]?.id ?? null);
   const [days, setDays] = useState(30);
   const [hiddenOpen, setHiddenOpen] = useState(false);
@@ -3200,6 +3303,8 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
   const [searchLive, setSearchLive] = useState("");
   const [searchArchived, setSearchArchived] = useState("");
   const [searchHidden, setSearchHidden] = useState("");
+  // #9a: toggle for bar chart
+  const [blockChartMode, setBlockChartMode] = useState<"interactions" | "views">("interactions");
 
   // G6b: "hidden" = archived from the hidden section; stays out of live even after restore attempt
   // We store hiddenBlockIds in page.hiddenBlockIds (same pattern as archivedBlockIds)
@@ -3210,17 +3315,6 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
     queryFn: async () => {
       if (!selectedPageId) return null;
       const res = await apiRequest("GET", `/api/pages/${selectedPageId}/block-analytics?days=${effectiveDays}`);
-      return res.json();
-    },
-    enabled: !!selectedPageId,
-    staleTime: 30000,
-  });
-
-  const { data: pageLinks } = useQuery<any[]>({
-    queryKey: ["/api/pages", selectedPageId, "links"],
-    queryFn: async () => {
-      if (!selectedPageId) return [];
-      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/links`);
       return res.json();
     },
     enabled: !!selectedPageId,
@@ -3409,47 +3503,81 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
         </div>
       ) : (
         <>
-          {/* #27: Block stats charts */}
+          {/* #9 Block stats charts: Interactions bar (toggleable) + 2 Pie charts */}
           {displayLiveBlocks.length > 0 && (() => {
-            const barData = displayLiveBlocks.map((block: any) => ({
-              name: (block.title || block.question || block.type || "Block").slice(0, 16),
-              interactions: blockStats.get(block.id)?.count ?? 0,
-            }));
-            const lineData = displayLiveBlocks.map((block: any) => ({
-              name: (block.title || block.question || block.type || "Block").slice(0, 16),
-              rate: (() => {
-                const cnt = blockStats.get(block.id)?.count ?? 0;
-                const views = Math.max((analytics as any)?.periodViews ?? 1, 1);
-                return Math.min(Math.round((cnt / views) * 1000) / 10, 100);
-              })(),
-            }));
+            const PIE_COLORS = ["#e06b1a","#f59e0b","#0891b2","#059669","#7c3aed","#e11d48","#334155","#8b5cf6","#10b981","#ef4444"];
+            const barData = displayLiveBlocks.map((block: any) => {
+              const s = blockStats.get(block.id) ?? { count: 0, eventTypes: {} };
+              const viewCnt = s.eventTypes["view"] ?? 0;
+              const interCnt = s.count - viewCnt;
+              return {
+                name: (block.title || block.label || block.question || block.type || "Block").slice(0, 14),
+                interactions: interCnt,
+                views: viewCnt,
+              };
+            });
+            const totalInterAll = barData.reduce((s: number, r: any) => s + r.interactions, 0);
+            const totalViewsAll = barData.reduce((s: number, r: any) => s + r.views, 0);
+            const interPieData = barData.filter((r: any) => r.interactions > 0).map((r: any) => ({ name: r.name, value: r.interactions }));
+            const viewPieData = barData.filter((r: any) => r.views > 0).map((r: any) => ({ name: r.name, value: r.views }));
             return (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1rem" }}>
+                {/* Toggleable bar chart */}
                 <div className="card" style={{ padding: "1rem" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.75rem" }}>Interactions by block</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>{blockChartMode === "interactions" ? "Interactions" : "Views"} by block</div>
+                    <div style={{ display: "flex", gap: "0.25rem" }}>
+                      {(["interactions", "views"] as const).map(m => (
+                        <button key={m} onClick={() => setBlockChartMode(m)} style={{ padding: "0.2rem 0.5rem", fontSize: 10, fontWeight: 600, borderRadius: "var(--radius-sm)", border: `1px solid ${blockChartMode === m ? "var(--color-primary)" : "transparent"}`, background: blockChartMode === m ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: blockChartMode === m ? "var(--color-primary)" : "var(--color-text-faint)", cursor: "pointer" }}>
+                          {m.charAt(0).toUpperCase() + m.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <ResponsiveContainer width="100%" height={150}>
                     <BarChart data={barData} margin={{ top: 4, right: 4, bottom: 20, left: -20 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-divider)" vertical={false} />
                       <XAxis dataKey="name" tick={{ fontSize: 9, fill: "var(--color-text-faint)" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" interval={0} />
                       <YAxis tick={{ fontSize: 9, fill: "var(--color-text-faint)" }} axisLine={false} tickLine={false} allowDecimals={false} />
                       <Tooltip contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 11 }} />
-                      <Bar dataKey="interactions" radius={[4, 4, 0, 0]}>
-                        {barData.map((_: any, i: number) => <Cell key={i} fill="#e06b1a" opacity={0.7 + (i % 3) * 0.1} />)}
+                      <Bar dataKey={blockChartMode} radius={[4, 4, 0, 0]}>
+                        {barData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="card" style={{ padding: "1rem" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.75rem" }}>Interaction rate (%)</div>
-                  <ResponsiveContainer width="100%" height={150}>
-                    <LineChart data={lineData} margin={{ top: 4, right: 4, bottom: 20, left: -20 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-divider)" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: "var(--color-text-faint)" }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" interval={0} />
-                      <YAxis tick={{ fontSize: 9, fill: "var(--color-text-faint)" }} axisLine={false} tickLine={false} unit="%" />
-                      <Tooltip contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 11 }} formatter={(v: any) => [`${v}%`, "Rate"]} />
-                      <Line type="monotone" dataKey="rate" stroke="#e06b1a" strokeWidth={2} dot={{ r: 3, fill: "#e06b1a" }} activeDot={{ r: 5 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                {/* 2 Pie charts: % interaction share + % view share */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                  <div className="card" style={{ padding: "1rem" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.5rem" }}>Interaction share</div>
+                    {interPieData.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "1rem", color: "var(--color-text-faint)", fontSize: 11 }}>No interactions yet.</div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={140}>
+                        <PieChart>
+                          <Pie data={interPieData} dataKey="value" cx="50%" cy="50%" outerRadius={55} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={9}>
+                            {interPieData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 11 }} formatter={(v: any) => [`${v} (${totalInterAll > 0 ? Math.round(v / totalInterAll * 100) : 0}%)`, "Interactions"]} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                  <div className="card" style={{ padding: "1rem" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.5rem" }}>View share</div>
+                    {viewPieData.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "1rem", color: "var(--color-text-faint)", fontSize: 11 }}>No view events yet.</div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={140}>
+                        <PieChart>
+                          <Pie data={viewPieData} dataKey="value" cx="50%" cy="50%" outerRadius={55} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={9}>
+                            {viewPieData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 11 }} formatter={(v: any) => [`${v} (${totalViewsAll > 0 ? Math.round(v / totalViewsAll * 100) : 0}%)`, "Views"]} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -3536,27 +3664,7 @@ function BlockAnalysisPanel({ pages, activePageId }: { pages: any[]; activePageI
             )}
           </div>
 
-          {/* Links section */}
-          {(pageLinks ?? []).length > 0 && (
-            <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
-              <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.75rem" }}>Links ({(pageLinks ?? []).length})</h2>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-                {(pageLinks ?? []).sort((a: any, b: any) => a.position - b.position).map((link: any) => {
-                  const clickCount = link.clickCount ?? 0;
-                  return (
-                    <div key={link.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 0.75rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
-                      <span style={{ fontSize: "1rem" }}>🔗</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.label || link.url}</div>
-                        <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.url}</div>
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: clickCount > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0 }}>{clickCount} clicks</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* Links section removed — links are now migrated to blocks (#3/#9b) */}
 
           {/* Archived blocks — always visible even when empty */}
           <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
@@ -5683,7 +5791,20 @@ export default function DashboardPage() {
             </div>
           </div>
         );
-      case "blocks": return <BlockAnalysisPanel pages={pages} activePageId={activePageId} />;
+      case "blocks": return licenceTier === "free"
+        ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "3rem 2rem" }}>
+            <div style={{ textAlign: "center", maxWidth: 360 }}>
+              <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📦</div>
+              <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>Block Analysis — Pro feature</h2>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginBottom: "1.5rem" }}>Upgrade to Pro to see per-block interaction stats, pie charts, and performance breakdowns.</p>
+              <button className="btn btn-primary" style={{ justifyContent: "center" }} onClick={() => { setActiveNav("billing"); }}>
+                Upgrade to Pro →
+              </button>
+            </div>
+          </div>
+        )
+        : <BlockAnalysisPanel pages={pages} activePageId={activePageId} licenceTier={licenceTier} />;
       case "leads": return <LeadsPanel pages={pages} />;
       case "contacts": return tierLimits.contacts
         ? <ContactsPanel />
@@ -5701,6 +5822,20 @@ export default function DashboardPage() {
         );
       case "settings": return <SettingsPanel user={user} pages={pages} onLogout={async () => { await logout(); navigate("/"); }} />;
       case "billing": return <BillingPanel />;
+      case "referrals": return (
+        <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
+          <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Referrals</h1>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Earn rewards by sharing Linkbay with friends.</p>
+          <div className="card" style={{ padding: "1.5rem", maxWidth: 480 }}>
+            <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>🎁</div>
+            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>Referral programme coming soon</h2>
+            <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", lineHeight: 1.6 }}>We’re building a referral programme where you’ll earn rewards for every friend who joins Linkbay. Stay tuned!</p>
+            <div style={{ marginTop: "1rem", padding: "0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
+              Your referral link: <strong style={{ color: "var(--color-primary)" }}>linkbay.ai/r/{(user as any)?.username || "..."}</strong>
+            </div>
+          </div>
+        </div>
+      );
       default: return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
     }
   };

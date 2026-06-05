@@ -142,6 +142,9 @@ try { sqlite.exec("ALTER TABLE pages ADD COLUMN archived_block_ids TEXT DEFAULT 
 try { sqlite.exec("ALTER TABLE pages ADD COLUMN hidden_block_ids TEXT DEFAULT '[]'"); } catch {}
 // Sprint 7: per-social-icon tracking sub-ID
 try { sqlite.exec("ALTER TABLE page_events ADD COLUMN block_sub_id TEXT"); } catch {}
+// Sprint 8: trial system
+try { sqlite.exec("ALTER TABLE users ADD COLUMN trial_tier TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE users ADD COLUMN trial_expiry TEXT"); } catch {}
 
 // Contacts table (idempotent)
 sqlite.exec(`
@@ -290,7 +293,7 @@ export interface IStorage {
   // Events
   recordEvent(data: InsertPageEvent): Promise<void>;
   getEventsByPage(pageId: number, days?: number, sinceOverride?: string): Promise<PageEvent[]>;
-  getDailyViews(pageId: number, days?: number): Promise<Array<{ date: string; count: number }>>;
+  getDailyViews(pageId: number, days?: number, pageSince?: string): Promise<Array<{ date: string; count: number }>>;
   // Dashboard
   getDashboardStats(userEmail: string, days?: number): Promise<{ totalViews: number; totalClicks: number; totalLeads: number; totalPages: number; todayViews: number; todayLeads: number }>;
   // Poll votes
@@ -504,14 +507,17 @@ export class DatabaseStorage implements IStorage {
       "SELECT * FROM page_events WHERE page_id = ? AND created_at >= ? ORDER BY created_at ASC"
     ).all(pageId, since) as PageEvent[];
   }
-  async getDailyViews(pageId: number, days = 30): Promise<Array<{ date: string; count: number }>> {
+  async getDailyViews(pageId: number, days = 30, pageSince?: string): Promise<Array<{ date: string; count: number }>> {
     // G3b FIX: cap chart points at 60. For >60 days use weekly grouping.
     const useWeekly = days > 60;
     if (useWeekly) {
       // Group by ISO week — return up to 52 weekly buckets
-      const since = days >= 3650
-        ? new Date(Date.now() - 365 * 2 * 86400000).toISOString().split("T")[0]  // 2 years max for All time
-        : new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+      // Sprint 8: for All-time, use page creation date as since
+      const since = pageSince
+        ? pageSince.split("T")[0]
+        : days >= 3650
+          ? new Date(Date.now() - 365 * 2 * 86400000).toISOString().split("T")[0]
+          : new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
       const rows = sqlite.prepare(`
         SELECT strftime('%Y-W%W', created_at) as date, COUNT(*) as count
         FROM page_events
@@ -539,7 +545,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
   async getDashboardStats(userEmail: string, days?: number): Promise<{ totalViews: number; totalClicks: number; totalLeads: number; totalPages: number; todayViews: number; todayLeads: number }> {
-    const pages = sqlite.prepare("SELECT id, view_count FROM pages WHERE owner_email = ?").all(userEmail) as Array<{ id: number; view_count: number }>;
+    const pages = sqlite.prepare("SELECT id, view_count, created_at FROM pages WHERE owner_email = ?").all(userEmail) as Array<{ id: number; view_count: number; created_at: string }>;
     const totalPages = pages.length;
     let totalViews = 0;
     let totalClicks = 0;
@@ -558,9 +564,12 @@ export class DatabaseStorage implements IStorage {
         totalClicks += clicks;
         totalLeads += leads;
       } else {
-        totalViews += p.view_count;
-        const clicks = (sqlite.prepare("SELECT SUM(click_count) as total FROM page_links WHERE page_id = ?").get(p.id) as any)?.total ?? 0;
+        // All-time: use page_events count (not view_count column) so it matches analytics page
+        const allTimeSince = p.created_at || new Date(0).toISOString();
+        const views = (sqlite.prepare("SELECT COUNT(*) as total FROM page_events WHERE page_id = ? AND type = 'view' AND created_at >= ?").get(p.id, allTimeSince) as any)?.total ?? 0;
+        const clicks = (sqlite.prepare("SELECT COUNT(*) as total FROM page_events WHERE page_id = ? AND type = 'link_click' AND created_at >= ?").get(p.id, allTimeSince) as any)?.total ?? 0;
         const leads = (sqlite.prepare("SELECT COUNT(*) as total FROM leads WHERE page_id = ?").get(p.id) as any)?.total ?? 0;
+        totalViews += views;
         totalClicks += clicks;
         totalLeads += leads;
       }
@@ -656,3 +665,55 @@ try { sqlite.exec("ALTER TABLE poll_votes ADD COLUMN voter_token TEXT"); } catch
 // S6 #10: create unique index for anonymous dedup (voter_token) and signed-in dedup (voter_email)
 try { sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_poll_votes_token ON poll_votes(poll_id, voter_token) WHERE voter_token IS NOT NULL"); } catch {}
 try { sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_poll_votes_email ON poll_votes(poll_id, voter_email) WHERE voter_email IS NOT NULL"); } catch {}
+
+// ─── Sprint 8: Links → Blocks migration ─────────────────────────────────────
+// Auto-migrate page_links rows into type:"link" blocks prepended to the blocks array.
+// Runs once on server start; safe to re-run (skips pages that have no links or already migrated).
+export function migrateLinksToBlocks(): void {
+  const pages = sqlite.prepare("SELECT id, blocks FROM pages").all() as Array<{ id: number; blocks: string }>;
+  let migrated = 0;
+  for (const page of pages) {
+    const links = sqlite.prepare("SELECT * FROM page_links WHERE page_id = ? ORDER BY position ASC").all(page.id) as any[];
+    if (!links.length) continue; // nothing to migrate
+    let blocks: any[] = [];
+    try { blocks = JSON.parse(page.blocks || "[]"); } catch {}
+    // Check if already migrated (look for any block with type "link" that matches a link id)
+    const hasLinkBlocks = blocks.some((b: any) => b.type === "link" && b._fromLinkId);
+    if (hasLinkBlocks) continue;
+    // Prepend links as blocks
+    const linkBlocks = links.map((l: any) => ({
+      id: `link-migrated-${l.id}`,
+      type: "link",
+      title: l.label || "",
+      url: l.url || "#",
+      description: l.description || "",
+      icon: l.icon || "🔗",
+      style: l.style || "default",
+      _fromLinkId: l.id,
+    }));
+    const newBlocks = [...linkBlocks, ...blocks];
+    sqlite.prepare("UPDATE pages SET blocks = ? WHERE id = ?").run(JSON.stringify(newBlocks), page.id);
+    migrated++;
+  }
+  if (migrated > 0) console.log(`[Sprint 8] Migrated links→blocks for ${migrated} pages`);
+}
+
+// ─── Sprint 8: Trial helpers ─────────────────────────────────────────────────
+export function setUserTrial(userId: number, tier: string, trialExpiry: string): void {
+  sqlite.prepare("UPDATE users SET trial_tier = ?, trial_expiry = ? WHERE id = ?").run(tier, trialExpiry, userId);
+  // Also set the licence so tier limits apply immediately
+  setUserLicence(userId, tier, trialExpiry);
+}
+
+export function getUserEffectiveTier(userId: number): { tier: string; isTrial: boolean; trialExpiry: string | null } {
+  const row = sqlite.prepare("SELECT licence, licence_expiry, trial_tier, trial_expiry FROM users WHERE id = ?").get(userId) as any;
+  if (!row) return { tier: "free", isTrial: false, trialExpiry: null };
+  // Check if trial is active
+  if (row.trial_tier && row.trial_expiry) {
+    const exp = new Date(row.trial_expiry);
+    if (exp > new Date()) {
+      return { tier: row.trial_tier, isTrial: true, trialExpiry: row.trial_expiry };
+    }
+  }
+  return { tier: row.licence || "free", isTrial: false, trialExpiry: null };
+}

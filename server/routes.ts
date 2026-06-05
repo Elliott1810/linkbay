@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { type Server } from "http";
-import { storage, getUserLicence, setUserLicence, getUserByStripeCustomerId, getUserByStripeSubscriptionId } from "./storage";
+import { storage, getUserLicence, setUserLicence, getUserByStripeCustomerId, getUserByStripeSubscriptionId, migrateLinksToBlocks, setUserTrial } from "./storage";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import Database from "better-sqlite3";
@@ -26,6 +26,10 @@ function tierFromPriceId(priceId: string): { tier: "pro" | "business"; interval:
 
 // ─── AI rate limiter (in-memory) ────────────────────────────────────────────────────
 const aiRateLimit = new Map<number | string, { count: number; resetAt: number }>();
+// ─── AI analysis cache (in-memory, keyed by pageId:date, invalidates daily) ────────
+const aiAnalysisCache = new Map<string, { result: string; date: string }>();
+// ─── Run links→blocks migration on startup ──────────────────────────────────────────
+migrateLinksToBlocks();
 
 const DB_PATH = process.env.DB_PATH || "data.db";
 import {
@@ -771,7 +775,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         Promise.resolve(pageForDate),
         storage.getEventsByPage(pageId, days, eventsSinceOverride),
         storage.getLinksByPage(pageId),
-        storage.getDailyViews(pageId, days),
+        storage.getDailyViews(pageId, days, days >= 3650 ? allTimeSince : undefined),
         // Previous period: same window shifted back by `days`
         days < 3650 ? storage.getEventsByPage(pageId, days * 2).then((allE: any[]) => {
           const periodStart = new Date(Date.now() - days * 2 * 86400000).toISOString();
@@ -834,6 +838,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         label: new Date(bestDayEntry.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
       } : null;
 
+      // Leads captured count for the period
+      const DB_SQLITE = new Database(DB_PATH);
+      const leadsCountRow = days >= 3650
+        ? DB_SQLITE.prepare("SELECT COUNT(*) as c FROM leads WHERE page_id = ?").get(pageId) as any
+        : DB_SQLITE.prepare("SELECT COUNT(*) as c FROM leads WHERE page_id = ? AND created_at >= ?").get(pageId, new Date(Date.now() - days * 86400000).toISOString()) as any;
+      const leadsCount = leadsCountRow?.c ?? 0;
+      DB_SQLITE.close();
+
+      // Device percentages
+      const totalDeviceEvents = Object.values(devices as Record<string, number>).reduce((a, b) => a + b, 0) || 1;
+      const devicePct: Record<string, number> = {};
+      for (const [k, v] of Object.entries(devices as Record<string, number>)) {
+        devicePct[k] = Math.round((v / totalDeviceEvents) * 100);
+      }
+
       res.json({
         totalViews: views,
         totalClicks: clicks,
@@ -841,11 +860,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         periodViews: views,
         periodClicks: clicks,
         periodLeads: formLeads,
+        leadsCount,
         clickRate: views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0,
         uniqueVisitors,
         repeatVisitors,
         avgSessionViews: uniqueVisitors > 0 ? Math.round((views / uniqueVisitors) * 10) / 10 : 0,
         devices,
+        devicePct,
         topLinks: links.sort((a, b) => b.clickCount - a.clickCount).slice(0, 5),
         topCountries,
         dailyViews,
@@ -1316,6 +1337,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e) { res.status(500).send("Failed to update licence"); }
   });
 
+  // Sprint 8: Set free trial (tier + expiry date)
+  app.post("/admin/set-trial", requireAdmin as any, async (req, res) => {
+    try {
+      const userId = Number(req.body?.userId);
+      const tier = String(req.body?.trialTier || "").trim();
+      const expiry = String(req.body?.trialExpiry || "").trim();
+      if (!userId || !["pro", "business"].includes(tier) || !expiry) {
+        return res.status(400).send("Invalid input — userId, tier (pro/business), and expiry date required");
+      }
+      // Store as ISO date end-of-day
+      const expiryIso = new Date(expiry + "T23:59:59Z").toISOString();
+      setUserTrial(userId, tier, expiryIso);
+      res.redirect("/admin?trialSet=" + encodeURIComponent(userId));
+    } catch (e) { res.status(500).send("Failed to set trial"); }
+  });
+
   app.get("/admin", requireAdmin as any, async (req: Request, res: Response) => {
     // Read directly from SQLite for admin view
     const sqlite = require("better-sqlite3")(process.env.DB_PATH || "data.db") as import("better-sqlite3").Database;
@@ -1497,14 +1534,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         <td>${expiryCell}</td>
         <td class="email" style="font-size:10px">${l.stripe_subscription_id ? escHtml(l.stripe_subscription_id) : "—"}</td>
         <td>
-          <form method="POST" action="/admin/set-licence" style="display:inline-flex;gap:4px;align-items:center">
+          <form method="POST" action="/admin/set-licence" style="display:inline-flex;gap:4px;align-items:center;margin-bottom:3px">
             <input type="hidden" name="userId" value="${l.user_id}">
             <select name="tier" style="font-size:11px;padding:2px 4px;border:1px solid #d1d5db;border-radius:4px">
               <option value="free" ${selectedFree}>Free</option>
               <option value="pro" ${selectedPro}>Pro</option>
               <option value="business" ${selectedBiz}>Business</option>
             </select>
-            <button type="submit" style="background:#e06b1a;color:#fff;border:none;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">Save</button>
+            <button type="submit" style="background:#e06b1a;color:#fff;border:none;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">Set</button>
+          </form>
+          <form method="POST" action="/admin/set-trial" style="display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap">
+            <input type="hidden" name="userId" value="${l.user_id}">
+            <select name="trialTier" style="font-size:11px;padding:2px 4px;border:1px solid #c7d2fe;border-radius:4px;background:#eef2ff">
+              <option value="pro">Pro Trial</option>
+              <option value="business">Biz Trial</option>
+            </select>
+            <input type="date" name="trialExpiry" style="font-size:11px;padding:2px 4px;border:1px solid #c7d2fe;border-radius:4px;background:#eef2ff" required />
+            <button type="submit" style="background:#6366f1;color:#fff;border:none;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">Trial</button>
           </form>
         </td>
       </tr>`;
@@ -1588,6 +1634,7 @@ function filterTable(input,tbodyId){
 <div class="wrap">
   ${req.query.resetDone ? `<div style="background:#fef3c7;border:1px solid #f59e0b;padding:1rem;border-radius:8px;margin-bottom:1rem;">Password reset for <strong>${escHtml(String(req.query.resetDone))}</strong>. New password: <code style="font-size:1.1em;font-weight:bold;background:#fff;padding:2px 6px;border-radius:4px">${escHtml(String(req.query.newPass || ""))}</code><br><span style="font-size:11px;color:#92400e">User is also force-signed-out and must use this new password.</span></div>` : ""}
   ${req.query.signoutDone ? `<div style="background:#fee2e2;border:1px solid #fca5a5;padding:1rem;border-radius:8px;margin-bottom:1rem;">Sign-out flag set for <strong>${escHtml(String(req.query.signoutDone))}</strong>. They will be logged out on their next request.</div>` : ""}
+  ${req.query.trialSet ? `<div style="background:#eef2ff;border:1px solid #c7d2fe;padding:1rem;border-radius:8px;margin-bottom:1rem;">Trial activated for user ID <strong>${escHtml(String(req.query.trialSet))}</strong>.</div>` : ""}
 
   <div class="stats">
     <div class="stat"><div class="val">${fmt(users.length)}</div><div class="lbl">Total users</div></div>
@@ -1994,7 +2041,57 @@ export function registerLicenceRoutes(app: Express) {
     });
   });
 
-  // ── POST /api/ai/generate-page ───────────────────────────────────────────────
+  // ── POST /api/pages/:pageId/ai-analysis ───────────────────────────────
+  // Cached per page per day (in-memory Map, invalidates daily)
+  app.post("/api/pages/:pageId/ai-analysis", async (req: Request, res: Response) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Not authenticated" });
+    if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI not configured" });
+    try {
+      const pageId = parseInt(String(req.params.pageId));
+      if (!await assertOwnsPage(req, res, pageId)) return;
+      const today = new Date().toISOString().slice(0, 10);
+      const cacheKey = `${pageId}:${today}`;
+      const cached = aiAnalysisCache.get(cacheKey);
+      if (cached && cached.date === today) {
+        return res.json({ analysis: cached.result, cached: true });
+      }
+      // Rate limit: 20 req/user/hour
+      const rateLimitKey = `analysis:${req.session.userId}`;
+      const now = Date.now();
+      const bucket = aiRateLimit.get(rateLimitKey);
+      if (bucket && bucket.resetAt > now) {
+        if (bucket.count >= 20) return res.status(429).json({ error: "Rate limit exceeded" });
+        bucket.count++;
+      } else {
+        aiRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 60 * 60 * 1000 });
+      }
+      // Gather analytics context
+      const page = await storage.getPageById(pageId);
+      const events = await storage.getEventsByPage(pageId, 30);
+      const views = events.filter((e: any) => e.type === "view").length;
+      const clicks = events.filter((e: any) => e.type === "link_click").length;
+      const leads = events.filter((e: any) => e.type === "lead_submit").length;
+      let blocks: any[] = [];
+      try { blocks = JSON.parse((page as any)?.blocks || "[]"); } catch {}
+      const blockSummary = blocks.slice(0, 10).map((b: any) => `${b.type}: ${b.title || b.label || b.question || "(untitled)"}`).join(", ");
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const prompt = `You are a conversion optimisation expert for link-in-bio pages.\n\nPage: ${page?.title || "Untitled"}\nBlocks: ${blockSummary || "(none)"}\nLast 30 days: ${views} views, ${clicks} clicks, ${leads} leads\nClick rate: ${views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0}%\n\nProvide 3-5 concise, actionable recommendations for:\n1. Block placement and ordering to improve engagement\n2. Block type suggestions to add/remove\n3. Quick wins to improve click rate\n\nBe specific and direct. Format as a numbered list with one sentence per point.`;
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 400,
+        temperature: 0.7,
+      });
+      const result = completion.choices[0]?.message?.content || "Unable to generate analysis.";
+      aiAnalysisCache.set(cacheKey, { result, date: today });
+      return res.json({ analysis: result, cached: false });
+    } catch (e: any) {
+      console.error("AI analysis error:", e.message);
+      return res.status(500).json({ error: "AI analysis failed" });
+    }
+  });
+
+  // ── POST /api/ai/generate-page ─────────────────────────────────────────────────
   app.post("/api/ai/generate-page", async (req: Request, res: Response) => {
     if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI not configured — OPENAI_API_KEY missing" });
 

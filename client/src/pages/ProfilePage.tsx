@@ -23,7 +23,7 @@ import { Globe } from "lucide-react";
 // ─── Types ───────────────────────────────────────────────────
 interface Block {
   id: string;
-  type: "link" | "text" | "poll" | "lead-form" | "image" | "video" | "social-links" | "countdown" | "divider" | "button" | "testimonial" | "faq";
+  type: "link" | "text" | "poll" | "lead-form" | "image" | "video" | "social-links" | "countdown" | "divider" | "button" | "testimonial" | "faq" | "link";
   // link
   label?: string;
   url?: string;
@@ -769,6 +769,19 @@ export default function ProfilePage() {
   const featuredLinks = sortedLinks.filter(l => l.style === "featured");
   const regularLinks = sortedLinks.filter(l => l.style !== "featured");
 
+  // #4/#4a: WCAG AA auto-contrast for accent-coloured text on the info card background
+  // Returns white or black depending on luminance of the given colour
+  const wcagContrast = (hex: string): string => {
+    if (!hex || hex.length < 4) return "#000000";
+    const h = hex.replace("#", "");
+    const full = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
+    const r = parseInt(full.slice(0, 2), 16) / 255;
+    const g = parseInt(full.slice(2, 4), 16) / 255;
+    const b = parseInt(full.slice(4, 6), 16) / 255;
+    const lin = (c: number) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    const lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    return lum > 0.179 ? "#0a0a0b" : "#ffffff";
+  };
   // Parse blocks JSON
   let blocks: Block[] = [];
   try { blocks = JSON.parse(page.blocks || "[]"); } catch {}
@@ -796,6 +809,19 @@ export default function ProfilePage() {
   const luminance = getBackgroundLuminance(page.background || "none");
   const autoText = (page as any).textColor || (luminance === "dark" ? "#f5f5f7" : "#0a0a0b");
   const autoTextMuted = (page as any).textColor || (luminance === "dark" ? "rgba(245,245,247,0.72)" : "rgba(10,10,11,0.62)");
+  // #4/#4a: safeAccent — use accent if WCAG AA contrast passes against card bg, else fallback to autoText
+  const cardBgLuminance = luminance === "dark" ? 0.12 : 0.82;
+  const accentLuminance = (() => {
+    const h = accent.replace("#", "");
+    const full = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
+    const r = parseInt(full.slice(0, 2), 16) / 255;
+    const g = parseInt(full.slice(2, 4), 16) / 255;
+    const b = parseInt(full.slice(4, 6), 16) / 255;
+    const lin = (c: number) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  })();
+  const contrastRatio = (Math.max(accentLuminance, cardBgLuminance) + 0.05) / (Math.min(accentLuminance, cardBgLuminance) + 0.05);
+  const safeAccent = contrastRatio >= 4.5 ? accent : autoText;
 
   return (
     <div
@@ -847,13 +873,14 @@ export default function ProfilePage() {
           textAlign: "center",
           border: `1px solid ${luminance === "dark" ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)"}`
         }}>
-          {/* Avatar */}
+          {/* #1/#7a: Avatar — centred, correct size, no overflow. Pentagon/Diamond removed (#7d) */}
           {(() => {
             const shape = (page as any).avatarShape || "circle";
-            const avatarRadius = shape === "rounded" ? "var(--radius-lg)" : shape === "pentagon" || shape === "diamond" ? 0 : "50%";
-            const avatarClipPath = shape === "pentagon" ? "polygon(50% 0%,100% 38%,82% 100%,18% 100%,0% 38%)" : shape === "diamond" ? "polygon(50% 0%,100% 50%,50% 100%,0% 50%)" : undefined;
+            // #7d: pentagon/diamond removed; treat them as circle if somehow stored
+            const avatarRadius = shape === "rounded" ? "var(--radius-lg)" : shape === "square" ? "0px" : "50%";
             const avatarSize = isPreview ? 36 : 72;
             const avatarFontSize = isPreview ? "1.25rem" : "1.75rem";
+            const avatarInitialBg = wcagContrast(accent) === "#ffffff" ? accent : autoText;
             return page.avatarUrl ? (
               <img
                 src={resolveMediaUrl(page.avatarUrl)}
@@ -861,27 +888,25 @@ export default function ProfilePage() {
                 className="avatar-img"
                 style={{
                   width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
-                  clipPath: avatarClipPath,
                   objectFit: "cover",
                   margin: "0 auto 0.75rem",
                   display: "block",
                   flexShrink: 0,
-                  minWidth: 0,
-                  maxWidth: "100%",
-                  border: avatarClipPath ? undefined : "3px solid var(--color-surface)",
+                  minWidth: avatarSize,
+                  maxWidth: avatarSize,
+                  border: "3px solid var(--color-surface)",
                   boxShadow: "var(--shadow-md)"
                 }}
               />
             ) : (
               <div style={{
                 width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
-                clipPath: avatarClipPath,
-                background: accent,
-                color: "#fff",
+                background: avatarInitialBg,
+                color: wcagContrast(avatarInitialBg),
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: avatarFontSize, fontWeight: 800,
                 margin: "0 auto 0.75rem",
-                border: avatarClipPath ? undefined : "3px solid var(--color-surface)",
+                border: "3px solid var(--color-surface)",
                 boxShadow: "var(--shadow-md)"
               }}>
                 {page.ownerName.charAt(0).toUpperCase()}
@@ -889,23 +914,31 @@ export default function ProfilePage() {
             );
           })()}
 
+          {/* #4a: Name uses safeAccent (WCAG AA checked) */}
           <h1 style={{
             fontSize: "var(--text-xl)", fontWeight: 800,
             fontFamily: fontFamily,
-            letterSpacing: "-0.025em", marginBottom: "0.375rem"
+            letterSpacing: "-0.025em", marginBottom: "0.375rem",
+            color: safeAccent,
           }}>
             {page.ownerName}
           </h1>
 
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "0.75rem", fontWeight: 500, fontFamily }}>
+          {/* #4a: Headline uses safeAccent */}
+          <p style={{ fontSize: "var(--text-sm)", color: safeAccent, marginBottom: "0.75rem", fontWeight: 500, fontFamily, opacity: 0.85 }}>
             {page.title}
           </p>
 
+          {/* #1: Bio moved into the info card */}
+          {page.bio && (
+            <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.7, color: autoTextMuted, fontFamily, marginBottom: "0.75rem", textAlign: "center" }}>{page.bio}</p>
+          )}
+
           {page.location && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", marginBottom: "0.5rem" }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: autoTextMuted, flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              {/* G14: use autoTextMuted (luminance-aware) instead of --color-text-faint so it reads on any bg */}
-              <span style={{ fontSize: "var(--text-xs)", color: autoTextMuted, textShadow: "0 1px 3px rgba(0,0,0,0.18)", fontFamily }}>{page.location}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: safeAccent, flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              {/* #4a: location uses safeAccent */}
+              <span style={{ fontSize: "var(--text-xs)", color: safeAccent, fontFamily }}>{page.location}</span>
             </div>
           )}
 
@@ -915,7 +948,7 @@ export default function ProfilePage() {
               {page.phone && (
                 <a
                   href={`tel:${page.phone}`}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: accent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30`, fontFamily }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: safeAccent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30`, fontFamily }}
                   data-testid="link-phone"
                 >
                   📞 {page.phone}
@@ -924,7 +957,7 @@ export default function ProfilePage() {
               {page.contactEmail && (
                 <a
                   href={`mailto:${page.contactEmail}`}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: accent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30`, fontFamily }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: safeAccent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30`, fontFamily }}
                   data-testid="link-contact-email"
                 >
                   ✉️ {page.contactEmail}
@@ -933,29 +966,12 @@ export default function ProfilePage() {
             </div>
           )}
 
+          {/* #4a: Profile views uses safeAccent */}
           <div style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.75rem", background: "var(--color-surface)", borderRadius: "var(--radius-full)", fontSize: "var(--text-xs)", border: "1px solid var(--color-border)" }}>
-            <span style={{ color: "var(--color-success)" }}>●</span>
-            <span style={{ fontWeight: 600 }}>{(page.viewCount + 1).toLocaleString()} profile views</span>
+            <span style={{ color: safeAccent }}>●</span>
+            <span style={{ fontWeight: 600, color: safeAccent }}>{(page.viewCount + 1).toLocaleString()} profile views</span>
           </div>
         </div>
-
-        {/* Bio — glass finish (#5a) */}
-        {page.bio && (
-          <div
-            className={blockStyle !== "divider" ? `block-style-${blockStyle} block-style-glass-info` : undefined}
-            style={{
-              padding: "1.25rem",
-              background: luminance === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)",
-              backdropFilter: "blur(12px)",
-              WebkitBackdropFilter: "blur(12px)",
-              border: `1px solid ${luminance === "dark" ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)"}`,
-              borderRadius: blockRadius,
-              marginBottom: "1.25rem"
-            }}
-          >
-            <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: "var(--color-text)", fontFamily }}>{page.bio}</p>
-          </div>
-        )}
 
         {/* Featured links */}
         {featuredLinks.map(link => (
@@ -978,6 +994,12 @@ export default function ProfilePage() {
               let inner: ReactNode = null;
               const isDivider = block.type === "divider";
               switch (block.type) {
+                // #3/#9b: migrated link blocks rendered as link cards
+                case "link": {
+                  const linkItem = { id: (block as any).id ?? 0, label: block.label || block.title || "", url: block.url || "", description: block.description ?? null, icon: block.icon || "", style: block.style || "default", position: (block as any).position ?? 0, clickCount: 0 };
+                  inner = <TrackedLinkCard key={block.id} link={linkItem as any} accentColor={accent} />;
+                  break;
+                }
                 case "text": inner = <TextBlock key={block.id} block={block} accent={accent} />; break;
                 case "poll": inner = <PollBlock key={block.id} block={block} pageId={page.id} accentColor={accent} />; break;
                 case "lead-form": inner = <LeadForm key={block.id} pageId={page.id} accentColor={accent} block={block} />; break;

@@ -395,13 +395,13 @@ function OverviewPanel({
   const clickRate = totalViews > 0 ? (Math.round((totalClicks / totalViews) * 1000) / 10).toFixed(1) : "0.0";
 
   // G3a: 'All Time' label when days=0
-  const periodLabel = days === 0 ? "All time" : `${days}d window`;
+  const periodLabel = days === 0 ? "All time" : `Last ${days} days`;
   // S7 #21/#21b: rename Clicks → Interactions, Click Rate → Interaction Rate
   const statsData = [
-    { label: "Total Views", value: totalViews.toLocaleString(), delta: periodLabel, up: true },
-    { label: "Total Interactions", value: totalClicks.toLocaleString(), delta: periodLabel, up: true },
-    { label: "Interaction Rate", value: `${clickRate}%`, delta: days === 0 ? "All time avg" : `${days}d average`, up: true },
-    { label: "Total Leads", value: totalLeads.toLocaleString(), delta: periodLabel, up: true },
+    { label: "Page views", value: totalViews.toLocaleString(), delta: periodLabel },
+    { label: "Link interactions", value: totalClicks.toLocaleString(), delta: periodLabel },
+    { label: "Interaction rate", value: `${clickRate}%`, delta: days === 0 ? "All-time avg" : `${days}-day avg`, tooltip: "Link clicks ÷ page views" },
+    { label: "Leads captured", value: totalLeads.toLocaleString(), delta: periodLabel },
   ];
 
   const topLinks = analytics?.topLinks ?? [];
@@ -576,9 +576,9 @@ function OverviewPanel({
         <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
           {statsData.map(s => (
             <div key={s.label} className="stat-card" data-testid={`stat-${s.label.toLowerCase().replace(/\s+/g, "-")}`}>
-              <div className="stat-label">{s.label}</div>
+              <div className="stat-label" title={(s as any).tooltip || undefined}>{s.label}{(s as any).tooltip && <span style={{ marginLeft: 4, fontSize: 10, color: "var(--color-text-faint)", cursor: "help" }}>ⓘ</span>}</div>
               <div className="stat-value" style={{ marginTop: "0.5rem" }}>{s.value}</div>
-              <div className={`stat-delta ${s.up ? "up" : "down"}`}>{s.delta}</div>
+              <div className="stat-delta" style={{ color: "var(--color-text-faint)" }}>{s.delta}</div>
             </div>
           ))}
         </div>
@@ -659,7 +659,7 @@ function OverviewPanel({
                     <div style={{ height: "100%", width: `${interactionPct}%`, background: barColor, borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                   </div>
                   <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                    <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {totalPageViews}</span>
+                    <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Page views: {totalPageViews}</span>
                     <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: barColor, marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
                   </div>
                 </div>
@@ -3020,25 +3020,28 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
               : "No data";
             const cards = [
               { label: days === 0 ? "Total views (all time)" : `Views (${days}d)`, value: (days === 0 ? analytics.totalViews : analytics.periodViews)?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodViews ?? 0, prev?.views ?? 0) },
-              { label: days === 0 ? "Avg views (all time)" : `Avg views (${days}d)`, value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—", delta: null },
+              { label: "Views per visitor", value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—", delta: null, tooltip: "Average page views per unique visitor" },
               { label: days === 0 ? "Interactions (all time)" : `Interactions (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodClicks ?? 0, prev?.clicks ?? 0) },
-              { label: "Interaction rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%", delta: prev ? pctLabel(analytics.clickRate ?? 0, prevClickRate) : null },
+              { label: "Interaction rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%", delta: prev ? pctLabel(analytics.clickRate ?? 0, prevClickRate) : null, tooltip: "Link clicks ÷ page views for this period" },
               { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString(), delta: pctLabel(analytics.uniqueVisitors ?? 0, prev?.uniqueVisitors ?? 0) },
               { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString(), delta: prev ? pctLabel(analytics.repeatVisitors ?? 0, prev?.repeatVisitors ?? 0) : null },
               { label: "Best day", value: bestDayLabel, delta: null },
-              { label: "Leads captured", value: (analytics.leadsCount ?? 0).toLocaleString(), delta: null },
+              { label: days === 0 ? "Leads (all time)" : `Leads (${days}d)`, value: (analytics.leadsCount ?? 0).toLocaleString(), delta: null, tooltip: "Form submissions in this period" },
             ];
             return (
               <div className="stats-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
                 {cards.map(s => (
                   <div key={s.label} className="stat-card">
-                    <div className="stat-label">{s.label}</div>
+                    <div className="stat-label" title={(s as any).tooltip || undefined}>
+                      {s.label}{(s as any).tooltip && <span style={{ marginLeft: 4, fontSize: 10, color: "var(--color-text-faint)", cursor: "help" }}>ⓘ</span>}
+                    </div>
                     <div className="stat-value" style={{ marginTop: "0.5rem" }}>{s.value}</div>
                     {s.delta && (
                       <div style={{ fontSize: 11, fontWeight: 700, marginTop: "0.375rem", color: s.delta.up ? "var(--color-success)" : "#ef4444" }}>
                         {s.delta.text} vs prev {days}d
                       </div>
                     )}
+                    {!(s.delta) && (s as any).tooltip === undefined && <div style={{ height: 16 }} />}
                   </div>
                 ))}
               </div>
@@ -3156,7 +3159,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                         <div style={{ height: "100%", width: `${interactionPct}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                       </div>
                       <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {totalPageViews}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Page views: {totalPageViews}</span>
                         <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
                       </div>
                     </div>
@@ -3494,6 +3497,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
       "lead-form": "Lead Form", "button": "Button", "poll": "Poll", "faq": "FAQ",
       "countdown": "Countdown", "video": "Video", "image": "Image", "text": "Text",
       "testimonial": "Testimonial", "social-links": "Social Links", "divider": "Divider", "link": "Link",
+      "vcard": "vCard", "booking": "Booking",
     };
     const typeLabel = BLOCK_TYPE_LABELS[t] || t.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
     // #5: for video blocks, prefer caption as the label if no title
@@ -3508,6 +3512,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
   const blockTypeIcon: Record<string, string> = {
     button: "🔗", text: "📝", image: "🖼️", video: "🎥", faq: "❓", poll: "📊",
     countdown: "⏱️", "lead-form": "📋", "social-links": "🌐", testimonial: "💬", divider: "➖", link: "🔗",
+    vcard: "💾", booking: "📅",
   };
 
   // G6d: expand social-links blocks into per-platform rows
@@ -3557,8 +3562,11 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
   // G6c: for display, filter out non-interaction types from live list
   const displayLiveBlocks = liveBlocks.filter((b: any) => !NON_INTERACTION_TYPES.has(b.type));
 
-  // #24: sum aggregated counts, not row count
-  const totalInteractions = periodEvents.reduce((sum: number, e: any) => sum + (e.count ?? 1), 0);
+  // #24: sum aggregated counts, not row count — exclude view events
+  const totalInteractions = periodEvents.filter((e: any) => {
+    const et: string = e.eventType || e.type || "";
+    return et !== "view";
+  }).reduce((sum: number, e: any) => sum + (e.count ?? 1), 0);
 
   // G5: unified pill style — matches Overview and Analytics panels exactly
   const pillStyle = (active: boolean): React.CSSProperties => ({
@@ -3577,7 +3585,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "0.75rem" }}>
         <div>
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>Block Analysis</h1>
-          <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginTop: "0.25rem" }}>Interaction tracking per content block</p>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginTop: "0.25rem" }}>How visitors interact with each block — {days === 0 ? "all time" : `last ${days} days`}</p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
           {pages.length > 1 && (
@@ -3595,14 +3603,15 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1.5rem" }}>
         {[
-          { label: "Total interactions", value: totalInteractions },
-          { label: "Live blocks", value: liveBlocks.length },
-          { label: "Archived", value: archivedBlocks.length },
-          { label: "Hidden", value: hiddenBlocks.length },
+          { label: days === 0 ? "Interactions (all time)" : `Interactions (${days}d)`, value: totalInteractions, sub: "Excl. view events" },
+          { label: "Trackable blocks", value: displayLiveBlocks.length, sub: `of ${liveBlocks.length} live` },
+          { label: "Archived", value: archivedBlocks.length, sub: "Off your page" },
+          { label: "Hidden", value: hiddenBlocks.length, sub: "Fully removed" },
         ].map(card => (
           <div key={card.label} className="card" style={{ padding: "1rem", textAlign: "center" }}>
             <div style={{ fontSize: "var(--text-xl)", fontWeight: 800, color: "var(--color-primary)", fontFamily: "Cabinet Grotesk, sans-serif" }}>{card.value}</div>
             <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: "0.25rem" }}>{card.label}</div>
+            {card.sub && <div style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: "0.125rem" }}>{card.sub}</div>}
           </div>
         ))}
       </div>
@@ -3699,8 +3708,9 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             </h2>
             <input className="input" placeholder="Search live blocks…" value={searchLive} onChange={e => setSearchLive(e.target.value)} style={{ fontSize: 12, marginBottom: "0.75rem" }} />
             {liveBlocks.length > displayLiveBlocks.length && (
-              <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>Text, Image, Divider, and Testimonial blocks are excluded from interaction tracking.</p>
+              <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Text, image, divider, vCard and testimonial blocks are excluded from interaction tracking.</p>
             )}
+            <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>“Page views” is the total number of page views in this period — every block is shown on every page load.</p>
             {displayLiveBlocks.length === 0 ? (
               <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No trackable blocks on this page.</p>
             ) : (
@@ -3728,7 +3738,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                             <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                           </div>
                           <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {pageViewsTotal}</span>
+                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Page views: {pageViewsTotal}</span>
                             <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {cnt}</span>
                           </div>
                         </div>
@@ -3753,7 +3763,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                         <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                       </div>
                       <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {pageViewsTotal}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Page views: {pageViewsTotal}</span>
                         <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {stats.interactions}</span>
                       </div>
                     </div>
@@ -3771,7 +3781,10 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
               Archived ({archivedBlocks.length})
             </h2>
             {archivedBlocks.length > 0 && (
-              <input className="input" placeholder="Search archived blocks…" value={searchArchived} onChange={e => setSearchArchived(e.target.value)} style={{ fontSize: 12, marginBottom: "0.75rem" }} />
+              <>
+                <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Stats shown are all-time totals for each block (not limited to the selected date range).</p>
+                <input className="input" placeholder="Search archived blocks…" value={searchArchived} onChange={e => setSearchArchived(e.target.value)} style={{ fontSize: 12, marginBottom: "0.75rem" }} />
+              </>
             )}
             {archivedBlocks.length === 0 ? (
               <div style={{ textAlign: "center", padding: "1.25rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No archived blocks. Archive a block from the Live section to remove it from your page.</div>
@@ -3798,7 +3811,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                         <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-text-faint)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                       </div>
                       <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.4, marginRight: 3, verticalAlign: "middle" }} />Views: {views}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.4, marginRight: 3, verticalAlign: "middle" }} />All-time views: {views}</span>
                         <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-text-faint)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
                       </div>
                     </div>
@@ -3847,7 +3860,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                         <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-text-faint)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                       </div>
                       <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.4, marginRight: 3, verticalAlign: "middle" }} />Views: {views}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.4, marginRight: 3, verticalAlign: "middle" }} />All-time views: {views}</span>
                         <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-text-faint)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
                       </div>
                     </div>

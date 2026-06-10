@@ -29,7 +29,8 @@ const icons: Record<string, JSX.Element> = {
   close: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   blocks: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="8" height="5" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="3" y="11" width="8" height="5" rx="1"/><rect x="13" y="11" width="8" height="5" rx="1"/><rect x="3" y="19" width="18" height="2" rx="1"/></svg>,
   share: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
-  contacts: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  // #14: Contacts uses a different icon (address-book / card-style) to distinguish from Leads
+  contacts: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h8"/></svg>,
   ai: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>,
 };
 
@@ -46,16 +47,16 @@ function blockTypeEmoji(type: string): string {
 }
 
 // --- Nav items (leads dot injected dynamically) ---
+// #2/#3/#4/#16: renamed tabs, reordered (Overview > Page Analytics > Block Analytics), Referrals removed
 const navItems = [
-  { id: "overview", label: "Overview", icon: "grid" },
-  { id: "blocks", label: "Blocks", icon: "blocks" },
-  { id: "analytics", label: "Analytics", icon: "chart" },
-  { id: "editor", label: "Page Editor", icon: "edit" },
-  { id: "leads", label: "Leads", icon: "users" },
-  { id: "contacts", label: "Contacts", icon: "contacts" },
-  { id: "settings", label: "Settings", icon: "settings" },
-  { id: "billing", label: "Billing", icon: "billing" },
-  { id: "referrals", label: "Referrals", icon: "share" },
+  { id: "overview",   label: "Overview",        icon: "grid"    },
+  { id: "analytics", label: "Page Analytics",   icon: "chart"   },
+  { id: "blocks",    label: "Block Analytics",  icon: "blocks"  },
+  { id: "editor",    label: "Page Editor",      icon: "edit"    },
+  { id: "leads",     label: "Leads",            icon: "users"   },
+  { id: "contacts",  label: "Contacts",         icon: "contacts" },
+  { id: "settings",  label: "Settings",         icon: "settings" },
+  { id: "billing",   label: "Billing",          icon: "billing" },
 ];
 
 // --- Empty state when user has no pages ---
@@ -251,8 +252,8 @@ function CopyUrlButton({ url, copyValue, label }: { url: string; copyValue?: str
   );
 }
 
-// --- QR Code card ---
-function QRCodeCard({ url, username }: { url: string; username?: string }) {
+// --- QR Code card --- #7: gated to Pro/Business only
+function QRCodeCard({ url, username, tier }: { url: string; username?: string; tier?: string }) {
   const [show, setShow] = useState(false);
   const svgRef = useRef<HTMLDivElement>(null);
 
@@ -269,21 +270,25 @@ function QRCodeCard({ url, username }: { url: string; username?: string }) {
     URL.revokeObjectURL(url2);
   };
 
+  // #7: QR codes are Pro/Business only
+  const isLocked = tier === "free" || !tier;
   return (
     <div style={{ marginBottom: "0.75rem" }}>
       <button
         type="button"
-        onClick={() => setShow(s => !s)}
-        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0.625rem", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)" }}
+        onClick={() => !isLocked && setShow(s => !s)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0.625rem", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", cursor: isLocked ? "default" : "pointer", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", opacity: isLocked ? 0.7 : 1 }}
         data-testid="button-toggle-qr"
       >
         <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="5" height="5"/><rect x="16" y="3" width="5" height="5"/><rect x="3" y="16" width="5" height="5"/><rect x="10" y="10" width="4" height="4"/><path d="M16 16h5v5h-5z" opacity="0.4"/></svg>
           QR code
+          {isLocked && <span style={{ fontSize: 9, padding: "1px 5px", background: "var(--color-primary-highlight)", color: "var(--color-primary)", borderRadius: 999, fontWeight: 700, marginLeft: 4 }}>PRO</span>}
         </span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points={show ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}/></svg>
+        {!isLocked && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points={show ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}/></svg>}
+        {isLocked && <span style={{ fontSize: 10, color: "var(--color-text-faint)" }}>Upgrade to unlock</span>}
       </button>
-      {show && (
+      {show && !isLocked && (
         <div style={{ padding: "0.75rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", marginTop: "0.375rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.625rem" }}>
           <div ref={svgRef} style={{ background: "white", padding: "0.5rem", borderRadius: "var(--radius-sm)" }}>
             <QRCodeSVG value={url} size={140} fgColor="#1a1a1a" bgColor="#ffffff" level="M" />
@@ -357,6 +362,10 @@ function OverviewPanel({
     },
     enabled: !!selectedPageId,
   });
+
+  // #7: licence tier for QR gate
+  const { data: licDataOverview } = useLicence();
+  const licTier = (licDataOverview as any)?.tier || "free";
 
   // Fetch leads for active page (for onboarding “capture first lead”)
   const { data: leadsForPage } = useQuery<any[]>({
@@ -722,8 +731,8 @@ function OverviewPanel({
           {/* Share your link section */}
           <div className="card" style={{ padding: "1.25rem" }}>
             <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>Share your link</div>
-            {/* QR Code */}
-            <QRCodeCard url={pageUrl} username={page?.username} />
+            {/* QR Code — #7: Pro/Business only, tier passed from OverviewPanel */}
+            <QRCodeCard url={pageUrl} username={page?.username} tier={licTier} />
 
             {/* G5: URL display — copy WITHOUT https:// + #12 native share */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.625rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", marginBottom: "0.625rem" }}>
@@ -1234,7 +1243,7 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
         {localBlocks.map((block, idx) => (
-          <div key={block.id} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+          <div key={block.id} style={{ background: newBlockIds?.has(block.id) ? "rgba(224,107,26,0.06)" : "var(--color-surface)", border: newBlockIds?.has(block.id) ? "1.5px solid rgba(224,107,26,0.35)" : "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
             {editingBlockId === block.id ? (
               <div style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
                 {block.type === "text" && (
@@ -1768,6 +1777,22 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
                     }
                   });
                   updateData.blocks = JSON.stringify(normalised);
+                  // #13/#13a: Mark all AI-generated blocks as new for highlighting
+                  const newIds = (data.blocks as any[]).flatMap((b: any) => {
+                    const gid = () => "blk-" + Math.random().toString(36).slice(2, 8);
+                    switch (b.type) {
+                      case "link": return [b.id || gid()];
+                      case "socials": return [b.id || gid()];
+                      case "lead_form": return [b.id || gid()];
+                      default: return [b.id || gid()];
+                    }
+                  });
+                  // Re-derive ids from normalised (already have genId calls above, need to align)
+                  try {
+                    const parsed = JSON.parse(updateData.blocks || "[]");
+                    setNewBlockIds(prev => new Set([...Array.from(prev), ...parsed.map((b: any) => b.id)]));
+                  } catch {}
+                  void newIds;
                 }
                 await savePageMutation.mutateAsync(updateData);
                 setAiWizardOpen(false);
@@ -3771,6 +3796,8 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
 }
 
 function LeadsPanel({ pages }: { pages: any[] }) {
+  const { data: leadsPanelLic } = useLicence();
+  const leadsTier = (leadsPanelLic as any)?.tier || "free";
   const [selectedPageId, setSelectedPageId] = useState<number | null>(pages[0]?.id ?? null);
   const [selectedLead, setSelectedLead] = useState<any | null>(null);
   const [expandedMessage, setExpandedMessage] = useState<number | null>(null);
@@ -4006,7 +4033,11 @@ function LeadsPanel({ pages }: { pages: any[] }) {
             </select>
           )}
           <button className="btn btn-primary btn-sm" onClick={() => setAddLeadOpen(true)} data-testid="button-add-lead">+ Add lead</button>
-          <button className="btn btn-secondary btn-sm" onClick={exportCSV} data-testid="button-export-leads">↓ Export CSV</button>
+          {leadsTier === "business" ? (
+            <button className="btn btn-secondary btn-sm" onClick={exportCSV} data-testid="button-export-leads">↓ Export CSV</button>
+          ) : (
+            <button className="btn btn-secondary btn-sm" style={{ opacity: 0.6, cursor: "default" }} title="Business plan required" data-testid="button-export-leads-locked">↓ Export CSV <span style={{ fontSize: 9, padding: "1px 5px", background: "rgba(224,107,26,0.15)", color: "var(--color-primary)", borderRadius: 999, fontWeight: 700, marginLeft: 4 }}>BIZ</span></button>
+          )}
         </div>
       </div>
 
@@ -4191,6 +4222,8 @@ function FollowUpBadge({ dateStr }: { dateStr: string }) {
 }
 
 function ContactsPanel({ pages }: { pages: any[] }) {
+  const { data: contactsPanelLic } = useLicence();
+  const contactsTier = (contactsPanelLic as any)?.tier || "free";
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [contactPageFilter, setContactPageFilter] = useState<number | "all">("all");
   const [addOpen, setAddOpen] = useState(false);
@@ -4198,11 +4231,8 @@ function ContactsPanel({ pages }: { pages: any[] }) {
   const [search, setSearch] = useState(""); // legacy — kept for compat
   const [filterCategory, setFilterCategory] = useState("name");
   const [filterText, setFilterText] = useState("");
-  const [notificationStatus, setNotificationStatus] = useState<NotificationPermission | "unsupported">(typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported");
-  // G13: track dismissed banner IDs in component state (so banner doesn't re-show on tab switch)
+  // #15: notificationStatus and sessionNotifiedIds removed (browser push notifications disabled)
   const [dismissedOverdueIds, setDismissedOverdueIds] = useState<Set<number>>(new Set());
-  // #8: track contacts that already had a notification fired this session (in-memory ref, not state)
-  const sessionNotifiedIds = useRef<Set<number>>(new Set());
 
   const { data: contacts, isLoading } = useQuery<any[]>({
     queryKey: ["/api/contacts"],
@@ -4359,47 +4389,10 @@ function ContactsPanel({ pages }: { pages: any[] }) {
     new Date(c.followUpDate).getTime() - Date.now() < 86400000
   );
 
-  // G13: fire browser notifications only once per contact per day (DB-persisted via overdue_notified_at)
-  const notifyMutation = useMutation({
-    mutationFn: async (contactId: number) => {
-      const res = await apiRequest("PATCH", `/api/contacts/${contactId}`, { overdueNotifiedAt: new Date().toISOString() });
-      if (!res.ok) throw new Error("Failed to update");
-      return res.json();
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/contacts"] }); },
-  });
+  // #15: Browser push notifications for overdue follow-ups removed (was a nuisance)
+  // notifyMutation and useEffect that fired new Notification() removed entirely
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission !== "granted") return;
-    const dueContacts = (contacts || []).filter((c: any) => {
-      if (!c.followUpDate || c.followUpDone) return false;
-      if (new Date(c.followUpDate).getTime() - Date.now() > 3600000) return false;
-      // Already fired a notification for this contact this session
-      if (sessionNotifiedIds.current.has(c.id)) return false;
-      // Only notify if overdue_notified_at is null or was set more than 24h ago
-      if (c.overdueNotifiedAt) {
-        const lastNotified = new Date(c.overdueNotifiedAt).getTime();
-        if (Date.now() - lastNotified < 86400000) return false;
-      }
-      return true;
-    });
-    dueContacts.forEach((c: any) => {
-      try {
-        new Notification("Follow-up due", { body: `${c.name} — ${c.followUpNote || "No details"}` });
-        sessionNotifiedIds.current.add(c.id);
-        notifyMutation.mutate(c.id);
-      } catch {}
-    });
-  }, [contacts]);
-
-  const enableNotifications = async () => {
-    if (!("Notification" in window)) return;
-    try {
-      const result = await Notification.requestPermission();
-      setNotificationStatus(result);
-    } catch {}
-  };
+  // #15: enableNotifications removed — browser push notifications disabled
 
   const exportCsv = () => {
     const rows = [["Name", "Email", "Company", "Phone", "Source", "Created"]];
@@ -4430,10 +4423,12 @@ function ContactsPanel({ pages }: { pages: any[] }) {
               {pages.map((p: any) => <option key={p.id} value={p.id}>linkbay.ai/{p.username}</option>)}
             </select>
           )}
-          {notificationStatus !== "granted" && notificationStatus !== "unsupported" && (
-            <button onClick={enableNotifications} className="btn btn-secondary btn-sm" data-testid="button-enable-notifications">🔔 Enable notifications</button>
+          {/* #15: browser notification button removed */}
+          {contactsTier === "business" ? (
+            <button onClick={exportCsv} className="btn btn-secondary btn-sm" data-testid="button-export-contacts">Export CSV</button>
+          ) : (
+            <button className="btn btn-secondary btn-sm" style={{ opacity: 0.6, cursor: "default" }} title="Business plan required" data-testid="button-export-contacts-locked">Export CSV <span style={{ fontSize: 9, padding: "1px 5px", background: "rgba(224,107,26,0.15)", color: "var(--color-primary)", borderRadius: 999, fontWeight: 700, marginLeft: 4 }}>BIZ</span></button>
           )}
-          <button onClick={exportCsv} className="btn btn-secondary btn-sm" data-testid="button-export-contacts">Export CSV</button>
           <button onClick={() => setAddOpen(true)} className="btn btn-primary btn-sm" data-testid="button-add-contact">+ Add contact</button>
         </div>
       </div>
@@ -5198,6 +5193,18 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
           </div>
         )}
       </div>
+
+      {/* #16: Referrals moved into Settings */}
+      <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem" }}>
+        <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.25rem" }}>Referrals</h2>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>Earn rewards by sharing Linkbay with friends.</p>
+        <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>🎁</div>
+        <h3 style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.375rem" }}>Referral programme coming soon</h3>
+        <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", lineHeight: 1.6, marginBottom: "0.75rem" }}>We're building a referral programme where you'll earn rewards for every friend who joins Linkbay. Stay tuned!</p>
+        <div style={{ padding: "0.75rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
+          Your referral link: <strong style={{ color: "var(--color-primary)" }}>linkbay.ai/r/{user?.username || "..."}</strong>
+        </div>
+      </div>
     </div>
   );
 }
@@ -5843,20 +5850,6 @@ export default function DashboardPage() {
         );
       case "settings": return <SettingsPanel user={user} pages={pages} onLogout={async () => { await logout(); navigate("/"); }} />;
       case "billing": return <BillingPanel />;
-      case "referrals": return (
-        <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
-          <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Referrals</h1>
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Earn rewards by sharing Linkbay with friends.</p>
-          <div className="card" style={{ padding: "1.5rem", maxWidth: 480 }}>
-            <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>🎁</div>
-            <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>Referral programme coming soon</h2>
-            <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", lineHeight: 1.6 }}>We’re building a referral programme where you’ll earn rewards for every friend who joins Linkbay. Stay tuned!</p>
-            <div style={{ marginTop: "1rem", padding: "0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
-              Your referral link: <strong style={{ color: "var(--color-primary)" }}>linkbay.ai/r/{(user as any)?.username || "..."}</strong>
-            </div>
-          </div>
-        </div>
-      );
       default: return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
     }
   };

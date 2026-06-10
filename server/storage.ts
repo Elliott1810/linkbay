@@ -508,16 +508,36 @@ export class DatabaseStorage implements IStorage {
     ).all(pageId, since) as PageEvent[];
   }
   async getDailyViews(pageId: number, days = 30, pageSince?: string): Promise<Array<{ date: string; count: number }>> {
-    // G3b FIX: cap chart points at 60. For >60 days use weekly grouping.
-    const useWeekly = days > 60;
-    if (useWeekly) {
-      // Group by ISO week — return up to 52 weekly buckets
-      // Sprint 8: for All-time, use page creation date as since
+    // Determine bucketing: daily (<= 60 days), weekly (61-180 days), monthly (>180 days)
+    // For all-time (days=3650) use actual page age from pageSince to decide
+    let ageInDays = days;
+    if (pageSince) {
+      const created = new Date(pageSince);
+      ageInDays = Math.round((Date.now() - created.getTime()) / 86400000);
+    }
+    const useMonthly = ageInDays > 180;
+    const useWeekly = !useMonthly && ageInDays > 60;
+
+    if (useMonthly) {
+      // Group by year-month — YYYY-MM format
       const since = pageSince
         ? pageSince.split("T")[0]
-        : days >= 3650
-          ? new Date(Date.now() - 365 * 2 * 86400000).toISOString().split("T")[0]
-          : new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+        : new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+      const rows = sqlite.prepare(`
+        SELECT strftime('%Y-%m', created_at) as date, COUNT(*) as count
+        FROM page_events
+        WHERE page_id = ? AND type = 'view' AND date(created_at) >= ?
+        GROUP BY strftime('%Y-%m', created_at)
+        ORDER BY date ASC
+      `).all(pageId, since) as Array<{ date: string; count: number }>;
+      return rows;
+    }
+
+    if (useWeekly) {
+      // Group by ISO week — return weekly buckets
+      const since = pageSince
+        ? pageSince.split("T")[0]
+        : new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
       const rows = sqlite.prepare(`
         SELECT strftime('%Y-W%W', created_at) as date, COUNT(*) as count
         FROM page_events

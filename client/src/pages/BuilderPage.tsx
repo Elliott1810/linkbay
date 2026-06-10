@@ -752,7 +752,6 @@ function AISuggestionsStep({
         {/* Text input */}
         {currentQ.type === "text" && (
           <textarea
-            autoFocus
             rows={3}
             value={currentVal}
             onChange={e => setAnswers(a => ({ ...a, [currentQ.key]: e.target.value }))}
@@ -1156,6 +1155,100 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
 // ─── Step 3: Add links & blocks ──────────────────────────────
 const FREE_BLOCK_LIMIT = 5;
 
+// #11: Social platform inputs for Step 3
+const SOCIAL_PLATFORMS = [
+  { key: "instagram", label: "Instagram", icon: "📷", placeholder: "https://instagram.com/yourhandle" },
+  { key: "twitter", label: "X / Twitter", icon: "𝕏", placeholder: "https://x.com/yourhandle" },
+  { key: "tiktok", label: "TikTok", icon: "🎵", placeholder: "https://tiktok.com/@yourhandle" },
+  { key: "linkedin", label: "LinkedIn", icon: "💼", placeholder: "https://linkedin.com/in/yourprofile" },
+  { key: "youtube", label: "YouTube", icon: "▶️", placeholder: "https://youtube.com/@yourchannel" },
+];
+
+function SocialLinksSection({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  // Find existing social-links block
+  const existingIdx = state.blocks.findIndex(b => b.type === "social-links");
+  const existing = existingIdx >= 0 ? state.blocks[existingIdx] : null;
+  const currentSocials: Array<{ platform: string; url: string }> = (existing as any)?.socials || [];
+
+  const getSocialUrl = (key: string) => {
+    const found = currentSocials.find(s => s.platform === key || s.platform === key.charAt(0).toUpperCase() + key.slice(1));
+    return found?.url || urls[key] || "";
+  };
+
+  const handleChange = (key: string, val: string) => {
+    const newUrls = { ...urls, [key]: val };
+    setUrls(newUrls);
+    // Build new socials array from all platforms with non-empty URLs
+    const newSocials = SOCIAL_PLATFORMS
+      .map(p => ({ platform: p.key, url: getSocialUrl(p.key) }))
+      .map(s => s.platform === key ? { ...s, url: val } : s)
+      .filter(s => s.url.trim());
+    if (newSocials.length === 0) {
+      // Remove block if no socials
+      if (existingIdx >= 0) {
+        update({ blocks: state.blocks.filter((_, i) => i !== existingIdx) });
+      }
+    } else {
+      const genId = () => Math.random().toString(36).slice(2, 10);
+      if (existingIdx >= 0) {
+        const updated = state.blocks.map((b, i) => i === existingIdx ? { ...b, socials: newSocials } : b);
+        update({ blocks: updated });
+      } else {
+        update({ blocks: [...state.blocks, { id: genId(), type: "social-links" as any, socials: newSocials }] });
+      }
+    }
+  };
+
+  const filledCount = SOCIAL_PLATFORMS.filter(p => getSocialUrl(p.key)).length;
+
+  return (
+    <div style={{ marginBottom: "1rem", background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", background: "none", border: "none", cursor: "pointer" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+          <span style={{ fontSize: 17 }}>🌐</span>
+          <div style={{ textAlign: "left" as const }}>
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>Social profiles</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-faint)" }}>
+              {filledCount > 0 ? `${filledCount} platform${filledCount !== 1 ? "s" : ""} added` : "Instagram, X, TikTok, LinkedIn, YouTube"}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {filledCount > 0 && <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 999, background: "rgba(34,197,94,0.15)", color: "#16a34a", fontWeight: 700 }}>{filledCount} added</span>}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points={expanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}/></svg>
+        </div>
+      </button>
+      {expanded && (
+        <div style={{ padding: "0.875rem 1rem", borderTop: "1px solid var(--color-divider)", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+          {SOCIAL_PLATFORMS.map(p => (
+            <div key={p.key} style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+              <span style={{ fontSize: 16, flexShrink: 0, minWidth: 22, textAlign: "center" as const }}>{p.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text-muted)", marginBottom: 2 }}>{p.label}</div>
+                <input
+                  className="input"
+                  placeholder={p.placeholder}
+                  value={getSocialUrl(p.key)}
+                  onChange={e => handleChange(p.key, e.target.value)}
+                  style={{ fontSize: 12, width: "100%" }}
+                />
+              </div>
+            </div>
+          ))}
+          <p style={{ fontSize: 11, color: "var(--color-text-faint)", margin: 0 }}>Leave blank to skip. You can edit these anytime in your dashboard.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Step3({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [addMode, setAddMode] = useState<BlockType | null>(null);
@@ -1356,6 +1449,9 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
           ))}
         </div>
       )}
+
+      {/* #11: Social platform quick-add — always shown at top of Step 3 */}
+      <SocialLinksSection state={state} update={update} />
 
       {/* Free tier limit banner */}
       {atLimit && addMode === null && (

@@ -996,7 +996,8 @@ export default function ProfilePage() {
               switch (block.type) {
                 // #3/#9b: migrated link blocks rendered as link cards
                 case "link": {
-                  const linkItem = { id: (block as any).id ?? 0, label: block.label || block.title || "", url: block.url || "", description: block.description ?? null, icon: block.icon || "", style: block.style || "default", position: (block as any).position ?? 0, clickCount: 0 };
+                  // #14: support both legacy `style` and new `linkStyle` field
+                  const linkItem = { id: (block as any).id ?? 0, label: (block as any).label || (block as any).title || "", url: (block as any).url || "", description: (block as any).description ?? null, icon: (block as any).icon || "", style: (block as any).linkStyle || (block as any).style || "default", position: (block as any).position ?? 0, clickCount: 0 };
                   inner = <TrackedLinkCard key={block.id} link={linkItem as any} accentColor={accent} />;
                   break;
                 }

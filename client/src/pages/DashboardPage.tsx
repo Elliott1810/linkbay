@@ -42,6 +42,7 @@ const BLOCK_TYPE_EMOJI: Record<string, string> = {
   button: "🔘", text: "📝", image: "🖼️", video: "🎥", faq: "❓", poll: "📊",
   countdown: "⏱️", "lead-form": "📋", "social-links": "🌐", social: "🌐",
   testimonial: "💬", divider: "➖", link: "🔗", "Link": "🔗",
+  vcard: "💾", booking: "📅",
 };
 function blockTypeEmoji(type: string): string {
   return BLOCK_TYPE_EMOJI[type] || BLOCK_TYPE_EMOJI[type?.toLowerCase()] || "📦";
@@ -1157,7 +1158,7 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
 // --- Block editor for page.blocks ---
 interface PageBlock {
   id: string;
-  type: "text" | "poll" | "lead-form" | "image" | "video" | "social-links" | "countdown" | "divider" | "button" | "testimonial" | "faq" | "link";
+  type: "text" | "poll" | "lead-form" | "image" | "video" | "social-links" | "countdown" | "divider" | "button" | "testimonial" | "faq" | "link" | "vcard" | "booking";
   content?: string;
   question?: string;
   options?: string[];
@@ -1187,6 +1188,17 @@ interface PageBlock {
   // link block
   icon?: string;
   linkStyle?: "default" | "featured" | "outline";
+  // vcard block
+  vcName?: string;
+  vcJobTitle?: string;
+  vcCompany?: string;
+  vcPhone?: string;
+  vcEmail?: string;
+  vcWebsite?: string;
+  // booking block
+  platform?: "calendly" | "cal" | "google" | "tidycal" | "other";
+  embedUrl?: string;
+  embedHeight?: number;
 }
 
 function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: number; blocks: PageBlock[]; onSave: (blocks: PageBlock[]) => void; saving: boolean; newBlockIds?: Set<string> }) {
@@ -1520,6 +1532,37 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                     </div>
                   </>
                 )}
+                {/* vCard block edit form */}
+                {block.type === "vcard" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>💾 vCard Block</div>
+                    <input className="input" placeholder="Full name" value={editValues.vcName ?? block.vcName ?? ""} onChange={e => setEditValues(v => ({ ...v, vcName: e.target.value }))} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Job title" value={editValues.vcJobTitle ?? block.vcJobTitle ?? ""} onChange={e => setEditValues(v => ({ ...v, vcJobTitle: e.target.value }))} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Company" value={editValues.vcCompany ?? block.vcCompany ?? ""} onChange={e => setEditValues(v => ({ ...v, vcCompany: e.target.value }))} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Phone" value={editValues.vcPhone ?? block.vcPhone ?? ""} onChange={e => setEditValues(v => ({ ...v, vcPhone: e.target.value }))} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Email" value={editValues.vcEmail ?? block.vcEmail ?? ""} onChange={e => setEditValues(v => ({ ...v, vcEmail: e.target.value }))} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Website (https://...)" value={editValues.vcWebsite ?? block.vcWebsite ?? ""} onChange={e => setEditValues(v => ({ ...v, vcWebsite: e.target.value }))} style={{ fontSize: 13 }} />
+                  </>
+                )}
+                {/* Booking block edit form */}
+                {block.type === "booking" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>📅 Booking Block</div>
+                    <select className="input" value={editValues.platform ?? block.platform ?? "calendly"} onChange={e => setEditValues(v => ({ ...v, platform: e.target.value as PageBlock["platform"] }))} style={{ fontSize: 13 }}>
+                      <option value="calendly">Calendly</option>
+                      <option value="cal">Cal.com</option>
+                      <option value="google">Google Calendar</option>
+                      <option value="tidycal">TidyCal</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <input className="input" placeholder="Booking URL (https://...)" value={editValues.embedUrl ?? block.embedUrl ?? ""} onChange={e => setEditValues(v => ({ ...v, embedUrl: e.target.value }))} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Label (e.g. Book a call with me)" value={editValues.title ?? block.title ?? ""} onChange={e => setEditValues(v => ({ ...v, title: e.target.value }))} style={{ fontSize: 13 }} />
+                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: "var(--color-text-muted)", flexShrink: 0 }}>Height (px):</span>
+                      <input className="input" type="number" min={300} max={1200} placeholder="650" value={editValues.embedHeight ?? block.embedHeight ?? 650} onChange={e => setEditValues(v => ({ ...v, embedHeight: Number(e.target.value) }))} style={{ fontSize: 13, width: 90 }} />
+                    </div>
+                  </>
+                )}
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button onClick={saveEdit} className="btn btn-primary btn-sm" disabled={saving} style={{ flex: 1, justifyContent: "center" }}>
                     {saving ? "Saving…" : "Save"}
@@ -1541,7 +1584,9 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                    block.type === "button" ? "🔘" :
                    block.type === "testimonial" ? "💬" :
                    block.type === "faq" ? "❓" :
-                   block.type === "link" ? "🔗" : "📦"}
+                   block.type === "link" ? "🔗" :
+                   block.type === "vcard" ? "💾" :
+                   block.type === "booking" ? "📅" : "📦"}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {block.type === "text" && (
@@ -1580,6 +1625,12 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                   {block.type === "link" && (
                     <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.icon ?? "🔗"} {block.title}</div>
                   )}
+                  {block.type === "vcard" && (
+                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.vcName || "Contact card"}</div>
+                  )}
+                  {block.type === "booking" && (
+                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.title || "Booking embed"}</div>
+                  )}
                   <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 2 }}>
                     {block.type === "text" && "Text block"}
                     {block.type === "poll" && `Poll · ${block.options?.length ?? 0} options`}
@@ -1593,6 +1644,8 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                     {block.type === "testimonial" && (block.author ? `— ${block.author}` : "Testimonial")}
                     {block.type === "faq" && "FAQ block"}
                     {block.type === "link" && (block.url ? block.url.replace(/^https?:\/\//, "").slice(0, 40) : "Link block")}
+                    {block.type === "vcard" && (block.vcJobTitle ? `${block.vcJobTitle}${block.vcCompany ? ` · ${block.vcCompany}` : ""}` : "vCard download")}
+                    {block.type === "booking" && (block.platform ? `${block.platform} booking embed` : "Booking embed")}
                   </div>
                 </div>
                 {newBlockIds?.has(block.id) && (
@@ -1934,7 +1987,7 @@ function getRecommendations(answers: string[][]): BlockKind[] {
     switch (a) {
       case "Creator / Influencer": add("social-links", 2); add("poll", 2); add("countdown", 1); add("button", 1); break;
       case "Business / Brand": add("lead-form", 3); add("text", 2); add("testimonial", 2); add("button", 2); add("faq", 1); break;
-      case "Freelancer / Consultant": add("lead-form", 2); add("testimonial", 2); add("button", 2); add("text", 2); break;
+      case "Freelancer / Consultant": add("booking", 3); add("vcard", 2); add("lead-form", 2); add("testimonial", 2); add("button", 1); add("text", 1); break;
       case "Job Seeker": add("text", 2); add("button", 2); add("testimonial", 2); add("social-links", 1); break;
       case "Grow my following": add("social-links", 3); add("poll", 2); add("countdown", 1); break;
       case "Monetise my content": add("button", 3); add("lead-form", 2); add("testimonial", 1); break;
@@ -1942,7 +1995,7 @@ function getRecommendations(answers: string[][]): BlockKind[] {
       case "Contact / Enquire": add("lead-form", 3); add("button", 1); break;
       case "Buy something": add("button", 3); add("countdown", 1); add("testimonial", 1); break;
       case "Learn about us": add("text", 2); add("faq", 2); add("testimonial", 1); break;
-      case "Get more clients": add("lead-form", 3); add("testimonial", 2); add("button", 1); break;
+      case "Get more clients": add("booking", 2); add("lead-form", 3); add("testimonial", 2); add("vcard", 1); add("button", 1); break;
       case "Share my work": add("image", 2); add("button", 1); add("text", 2); break;
       case "Both": add("lead-form", 2); add("testimonial", 1); add("button", 1); break;
       case "My CV / Portfolio": add("text", 2); add("button", 2); add("image", 1); break;
@@ -1984,6 +2037,8 @@ const BLOCK_META: Record<string, { icon: string; name: string; desc: string }> =
   testimonial: { icon: "💬", name: "Testimonial", desc: "Customer quotes or reviews" },
   faq: { icon: "❓", name: "FAQ", desc: "Common questions and answers" },
   link: { icon: "🔗", name: "Link", desc: "A single link" },
+  vcard: { icon: "💾", name: "vCard", desc: "Save contact details to phone" },
+  booking: { icon: "📅", name: "Booking", desc: "Embed Calendly, Cal.com, or any scheduler" },
 };
 
 // Map wizard recommendations (which may include "link") onto valid block kinds we render today.
@@ -2089,6 +2144,10 @@ function defaultBlockFor(kind: BlockKind): PageBlock {
       return { id, type: "testimonial", quote: "This service changed my life!", author: "Happy customer", authorRole: "" };
     case "faq":
       return { id, type: "faq", faqs: [{ q: "How does it work?", a: "Click the button to get started." }] };
+    case "vcard":
+      return { id, type: "vcard", vcName: "", vcJobTitle: "", vcCompany: "", vcPhone: "", vcEmail: "", vcWebsite: "" };
+    case "booking":
+      return { id, type: "booking", platform: "calendly", embedUrl: "", title: "Book a call", embedHeight: 650 };
     default:
       return { id, type: "text", content: "" };
   }
@@ -3380,7 +3439,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
   })();
 
   // G6c: filter out non-interaction blocks from live view
-  const NON_INTERACTION_TYPES = new Set(["text", "image", "divider", "testimonial"]);
+  const NON_INTERACTION_TYPES = new Set(["text", "image", "divider", "testimonial", "vcard", "booking"]);
 
   const archiveMutation = useMutation({
     mutationFn: async ({ blockId, action }: { blockId: string; action: "archive" | "restore" | "hide" }) => {

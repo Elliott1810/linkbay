@@ -9,7 +9,11 @@ const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
  */
 export function resolveMediaUrl(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
+  // #16: base64 data URIs pass through directly
+  if (url.startsWith("data:")) return url;
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  // #16: legacy filesystem paths (/uploads/avatars/...) are ephemeral on Railway — treat as missing
+  if (url.startsWith("/uploads/")) return undefined;
   return `${API_BASE}${url}`;
 }
 

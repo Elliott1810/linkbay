@@ -16,7 +16,7 @@ interface PageLink {
 }
 
 // Block types stored in pages.blocks JSON column
-type BlockType = "link" | "text" | "poll" | "lead-form" | "social-links" | "image" | "video" | "countdown" | "button" | "testimonial" | "faq" | "divider";
+type BlockType = "link" | "text" | "poll" | "lead-form" | "social-links" | "image" | "video" | "countdown" | "button" | "testimonial" | "faq" | "divider" | "vcard" | "booking";
 
 interface Block {
   id: string;          // client-side UUID
@@ -57,6 +57,17 @@ interface Block {
   // faq block
   faqs?: string;         // JSON array of {question, answer}
   // divider block — no extra fields
+  // vcard block
+  vcName?: string;
+  vcJobTitle?: string;
+  vcCompany?: string;
+  vcPhone?: string;
+  vcEmail?: string;
+  vcWebsite?: string;
+  // booking block
+  platform?: "calendly" | "cal" | "google" | "tidycal" | "other";
+  embedUrl?: string;
+  embedHeight?: number;
   [key: string]: unknown;
 }
 
@@ -1481,6 +1492,8 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
             { type: "testimonial" as BlockType, icon: "💬", label: "Testimonial" },
             { type: "faq" as BlockType, icon: "❓", label: "FAQ" },
             { type: "divider" as BlockType, icon: "━", label: "Divider" },
+            { type: "vcard" as BlockType, icon: "💾", label: "vCard" },
+            { type: "booking" as BlockType, icon: "📅", label: "Booking" },
           ].map(opt => (
             <button
               key={opt.type}
@@ -1722,6 +1735,49 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
               <button type="button" onClick={() => { const block: Block = { id: genId(), type: "testimonial", quote: (newLeadForm as any).quote, author: (newLeadForm as any).author, role: (newLeadForm as any).role }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).quote} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add testimonial</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add vCard form */}
+      {addMode === "vcard" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.5rem" }}>💾 vCard / Contact download</div>
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.875rem" }}>Visitors can tap to save your contact details to their phone.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <input className="input" placeholder="Full name" value={(newLeadForm as any).vcName || state.name || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcName: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Job title" value={(newLeadForm as any).vcJobTitle || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcJobTitle: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Company" value={(newLeadForm as any).vcCompany || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcCompany: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Phone number" value={(newLeadForm as any).vcPhone || state.phone || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcPhone: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Email address" value={(newLeadForm as any).vcEmail || state.contactEmail || state.email || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcEmail: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Website (pre-filled with your Linkbay URL)" value={(newLeadForm as any).vcWebsite || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcWebsite: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "vcard", vcName: (newLeadForm as any).vcName || state.name, vcJobTitle: (newLeadForm as any).vcJobTitle, vcCompany: (newLeadForm as any).vcCompany, vcPhone: (newLeadForm as any).vcPhone || state.phone, vcEmail: (newLeadForm as any).vcEmail || state.contactEmail || state.email, vcWebsite: (newLeadForm as any).vcWebsite }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).vcName && !state.name} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>💾 Add vCard block</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add booking form */}
+      {addMode === "booking" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.5rem" }}>📅 Booking / Calendar embed</div>
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.875rem" }}>Embed Calendly, Cal.com or any booking tool directly on your page.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <select className="input" value={(newLeadForm as any).bookingPlatform || "calendly"} onChange={e => setNewLeadForm(f => ({ ...f, bookingPlatform: e.target.value } as any))} style={{ fontSize: 13 }}>
+              <option value="calendly">Calendly</option>
+              <option value="cal">Cal.com</option>
+              <option value="google">Google Calendar</option>
+              <option value="tidycal">TidyCal</option>
+              <option value="other">Other</option>
+            </select>
+            <input className="input" placeholder="Booking URL (e.g. https://calendly.com/yourname)" value={(newLeadForm as any).bookingUrl || ""} onChange={e => setNewLeadForm(f => ({ ...f, bookingUrl: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Label (e.g. Book a call with me)" value={(newLeadForm as any).bookingLabel || "Book a call"} onChange={e => setNewLeadForm(f => ({ ...f, bookingLabel: e.target.value } as any))} style={{ fontSize: 13 }} />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "booking", platform: (newLeadForm as any).bookingPlatform || "calendly", embedUrl: (newLeadForm as any).bookingUrl, title: (newLeadForm as any).bookingLabel || "Book a call", embedHeight: 650 }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).bookingUrl} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>📅 Add booking block</button>
             </div>
           </div>
         </div>

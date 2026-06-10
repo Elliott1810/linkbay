@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { type Server } from "http";
-import { storage, getUserLicence, setUserLicence, getUserByStripeCustomerId, getUserByStripeSubscriptionId, migrateLinksToBlocks, setUserTrial } from "./storage";
+import { storage, getUserLicence, setUserLicence, getUserByStripeCustomerId, getUserByStripeSubscriptionId, migrateLinksToBlocks, setUserTrial, getUserEffectiveTier } from "./storage";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import Database from "better-sqlite3";
@@ -201,7 +201,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const links = await storage.getLinksByPage(page.id);
       const owner = await storage.getUserByEmail(page.ownerEmail);
       const { ownerEmail: _redacted, ...publicPage } = page as any;
-      res.json({ page: { ...publicPage, avatarUrl: owner?.avatarUrl ?? null }, links });
+      // #6: include ownerTier so ProfilePage can hide Linkbay branding for Pro/Business users
+      const ownerTier = owner?.id ? getUserEffectiveTier(owner.id).tier : "free";
+      res.json({ page: { ...publicPage, avatarUrl: owner?.avatarUrl ?? null, ownerTier }, links });
     } catch { res.status(500).json({ error: "Server error" }); }
   });
 
@@ -369,6 +371,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         else b.totalInteractions += e.count;
       }
 
+      // #1/#1a: Also inject page_links click_count for migrated link blocks so Block Analytics
+      // matches Top Interactions exactly. Migrated blocks have id pattern 'link-migrated-{linkId}'.
+      const pageLinks = sqliteLocal.prepare(
+        "SELECT id, click_count FROM page_links WHERE page_id = ? AND click_count > 0"
+      ).all(pageId) as Array<{ id: number; click_count: number }>;
+      for (const link of pageLinks) {
+        const migratedId = `link-migrated-${link.id}`;
+        // Inject as a synthetic periodEvent so blockStats aggregation picks it up
+        blockEvents.push({ block_id: migratedId, block_type: "link", type: "link_click", count: link.click_count });
+        // Also update allTime block map
+        if (!blockMap.has(migratedId)) {
+          blockMap.set(migratedId, { blockId: migratedId, blockType: "link", totalInteractions: 0, totalViews: 0, byEventType: {} });
+        }
+        const bm = blockMap.get(migratedId)!;
+        bm.byEventType["link_click"] = (bm.byEventType["link_click"] || 0) + link.click_count;
+        bm.totalInteractions += link.click_count;
+      }
+
+      sqliteLocal.close();
       res.json({
         periodEvents: blockEvents,
         allTimeBlocks: Array.from(blockMap.values()).sort((a, b) => b.totalInteractions - a.totalInteractions),
@@ -998,6 +1019,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "Username must be 3–40 lowercase letters, numbers, or hyphens." });
       }
 
+      // #10: Block reserved usernames
+      const RESERVED_NAMES = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","r","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback","404","500"]);
+      if (RESERVED_NAMES.has(username)) {
+        return res.status(400).json({ error: "That username is reserved. Please choose a different one." });
+      }
+
       const existingPage = await storage.getPageByUsername(username);
       if (existingPage) return res.status(409).json({ error: "That username is already taken. Try another." });
 
@@ -1018,6 +1045,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         try { JSON.parse(rawBlocks); blocksJson = rawBlocks; } catch {}
       }
 
+      // #11a/#12: Also convert rawLinks into type:"link" blocks and prepend to blocksJson
+      // This ensures builder links appear in the Page Editor under content blocks.
+      const safeUrlRegex = /^(https?:\/\/|mailto:)/i;
+      if (rawLinks && rawLinks.length > 0) {
+        const genBlockId = () => "blk-" + Math.random().toString(36).slice(2, 8);
+        const linkBlocks = rawLinks
+          .filter((l: any) => l.url && safeUrlRegex.test(l.url))
+          .map((l: any, i: number) => ({
+            id: genBlockId(),
+            type: "link",
+            title: l.label || l.title || "Link",
+            url: l.url,
+            description: l.description || "",
+            icon: l.icon || "🔗",
+            linkStyle: l.style || "default",
+          }));
+        if (linkBlocks.length > 0) {
+          try {
+            const existingBlocks = JSON.parse(blocksJson);
+            blocksJson = JSON.stringify([...linkBlocks, ...existingBlocks]);
+          } catch { blocksJson = JSON.stringify(linkBlocks); }
+        }
+      }
+
       // Create page
       const page = await storage.createPage({
         username,
@@ -1036,10 +1087,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
 
       // Create starter links — validate URLs (allow http/https/mailto, block javascript:)
+      // Also still create page_links rows for backward compat with legacy link rendering
       const defaultLinks = rawLinks && rawLinks.length > 0 ? rawLinks : [
         { label: "Contact me", url: "https://" + username + ".linkbay.ai", icon: "✉️", style: "featured", position: 0 },
       ];
-      const safeUrlRegex = /^(https?:\/\/|mailto:)/i;
       for (const lnk of defaultLinks) {
         if (lnk.url && !safeUrlRegex.test(lnk.url)) continue; // skip unsafe URLs silently
         await storage.createLink({ pageId: page.id, ...lnk });
@@ -1434,15 +1485,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       SELECT u.id as user_id, u.name, u.email,
         COALESCE(u.licence, 'free') as tier,
         u.licence_expiry as expires_at,
-        u.stripe_subscription_id
+        u.stripe_subscription_id,
+        u.trial_tier,
+        u.trial_expiry
       FROM users u
       ORDER BY CASE COALESCE(u.licence,'free') WHEN 'business' THEN 0 WHEN 'pro' THEN 1 ELSE 2 END, u.created_at DESC
     `).all() as any[];
+    const nowDate = new Date();
     const licCountFree = licences.filter(l => !l.tier || l.tier === "free").length;
     const licCountPro = licences.filter(l => l.tier === "pro").length;
     const licCountBusiness = licences.filter(l => l.tier === "business").length;
-    // Rough MRR (£): pro=5, business=20
-    const mrrEstimate = licCountPro * 5 + licCountBusiness * 20;
+    // #20: trial count — users with active trial (trial_tier set + trial_expiry in the future)
+    const licCountTrial = licences.filter(l => l.trial_tier && l.trial_expiry && new Date(l.trial_expiry) > nowDate).length;
+    // #19: MRR excludes trials — only count records with a stripe_subscription_id
+    const mrrEstimate = licences.filter(l => l.stripe_subscription_id && l.tier === "pro").length * 5
+      + licences.filter(l => l.stripe_subscription_id && l.tier === "business").length * 20;
 
     sqlite.close();
 
@@ -1611,6 +1668,13 @@ function filterTable(input,tbodyId){
   var cEl=document.getElementById(tbodyId+'-count');
   if(cEl)cEl.textContent=q?(vis+' match'+(vis!==1?'es':'')):'';
 }
+function toggleSection(btn){
+  var sec=btn.closest('.section');
+  var body=sec.querySelector('.section-body');
+  var collapsed=body.style.display==='none';
+  body.style.display=collapsed?'':'none';
+  btn.textContent=collapsed?'▼ Collapse':'► Expand';
+}
 </script>
 </head>
 <body>
@@ -1633,17 +1697,17 @@ function filterTable(input,tbodyId){
   </div>
 
   <div class="section">
-    <h2>Event breakdown</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem"><h2 style="margin:0">Event breakdown</h2><button onclick="toggleSection(this)" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600;color:#64748b">&#9660; Collapse</button></div><div class="section-body">
     <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:13px">
       <div><strong style="color:#e06b1a">Views:</strong> ${fmt(viewEvents)}</div>
       <div><strong style="color:#e06b1a">Link Clicks:</strong> ${fmt(linkClickEvents)}</div>
       <div><strong style="color:#e06b1a">Lead Submits:</strong> ${fmt(leadSubmitEvents)}</div>
       <div><strong style="color:#e06b1a">Total Contacts (all users):</strong> ${fmt(totalContacts)}</div>
     </div>
-  </div>
+  </div></div>
 
   <div class="section">
-    <h2>Platform Stats</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem"><h2 style="margin:0">Platform Stats</h2><button onclick="toggleSection(this)" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600;color:#64748b">&#9660; Collapse</button></div><div class="section-body">
     <div class="stats" style="margin-bottom:1rem">
       <div class="stat"><div class="val">${fmt(signupsWeek)}</div><div class="lbl">Signups (7d)</div></div>
       <div class="stat"><div class="val">${fmt(signupsMonth)}</div><div class="lbl">Signups (30d)</div></div>
@@ -1671,10 +1735,10 @@ function filterTable(input,tbodyId){
         </table>
       </div>
     </div>
-  </div>
+  </div></div>
 
   <div class="section">
-    <h2>Users (${users.length})</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem"><h2 style="margin:0">Users (${users.length})</h2><button onclick="toggleSection(this)" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600;color:#64748b">&#9660; Collapse</button></div><div class="section-body">
     <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search users by name, email, status…" oninput="filterTable(this,'tbody-users')" /><span class="count" id="tbody-users-count"></span></div>
     <table>
       <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Pages</th><th>Joined</th><th>Last Sign In</th><th>Status</th><th></th></tr></thead>
@@ -1696,10 +1760,10 @@ function filterTable(input,tbodyId){
           </tr>`).join("")}
       </tbody>
     </table>
-  </div>
+  </div></div>
 
   <div class="section">
-    <h2>Licences</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem"><h2 style="margin:0">Licences</h2><button onclick="toggleSection(this)" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600;color:#64748b">&#9660; Collapse</button></div><div class="section-body">
     <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
       <div style="background:#f1f5f9;border-radius:8px;padding:0.75rem 1.25rem;min-width:120px;text-align:center">
         <div style="font-size:22px;font-weight:800">${licCountFree}</div>
@@ -1715,7 +1779,11 @@ function filterTable(input,tbodyId){
       </div>
       <div style="background:#fdf4ff;border-radius:8px;padding:0.75rem 1.25rem;min-width:120px;text-align:center">
         <div style="font-size:22px;font-weight:800;color:#7c3aed">\u00a3${mrrEstimate}</div>
-        <div style="font-size:11px;color:#7c3aed;font-weight:600">Est. MRR</div>
+        <div style="font-size:11px;color:#7c3aed;font-weight:600">Est. MRR (paid only)</div>
+      </div>
+      <div style="background:#fef9ee;border-radius:8px;padding:0.75rem 1.25rem;min-width:120px;text-align:center;border:1px solid #fde68a">
+        <div style="font-size:22px;font-weight:800;color:#b45309">${licCountTrial}</div>
+        <div style="font-size:11px;color:#b45309;font-weight:600">Active Trials</div>
       </div>
     </div>
     <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search licences by name, email, tier…" oninput="filterTable(this,'tbody-licences')" /><span class="count" id="tbody-licences-count"></span></div>
@@ -1725,10 +1793,10 @@ function filterTable(input,tbodyId){
         ${licenceRowsHtml}
       </tbody>
     </table>
-  </div>
+  </div></div>
 
   <div class="section">
-    <h2>Pages (${pages.length} real, excl. demo profiles)</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem"><h2 style="margin:0">Pages (${pages.length} real, excl. demo profiles)</h2><button onclick="toggleSection(this)" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600;color:#64748b">&#9660; Collapse</button></div><div class="section-body">
     <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search pages by username, owner, status…" oninput="filterTable(this,'tbody-pages')" /><span class="count" id="tbody-pages-count"></span></div>
     <table>
       <thead><tr><th>Username</th><th>Owner</th><th>Title</th><th>Status</th><th>Views</th><th>Clicks</th><th>Leads</th><th>Created</th><th></th></tr></thead>
@@ -1747,10 +1815,10 @@ function filterTable(input,tbodyId){
           </tr>`).join("")}
       </tbody>
     </table>
-  </div>
+  </div></div>
 
   <div class="section">
-    <h2>Recent leads (last 20)</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem"><h2 style="margin:0">Recent leads (last 20)</h2><button onclick="toggleSection(this)" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600;color:#64748b">&#9660; Collapse</button></div><div class="section-body">
     <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search leads by name, email, message, page…" oninput="filterTable(this,'tbody-leads')" /><span class="count" id="tbody-leads-count"></span></div>
     <table>
       <thead><tr><th>Name</th><th>Email</th><th>Message</th><th>Page</th><th>When</th><th></th></tr></thead>
@@ -1766,10 +1834,10 @@ function filterTable(input,tbodyId){
           </tr>`).join("")}
       </tbody>
     </table>
-  </div>
+  </div></div>
 
   <div class="section">
-    <h2>Recent connections — last 20 unique IPs</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem"><h2 style="margin:0">Recent connections — last 20 unique IPs</h2><button onclick="toggleSection(this)" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600;color:#64748b">&#9660; Collapse</button></div><div class="section-body">
     <div class="search-bar"><label>🔍</label><input type="text" placeholder="Search by IP, page, user, location…" oninput="filterTable(this,'tbody-connections')" /><span class="count" id="tbody-connections-count"></span></div>
     <table>
       <thead><tr><th>IP Address</th><th>Last Page</th><th>User</th><th>Location</th><th>Device / Browser</th><th>When</th></tr></thead>
@@ -1785,7 +1853,7 @@ function filterTable(input,tbodyId){
           </tr>`).join("") : '<tr><td colspan="6" class="ts" style="text-align:center;padding:1rem">No connections recorded yet (resets on restart)</td></tr>'}
       </tbody>
     </table>
-  </div>
+  </div></div>
 
 </div>
 </body></html>`);
@@ -1806,16 +1874,31 @@ export function registerLicenceRoutes(app: Express) {
   app.get("/api/me/licence", async (req: Request, res: Response) => {
     if (!req.session.userId) return res.status(401).json({ error: "Not authenticated" });
     try {
+      // #17: if trial expired, reset licence column back to 'free' and clear trial fields
+      const effectiveTierCheck = getUserEffectiveTier(req.session.userId);
+      if (!effectiveTierCheck.isTrial && effectiveTierCheck.tier === "free") {
+        // trial may have just expired; clear stale trial fields so DB stays clean
+        try {
+          const DB_PATH = process.env.DB_PATH || "data.db";
+          const adminDb = require("better-sqlite3")(DB_PATH);
+          adminDb.prepare("UPDATE users SET trial_tier = NULL, trial_expiry = NULL WHERE id = ? AND trial_expiry IS NOT NULL AND trial_expiry < ?").run(req.session.userId, new Date().toISOString());
+          adminDb.close();
+        } catch {}
+      }
       const lic = getUserLicence(req.session.userId);
+      // Use effective tier (respects active trial)
+      const effectiveTier = effectiveTierCheck.tier;
       const pages = await storage.getPagesByOwner(req.session.userEmail!);
-      const limits = getLimits(lic.tier);
+      const limits = getLimits(effectiveTier);
       // Count blocks on first page
       let blockCount = 0;
       if (pages.length > 0) {
         try { blockCount = JSON.parse(pages[0].blocks || "[]").length; } catch {}
       }
       return res.json({
-        tier: lic.tier,
+        tier: effectiveTier,
+        isTrial: effectiveTierCheck.isTrial,
+        trialExpiry: effectiveTierCheck.trialExpiry,
         expiry: lic.expiry,
         stripeCustomerId: lic.stripeCustomerId,
         stripeSubscriptionId: lic.stripeSubscriptionId,

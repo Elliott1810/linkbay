@@ -515,7 +515,7 @@ export class DatabaseStorage implements IStorage {
       const created = new Date(pageSince);
       ageInDays = Math.round((Date.now() - created.getTime()) / 86400000);
     }
-    const useMonthly = ageInDays > 180;
+    const useMonthly = ageInDays > 365;
     const useWeekly = !useMonthly && ageInDays > 60;
 
     if (useMonthly) {

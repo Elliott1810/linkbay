@@ -308,6 +308,7 @@ interface PageData {
     background?: string;
     avatarUrl?: string | null;
     pageFont?: string | null;
+    ownerTier?: string | null; // #6: pro/business users hide branding
   };
   links: Array<{
     id: number;
@@ -880,7 +881,8 @@ export default function ProfilePage() {
         "--color-divider": "rgba(0,0,0,0.08)",
       } as any}
     >
-      {/* Minimal top bar */}
+      {/* Minimal top bar — #5: only shown when user is logged in (hides CTA for non-logged-in visitors) */}
+      {user && (
       <div style={{
         position: "sticky", top: 0, zIndex: 100,
         background: "color-mix(in srgb, var(--color-bg) 85%, transparent)",
@@ -892,10 +894,11 @@ export default function ProfilePage() {
         <Link href="/" style={{ textDecoration: "none", color: "var(--color-text-faint)", fontSize: "var(--text-sm)", fontWeight: 500 }}>
           ← linkbay.ai
         </Link>
-        <Link href={user ? "/dashboard" : "/builder"} className="btn btn-primary btn-sm" data-testid="button-build-own-page">
-          {user ? "Dashboard" : "Build your page"}
+        <Link href="/dashboard" className="btn btn-primary btn-sm" data-testid="button-build-own-page">
+          Dashboard
         </Link>
       </div>
+      )}
 
       <div style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
 
@@ -1074,8 +1077,8 @@ export default function ProfilePage() {
           </button>
         )}
 
-        {/* Powered by Linkbay (hidden in preview) */}
-        {!isPreview && (
+        {/* Powered by Linkbay — hidden in preview and for Pro/Business owners (#6) */}
+        {!isPreview && (page.ownerTier !== "pro" && page.ownerTier !== "business") && (
         <div style={{ textAlign: "center", paddingTop: "0.5rem" }}>
           <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", textDecoration: "none", color: "var(--color-text-faint)", fontSize: "var(--text-xs)", fontWeight: 500 }}>
             <svg width="14" height="14" viewBox="0 0 32 32" fill="none">

@@ -1024,7 +1024,7 @@ export default function ProfilePage() {
     >
       {/* Minimal top bar — #5: only shown when user is logged in (hides CTA for non-logged-in visitors) */}
       {user && (
-      <div style={{
+      <div className="profile-owner-bar" style={{
         position: "sticky", top: 0, zIndex: 100,
         background: "color-mix(in srgb, var(--color-bg) 85%, transparent)",
         backdropFilter: "blur(12px)",
@@ -1041,7 +1041,7 @@ export default function ProfilePage() {
       </div>
       )}
 
-      <div style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
+      <div className="profile-content-wrap" style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
 
         {/* Cover / hero card — glass finish (#5) */}
         <div className={blockStyle !== "divider" ? `block-style-${blockStyle} block-style-glass-info` : undefined} style={{

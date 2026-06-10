@@ -29,10 +29,21 @@ const icons: Record<string, JSX.Element> = {
   close: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   blocks: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="8" height="5" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="3" y="11" width="8" height="5" rx="1"/><rect x="13" y="11" width="8" height="5" rx="1"/><rect x="3" y="19" width="18" height="2" rx="1"/></svg>,
   share: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
+  contacts: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
   ai: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>,
 };
 
 const LINK_ICONS = ["🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇️", "⭐", "💬", "🌐", "📊"];
+
+// Shared block type emoji map — used in Top Interactions across Overview, Analytics, and Blocks panels
+const BLOCK_TYPE_EMOJI: Record<string, string> = {
+  button: "🔘", text: "📝", image: "🖼️", video: "🎥", faq: "❓", poll: "📊",
+  countdown: "⏱️", "lead-form": "📋", "social-links": "🌐", social: "🌐",
+  testimonial: "💬", divider: "➖", link: "🔗", "Link": "🔗",
+};
+function blockTypeEmoji(type: string): string {
+  return BLOCK_TYPE_EMOJI[type] || BLOCK_TYPE_EMOJI[type?.toLowerCase()] || "📦";
+}
 
 // --- Nav items (leads dot injected dynamically) ---
 const navItems = [
@@ -41,6 +52,7 @@ const navItems = [
   { id: "analytics", label: "Analytics", icon: "chart" },
   { id: "editor", label: "Page Editor", icon: "edit" },
   { id: "leads", label: "Leads", icon: "users" },
+  { id: "contacts", label: "Contacts", icon: "contacts" },
   { id: "settings", label: "Settings", icon: "settings" },
   { id: "billing", label: "Billing", icon: "billing" },
   { id: "referrals", label: "Referrals", icon: "share" },
@@ -217,10 +229,11 @@ function OnboardingChecklist({
 }
 
 // --- Copy URL button ---
-function CopyUrlButton({ url, label }: { url: string; label?: string }) {
+function CopyUrlButton({ url, copyValue, label }: { url: string; copyValue?: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
-    navigator.clipboard?.writeText(url).then(() => {
+    // copyValue is what actually goes to clipboard (full URL); url is just the display label
+    navigator.clipboard?.writeText(copyValue ?? url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -385,19 +398,24 @@ function OverviewPanel({
   const dailyViews = analytics?.dailyViews ?? [];
   const dailyClicks = analytics?.dailyClicks ?? [];
   const dailyLeads = analytics?.dailyLeads ?? [];
-  // Parse a date string that may be YYYY-MM-DD or YYYY-Www (ISO week)
+  // Parse a date string that may be YYYY-MM-DD, YYYY-Www (ISO week), or YYYY-MM (month)
   const parseDateLabel = (dateStr: string): string => {
     if (/^\d{4}-W\d{2}$/.test(dateStr)) {
-      // Weekly format: extract year + week number, compute Monday of that week
+      // Weekly format: compute Monday of that ISO week
       const [yearStr, weekStr] = dateStr.split("-W");
       const year = parseInt(yearStr, 10);
       const week = parseInt(weekStr, 10);
-      // Jan 4 is always in week 1 per ISO 8601
       const jan4 = new Date(year, 0, 4);
-      const dayOfWeek = jan4.getDay() || 7; // Mon=1..Sun=7
+      const dayOfWeek = jan4.getDay() || 7;
       const weekStart = new Date(jan4);
       weekStart.setDate(jan4.getDate() - (dayOfWeek - 1) + (week - 1) * 7);
       return `Wk ${weekStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+    }
+    if (/^\d{4}-\d{2}$/.test(dateStr)) {
+      // Monthly format: YYYY-MM
+      const [yr, mo] = dateStr.split("-");
+      const d = new Date(parseInt(yr), parseInt(mo) - 1, 1);
+      return d.toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
     }
     const d = new Date(dateStr + "T00:00:00");
     return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
@@ -450,7 +468,7 @@ function OverviewPanel({
           )}
         </div>
         <div className="overview-header-actions" style={{ display: "flex", gap: "0.625rem", alignItems: "center" }}>
-          <CopyUrlButton url={pageUrl} label="Copy link" />
+          <CopyUrlButton url={`linkbay.ai/${page?.username}`} copyValue={pageUrl} label="Copy link" />
           <Link
             href={`/${page?.username}`}
             style={{ display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.5rem 0.875rem", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", textDecoration: "none", whiteSpace: "nowrap" }}
@@ -615,10 +633,11 @@ function OverviewPanel({
               const interactionPct = Math.min(Math.round((total / totalPageViews) * 1000) / 10, 100);
               const viewsPct = 100;
               const barColor = isLive ? "var(--color-primary)" : "var(--color-text-faint)";
+              const emoji = blockTypeEmoji(item.type || item.blockType || "link");
               return (
                 <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
-                    <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Link"}</span>
+                    <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{item.label || item.blockType || "Link"}</span>
                     {!isLive && <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>past</span>}
                     <span style={{ fontWeight: 700, color: barColor, flexShrink: 0 }}>Interaction rate: {interactionPct.toFixed(1)}%</span>
                   </div>
@@ -864,16 +883,28 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
   const [background, setBackground] = useState(page?.background ?? "none");
   const [avatarShape, setAvatarShape] = useState<string>(page?.avatarShape ?? "circle");
   const [pageFont, setPageFont] = useState<string>(page?.pageFont ?? "inter");
+  // #12: custom hex background colour
+  const [customBgColor, setCustomBgColor] = useState<string>("#ffffff");
 
   // G7/#7e: blockStyle stored inside background JSON
   // Parse the background field — if it's a plain string like "none" or a gradient, keep it separately
   const bgIsJson = (() => { try { JSON.parse(background); return true; } catch { return false; } })();
   const bgParsed = bgIsJson ? (() => { try { return JSON.parse(background); } catch { return {}; } })() : {};
   const blockStyle: string = bgParsed.blockStyle ?? "default";
+  // #12: is a custom hex colour currently active?
+  const customBgIsActive = background.startsWith("#") ||
+    (bgIsJson && bgParsed.bgValue && bgParsed.bgValue.startsWith("#"));
+  // #12: actual hex value displayed in custom swatch preview
+  const activeBgHex = (() => {
+    if (background.startsWith("#")) return background;
+    if (bgIsJson && bgParsed.bgValue?.startsWith("#")) return bgParsed.bgValue;
+    return customBgColor;
+  })();
+
   const setBlockStyle = (s: string) => {
     // Preserve the existing background value and only update blockStyle
     const merged = { ...bgParsed, blockStyle: s };
-    // If there's a non-JSON background (e.g. a gradient string), store it under a "bgValue" key
+    // If there's a non-JSON background (e.g. a gradient string or hex), store under "bgValue" key
     if (!bgIsJson && background !== "none" && background !== "") {
       merged.bgValue = background;
     }
@@ -910,7 +941,15 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
       setPhone(page.phone ?? "");
       setContactEmail(page.contactEmail ?? "");
       setAccentColor(page.accentColor ?? "#e06b1a");
-      setBackground(page.background ?? "none");
+      const rawBg = page.background ?? "none";
+      setBackground(rawBg);
+      // #12: extract existing custom hex if present
+      const hexFromBg = (() => {
+        if (rawBg.startsWith("#")) return rawBg;
+        try { const p = JSON.parse(rawBg); if (p.bgValue?.startsWith("#")) return p.bgValue; } catch {}
+        return "#ffffff";
+      })();
+      setCustomBgColor(hexFromBg);
       setAvatarShape(page.avatarShape ?? "circle");
       setPageFont(page.pageFont ?? "inter");
     }
@@ -946,32 +985,32 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           {["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].map(c => (
             <button key={c} type="button" onClick={() => setAccentColor(c)} style={{ width: 24, height: 24, borderRadius: "50%", background: c, border: `2.5px solid ${accentColor === c ? "var(--color-text)" : "transparent"}`, cursor: "pointer" }} />
           ))}
-          {/* #7c: Custom colour icon — square (not round), inline with accent pills */}
-          <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer", position: "relative" }} title="Custom colour">
-            <div style={{ width: 24, height: 24, borderRadius: 4, background: accentColor, border: `2.5px solid ${!["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].includes(accentColor) ? "var(--color-text)" : "transparent"}`, flexShrink: 0, cursor: "pointer" }} />
-            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Custom</span>
-            <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer", top: 0, left: 0 }} />
-          </label>
-        </div>
-        {/* #7c: hex input under the swatch row */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
-          <div style={{ width: 18, height: 18, borderRadius: 4, background: accentColor, border: "1px solid var(--color-border)", flexShrink: 0 }} />
-          <input
-            className="input"
-            value={accentColor}
-            onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setAccentColor(e.target.value); }}
-            placeholder="#e06b1a"
-            style={{ fontSize: 12, width: 90, fontFamily: "monospace", padding: "0.2rem 0.4rem" }}
-            data-testid="input-accent-hex"
-          />
+          {/* #11/#7c: Custom colour icon — square (not round), inline with accent pills */}
+          {/* Clicking opens native colour picker; hex input lives here too */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer", position: "relative" }} title="Custom colour">
+              <div style={{ width: 24, height: 24, borderRadius: 4, background: accentColor, border: `2.5px solid ${!["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].includes(accentColor) ? "var(--color-text)" : "transparent"}`, flexShrink: 0, cursor: "pointer" }} />
+              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Custom</span>
+              <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer", top: 0, left: 0 }} />
+            </label>
+            {/* #11: hex input lives below the custom swatch only */}
+            <input
+              className="input"
+              value={accentColor}
+              onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setAccentColor(e.target.value); }}
+              placeholder="#e06b1a"
+              style={{ fontSize: 11, width: 82, fontFamily: "monospace", padding: "0.15rem 0.35rem" }}
+              data-testid="input-accent-hex"
+            />
+          </div>
         </div>
       </div>
-      {/* ─── Background picker — 20 CSS gradient swatches ─── */}
+      {/* ─── Background picker — CSS gradient swatches + custom colour ─── */}
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background</label>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
           {BACKGROUND_OPTIONS.map(opt => {
-            const isActive = background === opt.value || (!background && opt.value === "none") || (() => { try { const p = JSON.parse(background); return (p.bgValue === opt.value || (!p.bgValue && opt.value === "none")); } catch { return false; } })();
+            const isActive = !customBgIsActive && (background === opt.value || (!background && opt.value === "none") || (() => { try { const p = JSON.parse(background); return (p.bgValue === opt.value || (!p.bgValue && opt.value === "none")); } catch { return false; } })());
             return (
               <button
                 key={opt.value}
@@ -998,6 +1037,37 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
               </button>
             );
           })}
+        </div>
+        {/* #12: Custom colour swatch */}
+        <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.625rem" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", position: "relative", flexShrink: 0 }} title="Custom background colour">
+            <div style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", background: activeBgHex, border: `2px solid ${customBgIsActive ? "var(--color-primary)" : "var(--color-border)"}`, flexShrink: 0, boxShadow: customBgIsActive ? "0 0 0 2px var(--amber-subtle, rgba(224,107,26,0.2))" : undefined }} />
+            <input
+              type="color"
+              value={customBgColor}
+              onChange={e => {
+                setCustomBgColor(e.target.value);
+                handleSetBackground(e.target.value);
+              }}
+              style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer", top: 0, left: 0 }}
+            />
+          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: customBgIsActive ? "var(--color-primary)" : "var(--color-text-muted)" }}>Custom colour</span>
+            <input
+              className="input"
+              value={customBgColor}
+              onChange={e => {
+                if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) {
+                  setCustomBgColor(e.target.value);
+                  if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) handleSetBackground(e.target.value);
+                }
+              }}
+              placeholder="#ffffff"
+              style={{ fontSize: 11, width: 82, fontFamily: "monospace", padding: "0.15rem 0.35rem" }}
+              data-testid="input-bg-hex"
+            />
+          </div>
         </div>
       </div>
       <div>
@@ -1073,7 +1143,7 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
 // --- Block editor for page.blocks ---
 interface PageBlock {
   id: string;
-  type: "text" | "poll" | "lead-form" | "image" | "video" | "social-links" | "countdown" | "divider" | "button" | "testimonial" | "faq";
+  type: "text" | "poll" | "lead-form" | "image" | "video" | "social-links" | "countdown" | "divider" | "button" | "testimonial" | "faq" | "link";
   content?: string;
   question?: string;
   options?: string[];
@@ -1100,6 +1170,9 @@ interface PageBlock {
   // divider
   dividerStyle?: "solid" | "dashed" | "dotted" | "double" | "gradient";
   thickness?: "1px" | "2px" | "3px" | "4px" | "6px";
+  // link block
+  icon?: string;
+  linkStyle?: "default" | "featured" | "outline";
 }
 
 function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: number; blocks: PageBlock[]; onSave: (blocks: PageBlock[]) => void; saving: boolean; newBlockIds?: Set<string> }) {
@@ -1123,10 +1196,13 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
   };
 
   const deleteBlock = async (id: string) => {
+    // #5: warn before deleting — block will be archived in Blocks panel
+    const confirmed = window.confirm("Remove this block from your page? It will be archived in your Blocks dashboard and can be restored later.");
+    if (!confirmed) return;
     const arr = localBlocks.filter(b => b.id !== id);
     setLocalBlocks(arr);
     onSave(arr);
-    // #3: also archive the block so it shows up in Archived section
+    // Also archive the block so it shows up in Archived section
     try {
       const pageRes = await apiRequest("GET", `/api/pages/${pageId}`);
       const pageData = await pageRes.json();
@@ -1407,6 +1483,29 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                     <button type="button" onClick={() => setEditValues(v => ({ ...v, socials: [...(v.socials ?? []), { platform: "Instagram", url: "" }] }))} className="btn btn-secondary btn-sm">+ Add Platform</button>
                   </>
                 )}
+                {/* #14: link block edit form */}
+                {block.type === "link" && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>🔗 Link Block</div>
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <input className="input" placeholder="Label" value={editValues.title ?? ""} onChange={e => setEditValues(v => ({ ...v, title: e.target.value }))} style={{ flex: 1, fontSize: 13 }} />
+                      <input className="input" placeholder="URL (https://...)" value={editValues.url ?? ""} onChange={e => setEditValues(v => ({ ...v, url: e.target.value }))} style={{ flex: 2, fontSize: 13 }} />
+                    </div>
+                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", flexShrink: 0 }}>Icon:</span>
+                      <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                        {LINK_ICONS.map(ic => (
+                          <button key={ic} type="button" onClick={() => setEditValues(v => ({ ...v, icon: ic }))} style={{ fontSize: 15, padding: "0.2rem", borderRadius: 4, background: (editValues.icon ?? block.icon ?? "🔗") === ic ? "var(--color-primary-highlight)" : "none", border: "none", cursor: "pointer" }}>{ic}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "0.375rem" }}>
+                      {(["default", "featured", "outline"] as const).map(s => (
+                        <button key={s} type="button" onClick={() => setEditValues(v => ({ ...v, linkStyle: s }))} style={{ flex: 1, padding: "0.3rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${(editValues.linkStyle ?? block.linkStyle ?? "default") === s ? "var(--color-primary)" : "var(--color-border)"}`, background: (editValues.linkStyle ?? block.linkStyle ?? "default") === s ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: (editValues.linkStyle ?? block.linkStyle ?? "default") === s ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>{s}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button onClick={saveEdit} className="btn btn-primary btn-sm" disabled={saving} style={{ flex: 1, justifyContent: "center" }}>
                     {saving ? "Saving…" : "Save"}
@@ -1427,7 +1526,8 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                    block.type === "divider" ? "➖" :
                    block.type === "button" ? "🔘" :
                    block.type === "testimonial" ? "💬" :
-                   block.type === "faq" ? "❓" : "📦"}
+                   block.type === "faq" ? "❓" :
+                   block.type === "link" ? "🔗" : "📦"}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {block.type === "text" && (
@@ -1462,6 +1562,10 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                   {block.type === "faq" && (
                     <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{block.faqs?.length ?? 0} question{(block.faqs?.length ?? 0) !== 1 ? "s" : ""}</div>
                   )}
+                  {/* #14: link block summary */}
+                  {block.type === "link" && (
+                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.icon ?? "🔗"} {block.title}</div>
+                  )}
                   <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 2 }}>
                     {block.type === "text" && "Text block"}
                     {block.type === "poll" && `Poll · ${block.options?.length ?? 0} options`}
@@ -1474,6 +1578,7 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                     {block.type === "button" && "Call-to-action button"}
                     {block.type === "testimonial" && (block.author ? `— ${block.author}` : "Testimonial")}
                     {block.type === "faq" && "FAQ block"}
+                    {block.type === "link" && (block.url ? block.url.replace(/^https?:\/\//, "").slice(0, 40) : "Link block")}
                   </div>
                 </div>
                 {newBlockIds?.has(block.id) && (
@@ -1502,14 +1607,8 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
 function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: number | null }) {
   const [selectedPageId, setSelectedPageId] = useState<number | null>(activePageId ?? pages[0]?.id ?? null);
   const [saveMsg, setSaveMsg] = useState("");
-  const [newLink, setNewLink] = useState({ label: "", url: "", icon: "🔗", style: "default" as string });
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editValues, setEditValues] = useState<any>({});
   // Mobile editor tab state (mobile-only). On desktop both panels are shown together.
   const [editorTab, setEditorTab] = useState<"blocks" | "add">("blocks");
-  // #10: collapsed panels
-  const [addLinkOpen, setAddLinkOpen] = useState(false);
-  const [addBlockOpen, setAddBlockOpen] = useState(false);
   // #16: track newly added block IDs for amber highlight
   const [newBlockIds, setNewBlockIds] = useState<Set<string>>(new Set());
   useEffect(() => { if (activePageId) { setSelectedPageId(activePageId); setNewBlockIds(new Set()); } }, [activePageId]);
@@ -1526,57 +1625,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
     try { return JSON.parse(page?.blocks ?? "[]"); } catch { return []; }
   })();
 
-  const { data: links, isLoading: linksLoading } = useQuery({
-    queryKey: ["/api/pages", selectedPageId, "links"],
-    queryFn: async () => {
-      if (!selectedPageId) return [];
-      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/links`);
-      return res.json();
-    },
-    enabled: !!selectedPageId,
-  });
-
-  const addLinkMutation = useMutation({
-    mutationFn: async () => {
-      if (!newLink.label || !newLink.url) throw new Error("Label and URL are required.");
-      const res = await apiRequest("POST", `/api/pages/${selectedPageId}/links`, {
-        ...newLink,
-        position: (links?.length ?? 0),
-      });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || "Failed to add link");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      setNewLink({ label: "", url: "", icon: "🔗", style: "default" });
-      queryClient.invalidateQueries({ queryKey: ["/api/pages", selectedPageId, "links"] });
-    },
-  });
-
-  const updateLinkMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      const res = await apiRequest("PATCH", `/api/links/${id}`, data);
-      if (!res.ok) throw new Error("Failed to update link");
-      return res.json();
-    },
-    onSuccess: () => {
-      setEditingId(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/pages", selectedPageId, "links"] });
-    },
-  });
-
-  const deleteLinkMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("DELETE", `/api/links/${id}`);
-      if (!res.ok) throw new Error("Failed to delete link");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pages", selectedPageId, "links"] });
-    },
-  });
+  // #14: links are now unified blocks; no separate link query needed
 
   const savePageMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -1711,120 +1760,11 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
         )}
       </div>
 
-      {/* Right panel — link editor + blocks */}
+      {/* Right panel — #14: fully unified blocks (links are now link-type blocks) */}
       <div className="editor-blocks-panel" style={{ flex: 1, padding: "1.25rem", overflow: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-          <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700 }}>Links</h2>
-          <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{links?.length ?? 0} links</span>
-        </div>
-
-        {linksLoading ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            {[0,1,2].map(i => <div key={i} className="skeleton" style={{ height: 60, borderRadius: "var(--radius-md)" }} />)}
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1.5rem" }}>
-            {(links || []).sort((a: any, b: any) => a.position - b.position).map((link: any) => (
-              <div key={link.id} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }} data-testid={`link-row-${link.id}`}>
-                {editingId === link.id ? (
-                  <div style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-                    <div style={{ display: "flex", gap: "0.5rem" }}>
-                      <input className="input" placeholder="Label" value={editValues.label ?? link.label} onChange={e => setEditValues((v: any) => ({ ...v, label: e.target.value }))} style={{ flex: 1, fontSize: 13 }} />
-                      <input className="input" placeholder="URL" value={editValues.url ?? link.url} onChange={e => setEditValues((v: any) => ({ ...v, url: e.target.value }))} style={{ flex: 2, fontSize: 13 }} />
-                    </div>
-                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", flexShrink: 0 }}>Icon:</span>
-                      <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
-                        {LINK_ICONS.map(ic => (
-                          <button key={ic} type="button" onClick={() => setEditValues((v: any) => ({ ...v, icon: ic }))} style={{ fontSize: 15, padding: "0.2rem", borderRadius: 4, background: (editValues.icon ?? link.icon) === ic ? "var(--color-primary-highlight)" : "none", border: "none", cursor: "pointer" }}>{ic}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: "0.375rem" }}>
-                      {["default", "featured", "outline"].map(style => (
-                        <button key={style} type="button" onClick={() => setEditValues((v: any) => ({ ...v, style }))} style={{ flex: 1, padding: "0.3rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${(editValues.style ?? link.style) === style ? "var(--color-primary)" : "var(--color-border)"}`, background: (editValues.style ?? link.style) === style ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: (editValues.style ?? link.style) === style ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>
-                          {style}
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", gap: "0.5rem" }}>
-                      <button onClick={() => updateLinkMutation.mutate({ id: link.id, data: { ...editValues } })} className="btn btn-primary btn-sm" disabled={updateLinkMutation.isPending} style={{ flex: 1, justifyContent: "center" }}>
-                        {updateLinkMutation.isPending ? "Saving…" : "Save"}
-                      </button>
-                      <button onClick={() => { setEditingId(null); setEditValues({}); }} className="btn btn-secondary btn-sm" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem" }}>
-                    <span style={{ fontSize: 18 }}>{link.icon}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.label}</div>
-                      <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.url}</div>
-                    </div>
-                    <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: link.style === "featured" ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: link.style === "featured" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>
-                      {link.style}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--color-text-faint)", flexShrink: 0 }}>{link.clickCount} clicks</span>
-                    <button onClick={() => { setEditingId(link.id); setEditValues({ label: link.label, url: link.url, icon: link.icon, style: link.style }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 11, fontWeight: 600, padding: "0.25rem 0.375rem" }}>Edit</button>
-                    <button onClick={() => deleteLinkMutation.mutate(link.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-error)", padding: "0.25rem" }} aria-label="Delete link">{icons.trash}</button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Add new link */}
-        <div style={{ background: "var(--color-surface-2)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)" }}>
-          <button type="button" onClick={() => setAddLinkOpen(o => !o)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: "0.875rem 1.25rem", textAlign: "left" }}>
-            <span style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>+ Add a link</span>
-            <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{addLinkOpen ? "▲" : "▼"}</span>
-          </button>
-          {addLinkOpen && <div style={{ padding: "0 1.25rem 1.25rem" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <input className="input" placeholder="Label (e.g. Book a call)" value={newLink.label} onChange={e => setNewLink(l => ({ ...l, label: e.target.value }))} style={{ flex: 1, fontSize: 13 }} data-testid="input-new-link-label" />
-              <input className="input" placeholder="URL (https://...)" value={newLink.url} onChange={e => setNewLink(l => ({ ...l, url: e.target.value }))} style={{ flex: 2, fontSize: 13 }} data-testid="input-new-link-url" />
-            </div>
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", flexShrink: 0 }}>Icon:</span>
-              <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
-                {LINK_ICONS.slice(0, 8).map(ic => (
-                  <button key={ic} type="button" onClick={() => setNewLink(l => ({ ...l, icon: ic }))} style={{ fontSize: 15, padding: "0.2rem", borderRadius: 4, background: newLink.icon === ic ? "var(--color-primary-highlight)" : "none", border: "none", cursor: "pointer" }}>{ic}</button>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: "0.375rem", marginLeft: "auto" }}>
-                {["default", "featured"].map(style => (
-                  <button key={style} type="button" onClick={() => setNewLink(l => ({ ...l, style }))} style={{ padding: "0.3rem 0.625rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${newLink.style === style ? "var(--color-primary)" : "var(--color-border)"}`, background: newLink.style === style ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: newLink.style === style ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>
-                    {style}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {editorTier === "free" && (links?.length ?? 0) + pageBlocks.length >= FREE_BLOCK_LIMIT ? (
-              <div style={{ padding: "0.75rem", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", borderRadius: "var(--radius-md)", textAlign: "center", fontSize: "var(--text-sm)" }}>
-                <strong style={{ color: "var(--color-primary)" }}>Free limit reached ({FREE_BLOCK_LIMIT} links/blocks)</strong>
-                <p style={{ margin: "0.25rem 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>Upgrade to Pro or Business to add unlimited links and blocks.</p>
-              </div>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => addLinkMutation.mutate()}
-                  disabled={!newLink.label || !newLink.url || addLinkMutation.isPending}
-                  className="btn btn-primary"
-                  style={{ justifyContent: "center" }}
-                  data-testid="button-add-link"
-                >
-                  {addLinkMutation.isPending ? "Adding…" : "Add link"}
-                </button>
-                {addLinkMutation.isError && (
-                  <p style={{ fontSize: 12, color: "var(--color-error)" }}>{(addLinkMutation.error as Error).message}</p>
-                )}
-              </>
-            )}
-          </div>
-          </div>}
+          <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700 }}>Blocks &amp; Links</h2>
+          <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{pageBlocks.length} block{pageBlocks.length !== 1 ? "s" : ""}</span>
         </div>
 
         {/* Mobile tab bar for blocks vs add-block (hidden on desktop) */}
@@ -1851,17 +1791,17 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
 
         {/* Add new block */}
         <div className={editorTab === "add" ? "editor-pane editor-pane-active" : "editor-pane editor-pane-hidden-mobile"}>
-          {editorTier === "free" && (links?.length ?? 0) + pageBlocks.length >= FREE_BLOCK_LIMIT ? (
+          {editorTier === "free" && pageBlocks.length >= FREE_BLOCK_LIMIT ? (
             <div style={{ padding: "1.25rem", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", borderRadius: "var(--radius-md)", textAlign: "center" }}>
               <div style={{ fontSize: "var(--text-base)", fontWeight: 700, color: "var(--color-primary)", marginBottom: "0.375rem" }}>Free limit reached</div>
-              <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", margin: 0 }}>You\'ve used all {FREE_BLOCK_LIMIT} free links/blocks. Upgrade to Pro or Business for unlimited blocks.</p>
+              <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", margin: 0 }}>You\'ve used all {FREE_BLOCK_LIMIT} free blocks. Upgrade to Pro or Business for unlimited blocks.</p>
             </div>
           ) : (
             <AddBlockForm
               onAdd={(block) => { setNewBlockIds(prev => new Set(Array.from(prev).concat(block.id))); saveBlocksMutation.mutate([...(pageBlocks || []), block]); }}
               onAddAll={(newBlocks) => { setNewBlockIds(prev => new Set(Array.from(prev).concat(newBlocks.map(b => b.id)))); saveBlocksMutation.mutate([...(pageBlocks || []), ...newBlocks]); }}
               saving={saveBlocksMutation.isPending}
-              remainingSlots={editorTier === "free" ? Math.max(0, FREE_BLOCK_LIMIT - ((links?.length ?? 0) + pageBlocks.length)) : 999}
+              remainingSlots={editorTier === "free" ? Math.max(0, FREE_BLOCK_LIMIT - pageBlocks.length) : 999}
             />
           )}
         </div>
@@ -2492,6 +2432,11 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
   const [tRole, setTRole] = useState("");
   // faq
   const [faqs, setFaqs] = useState<{ q: string; a: string }[]>([{ q: "", a: "" }]);
+  // #14: link block
+  const [linkLabel, setLinkLabel] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkIcon, setLinkIcon] = useState("🔗");
+  const [linkStyle, setLinkStyleState] = useState<"default" | "featured" | "outline">("default");
   const [error, setError] = useState("");
 
   const reset = () => {
@@ -2504,6 +2449,7 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
     setBtnLabel(""); setBtnUrl("");
     setTQuote(""); setTAuthor(""); setTRole("");
     setFaqs([{ q: "", a: "" }]);
+    setLinkLabel(""); setLinkUrl(""); setLinkIcon("🔗"); setLinkStyleState("default");
     setError("");
   };
 
@@ -2555,6 +2501,9 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
       const valid = faqs.filter(f => f.q.trim() && f.a.trim());
       if (valid.length === 0) { setError("Add at least one Q&A"); return; }
       onAdd({ id, type: "faq", faqs: valid });
+    } else if (blockType === "link") {
+      if (!linkLabel.trim() || !linkUrl.trim()) { setError("Label and URL are required"); return; }
+      onAdd({ id, type: "link", title: linkLabel.trim(), url: linkUrl.trim(), icon: linkIcon, linkStyle });
     }
     reset();
   };
@@ -2592,6 +2541,7 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
           { id: "button", label: "🔘 Button" },
           { id: "testimonial", label: "💬 Testimonial" },
           { id: "faq", label: "❓ FAQ" },
+          { id: "link", label: "🔗 Link" },
         ] as const).map(t => (
 
           <button
@@ -2777,6 +2727,29 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
         </div>
       )}
 
+      {/* #14: Link block form */}
+      {blockType === "link" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <input className="input" placeholder="Label (e.g. Book a call)" value={linkLabel} onChange={e => setLinkLabel(e.target.value)} style={{ flex: 1, fontSize: 13 }} data-testid="input-link-label" />
+            <input className="input" placeholder="URL (https://...)" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} style={{ flex: 2, fontSize: 13 }} data-testid="input-link-url" />
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", flexShrink: 0 }}>Icon:</span>
+            <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+              {LINK_ICONS.slice(0, 8).map(ic => (
+                <button key={ic} type="button" onClick={() => setLinkIcon(ic)} style={{ fontSize: 15, padding: "0.2rem", borderRadius: 4, background: linkIcon === ic ? "var(--color-primary-highlight)" : "none", border: "none", cursor: "pointer" }}>{ic}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: "0.375rem", marginLeft: "auto" }}>
+              {(["default", "featured"] as const).map(s => (
+                <button key={s} type="button" onClick={() => setLinkStyleState(s)} style={{ padding: "0.3rem 0.625rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${linkStyle === s ? "var(--color-primary)" : "var(--color-border)"}`, background: linkStyle === s ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: linkStyle === s ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>{s}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && <p style={{ fontSize: 12, color: "var(--color-error)", marginTop: "0.5rem" }}>{error}</p>}
 
       <button
@@ -2840,7 +2813,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
   const dailyViews = analytics?.dailyViews ?? [];
   const dailyClicks = analytics?.dailyClicks ?? [];
   const dailyLeads = analytics?.dailyLeads ?? [];
-  // Parse YYYY-MM-DD or YYYY-Www weekly format safely
+  // Parse YYYY-MM-DD, YYYY-Www (ISO week), or YYYY-MM (month) safely
   const parseDateLabel = (dateStr: string): string => {
     if (/^\d{4}-W\d{2}$/.test(dateStr)) {
       const [yearStr, weekStr] = dateStr.split("-W");
@@ -2851,6 +2824,11 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
       const weekStart = new Date(jan4);
       weekStart.setDate(jan4.getDate() - (dayOfWeek - 1) + (week - 1) * 7);
       return `Wk ${weekStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+    }
+    if (/^\d{4}-\d{2}$/.test(dateStr)) {
+      const [yr, mo] = dateStr.split("-");
+      const d = new Date(parseInt(yr), parseInt(mo) - 1, 1);
+      return d.toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
     }
     const d = new Date(dateStr + "T00:00:00");
     return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
@@ -2889,8 +2867,8 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
             ))}
           </div>
           {pages.length > 1 && scope === "page" && (
-            <select value={selectedPageId ?? ""} onChange={e => { setSelectedPageId(Number(e.target.value)); setActivePageId(Number(e.target.value)); }} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
-              {pages.map((p: any) => <option key={p.id} value={p.id}>{p.username}</option>)}
+            <select value={selectedPageId ?? ""} onChange={e => { setSelectedPageId(Number(e.target.value)); setActivePageId(Number(e.target.value)); }} style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              {pages.map((p: any) => <option key={p.id} value={p.id}>linkbay.ai/{p.username}</option>)}
             </select>
           )}
         </div>
@@ -2997,6 +2975,51 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
             </div>
           )}
 
+          {/* #10: AI analysis — full width, above detail grid */}
+          <div className="card" style={{ padding: "1.25rem", marginBottom: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: aiResult ? "0.875rem" : 0, flexWrap: "wrap", gap: "0.5rem" }}>
+              <div>
+                <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>AI page analysis</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 2 }}>Refreshes once per day</div>
+              </div>
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}
+                onClick={async () => {
+                  if (!selectedPageId) return;
+                  setAiLoading(true); setAiResult(null); setAiError(null);
+                  try {
+                    const res = await fetch(`/api/pages/${selectedPageId}/ai-analysis`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      credentials: "include",
+                    });
+                    if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
+                    const d = await res.json();
+                    setAiResult(d.analysis || "No analysis returned.");
+                  } catch (err: any) {
+                    setAiError(err.message || "Failed to fetch AI analysis.");
+                  } finally {
+                    setAiLoading(false);
+                  }
+                }}
+                disabled={aiLoading}
+                data-testid="button-ai-analysis"
+              >
+                {icons.ai}{aiLoading ? "Analysing…" : "Get analysis"}
+              </button>
+            </div>
+            {aiError && <p style={{ color: "#ef4444", fontSize: 12, marginTop: "0.5rem" }}>{aiError}</p>}
+            {aiResult && (
+              <div style={{ padding: "0.875rem", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 13, lineHeight: 1.8, color: "var(--color-text-muted)" }}>
+                {aiResult}
+              </div>
+            )}
+            {!aiResult && !aiLoading && !aiError && (
+              <p style={{ fontSize: 12, color: "var(--color-text-faint)", marginTop: "0.5rem" }}>Click to get personalised insights on your page performance and content.</p>
+            )}
+          </div>
+
           <div className="analytics-detail-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
             {/* Top links */}
             <div className="card" style={{ padding: "1.25rem" }}>
@@ -3008,10 +3031,11 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                 return interactions.map((item: any) => {
                   const total = item.total ?? item.clickCount ?? 0;
                   const interactionPct = Math.min(Math.round((total / totalPageViews) * 1000) / 10, 100);
+                  const emoji = blockTypeEmoji(item.type || item.blockType || "link");
                   return (
                     <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
-                        <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.label || item.blockType || "Interaction"}</span>
+                        <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{item.label || item.blockType || "Interaction"}</span>
                         <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Interaction rate: {interactionPct.toFixed(1)}%</span>
                       </div>
                       {/* Stacked bar: views (amber) + interactions (primary) */}
@@ -3102,42 +3126,6 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                   </div>
                   <span style={{ fontSize: 16, color: "var(--color-text-faint)" }}>↓</span>
                 </button>
-              </div>
-              {/* #8d: AI Analysis button — cached per page per day server-side */}
-              <div className="card" style={{ padding: "1.25rem" }}>
-                <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>AI page analysis</div>
-                <button
-                  className="btn btn-secondary"
-                  style={{ width: "100%", justifyContent: "center", gap: "0.5rem" }}
-                  onClick={async () => {
-                    if (!selectedPageId) return;
-                    setAiLoading(true); setAiResult(null); setAiError(null);
-                    try {
-                      const res = await fetch(`/api/pages/${selectedPageId}/ai-analysis`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        credentials: "include",
-                      });
-                      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
-                      const d = await res.json();
-                      setAiResult(d.analysis || "No analysis returned.");
-                    } catch (err: any) {
-                      setAiError(err.message || "Failed to fetch AI analysis.");
-                    } finally {
-                      setAiLoading(false);
-                    }
-                  }}
-                  disabled={aiLoading}
-                  data-testid="button-ai-analysis"
-                >
-                  {icons.ai}{aiLoading ? "Analysing…" : "Get AI analysis"}
-                </button>
-                {aiError && <p style={{ color: "#ef4444", fontSize: 12, marginTop: "0.5rem" }}>{aiError}</p>}
-                {aiResult && (
-                  <div style={{ marginTop: "0.875rem", padding: "0.875rem", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", color: "var(--color-text-muted)" }}>
-                    {aiResult}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -3415,17 +3403,22 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
   const periodEvents: any[] = analytics?.periodEvents ?? [];
   const allTimeBlocks: any[] = analytics?.allTimeBlocks ?? [];
 
-  // Aggregate per-block stats — periodEvents are pre-aggregated rows (block_id, block_type, type, count)
-  const blockStats: Map<string, { count: number; eventTypes: Record<string, number> }> = new Map();
+  // Aggregate per-block stats from pre-aggregated rows (block_id, block_type, type, count)
+  // #9: unify views and interactions explicitly so they match the Top Interactions calculation
+  const INTERACTION_EVENT_TYPES = new Set(["submit", "click", "vote", "expand", "play", "link_click"]);
+  const blockStats: Map<string, { count: number; views: number; interactions: number; eventTypes: Record<string, number> }> = new Map();
   for (const e of periodEvents) {
     const bid = e.blockId || e.block_id;
     if (!bid) continue;
-    const rowCount: number = e.count ?? 1; // server returns aggregated count
-    if (!blockStats.has(bid)) blockStats.set(bid, { count: 0, eventTypes: {} });
+    const rowCount: number = e.count ?? 1;
+    const et: string = e.eventType || e.type || "interaction";
+    if (!blockStats.has(bid)) blockStats.set(bid, { count: 0, views: 0, interactions: 0, eventTypes: {} });
     const s = blockStats.get(bid)!;
     s.count += rowCount;
-    const et = e.eventType || e.type || "interaction";
     s.eventTypes[et] = (s.eventTypes[et] || 0) + rowCount;
+    if (et === "view") s.views += rowCount;
+    else if (INTERACTION_EVENT_TYPES.has(et) || et.startsWith("block_interact")) s.interactions += rowCount;
+    else s.interactions += rowCount; // unknown event types count as interactions
   }
 
   // G6d: also aggregate per platform for social-links blocks
@@ -3471,8 +3464,8 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
           {pages.length > 1 && (
-            <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} className="input" style={{ fontSize: 11, width: "auto", padding: "0.25rem 0.625rem", height: "auto" }}>
-              {pages.map((p: any) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              {pages.map((p: any) => <option key={p.id} value={p.id}>linkbay.ai/{p.username}</option>)}
             </select>
           )}
           {/* G6a: pill buttons instead of select */}
@@ -3507,9 +3500,9 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
           {displayLiveBlocks.length > 0 && (() => {
             const PIE_COLORS = ["#e06b1a","#f59e0b","#0891b2","#059669","#7c3aed","#e11d48","#334155","#8b5cf6","#10b981","#ef4444"];
             const barData = displayLiveBlocks.map((block: any) => {
-              const s = blockStats.get(block.id) ?? { count: 0, eventTypes: {} };
-              const viewCnt = s.eventTypes["view"] ?? 0;
-              const interCnt = s.count - viewCnt;
+              const s = blockStats.get(block.id) ?? { count: 0, views: 0, interactions: 0, eventTypes: {} as Record<string, number> };
+              const viewCnt = s.views;
+              const interCnt = s.interactions;
               return {
                 name: (block.title || block.label || block.question || block.type || "Block").slice(0, 14),
                 interactions: interCnt,
@@ -3521,7 +3514,9 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             const interPieData = barData.filter((r: any) => r.interactions > 0).map((r: any) => ({ name: r.name, value: r.interactions }));
             const viewPieData = barData.filter((r: any) => r.views > 0).map((r: any) => ({ name: r.name, value: r.views }));
             return (
-              <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1rem" }}>
+              <>
+              {/* #6/#7: Bar chart + single toggleable pie chart side by side on same row */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem", alignItems: "start" }}>
                 {/* Toggleable bar chart */}
                 <div className="card" style={{ padding: "1rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
@@ -3546,41 +3541,38 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                {/* 2 Pie charts: % interaction share + % view share */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                  <div className="card" style={{ padding: "1rem" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.5rem" }}>Interaction share</div>
-                    {interPieData.length === 0 ? (
-                      <div style={{ textAlign: "center", padding: "1rem", color: "var(--color-text-faint)", fontSize: 11 }}>No interactions yet.</div>
+                {/* #6: Single toggleable pie chart (interactions/views share) */}
+                <div className="card" style={{ padding: "1rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>{blockChartMode === "interactions" ? "Interaction" : "View"} share</div>
+                    <div style={{ display: "flex", gap: "0.25rem" }}>
+                      {(["interactions", "views"] as const).map(m => (
+                        <button key={m} onClick={() => setBlockChartMode(m)} style={{ padding: "0.2rem 0.5rem", fontSize: 10, fontWeight: 600, borderRadius: "var(--radius-sm)", border: `1px solid ${blockChartMode === m ? "var(--color-primary)" : "transparent"}`, background: blockChartMode === m ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: blockChartMode === m ? "var(--color-primary)" : "var(--color-text-faint)", cursor: "pointer" }}>
+                          {m.charAt(0).toUpperCase() + m.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {(() => {
+                    const pieData = blockChartMode === "interactions" ? interPieData : viewPieData;
+                    const total = blockChartMode === "interactions" ? totalInterAll : totalViewsAll;
+                    const label = blockChartMode === "interactions" ? "Interactions" : "Views";
+                    return pieData.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "1rem", color: "var(--color-text-faint)", fontSize: 11 }}>No data yet.</div>
                     ) : (
-                      <ResponsiveContainer width="100%" height={140}>
+                      <ResponsiveContainer width="100%" height={150}>
                         <PieChart>
-                          <Pie data={interPieData} dataKey="value" cx="50%" cy="50%" outerRadius={55} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={9}>
-                            {interPieData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                          <Pie data={pieData} dataKey="value" cx="50%" cy="50%" outerRadius={55} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={9}>
+                            {pieData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                           </Pie>
-                          <Tooltip contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 11 }} formatter={(v: any) => [`${v} (${totalInterAll > 0 ? Math.round(v / totalInterAll * 100) : 0}%)`, "Interactions"]} />
+                          <Tooltip contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 11 }} formatter={(v: any) => [`${v} (${total > 0 ? Math.round(v / total * 100) : 0}%)`, label]} />
                         </PieChart>
                       </ResponsiveContainer>
-                    )}
-                  </div>
-                  <div className="card" style={{ padding: "1rem" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.5rem" }}>View share</div>
-                    {viewPieData.length === 0 ? (
-                      <div style={{ textAlign: "center", padding: "1rem", color: "var(--color-text-faint)", fontSize: 11 }}>No view events yet.</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height={140}>
-                        <PieChart>
-                          <Pie data={viewPieData} dataKey="value" cx="50%" cy="50%" outerRadius={55} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={9}>
-                            {viewPieData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                          </Pie>
-                          <Tooltip contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: 11 }} formatter={(v: any) => [`${v} (${totalViewsAll > 0 ? Math.round(v / totalViewsAll * 100) : 0}%)`, "Views"]} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
+                    );
+                  })()}
                 </div>
               </div>
-            );
+              </>);
           })()}
 
           {/* Live blocks — G6c: filter non-interaction types */}
@@ -3598,7 +3590,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 {displayLiveBlocks.filter((block: any) => !searchLive || blockLabel(block).toLowerCase().includes(searchLive.toLowerCase())).map((block: any) => {
-                  const stats = blockStats.get(block.id) ?? { count: 0, eventTypes: {} };
+                  const stats = blockStats.get(block.id) ?? { count: 0, views: 0, interactions: 0, eventTypes: {} as Record<string, number> };
                   const pct = totalInteractions > 0 ? Math.round((stats.count / totalInteractions) * 100) : 0;
                   const isSocial = block.type === "social-links";
                   const platformMap = socialPlatformStats.get(block.id);
@@ -3613,8 +3605,9 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                           </div>
                           {/* Stacked bar: views (amber) + interactions (primary) */}
                           {(() => {
-                            const blockViewCount = stats.eventTypes["view"] ?? 0;
-                            const interCount2 = stats.count - blockViewCount;
+                            // #9/#9a: use explicit views/interactions from unified aggregation
+                            const blockViewCount = stats.views;
+                            const interCount2 = stats.interactions;
                             const pageViewsTotal = Math.max((analytics as any)?.periodViews ?? (analytics as any)?.totalViews ?? 1, 1);
                             const interactionRate = Math.min(Math.round((interCount2 / pageViewsTotal) * 1000) / 10, 100);
                             const viewRate = Math.min(Math.round((blockViewCount / pageViewsTotal) * 1000) / 10, 100);
@@ -3679,13 +3672,13 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 {archivedBlocks.filter((block: any) => !searchArchived || blockLabel(block).toLowerCase().includes(searchArchived.toLowerCase())).map((block: any) => {
-                  const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
+                  const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { totalInteractions: 0, totalViews: 0 };
                   return (
                     <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.75 }}>
                       <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
-                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.count ?? 0} lifetime interactions</div>
+                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.totalInteractions ?? 0} interactions · {atBlock.totalViews ?? 0} views (lifetime)</div>
                       </div>
                       <div style={{ display: "flex", gap: "0.375rem", flexShrink: 0 }}>
                         <button
@@ -3733,13 +3726,13 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                 {hiddenBlocks.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "1.25rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No hidden blocks.</div>
                 ) : hiddenBlocks.filter((block: any) => !searchHidden || blockLabel(block).toLowerCase().includes(searchHidden.toLowerCase())).map((block: any) => {
-                  const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { count: 0 };
+                  const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { totalInteractions: 0, totalViews: 0 };
                   return (
                     <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.7 }}>
                       <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
-                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.count ?? 0} lifetime interactions</div>
+                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.totalInteractions ?? 0} interactions · {atBlock.totalViews ?? 0} views (lifetime)</div>
                       </div>
                       <button
                         onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })}

@@ -978,7 +978,7 @@ a, button, [role="button"] {
   /* Also hide the "New page" button sub-section inside sidebar-nav on mobile */
   .dashboard-sidebar .sidebar-nav > div:last-child { display: none !important; }
 
-  /* Nav section fills the full tab bar — also overflow: visible for badges */
+  /* Nav section: horizontal tab bar — all tabs share width equally, never overflow */
   .dashboard-sidebar .sidebar-nav {
     flex: 1 !important;
     flex-direction: row !important;
@@ -986,38 +986,35 @@ a, button, [role="button"] {
     overflow: visible !important;
     display: flex !important;
     align-items: stretch !important;
-  }
-
-  /* Nav label visibility — M1: hide labels entirely on very narrow screens so 8 tabs fit */
-  .nav-label-desktop { display: none !important; }
-  .nav-label-mobile { display: none !important; }
-
-  /* ─── Fix 3: Each tab button — scrollable, equal min-width ─── */
-  .dashboard-sidebar .sidebar-nav {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    scrollbar-width: none !important;
+    /* No overflow-x: auto — we size tabs to always fit so nothing is ever clipped */
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
   .dashboard-sidebar .sidebar-nav::-webkit-scrollbar { display: none !important; }
 
+  /* Nav label visibility — always hidden; icons only on mobile */
+  .nav-label-desktop { display: none !important; }
+  .nav-label-mobile { display: none !important; }
+
+  /* Each tab: flex:1 with NO min-width / max-width constraint so all 8 tabs always fit */
   .dashboard-sidebar .sidebar-nav-item {
-    flex: 1 1 0 !important;         /* share space equally */
-    min-width: 36px !important;     /* M1: smaller min-width, no labels needed */
-    max-width: 56px !important;
+    flex: 1 1 0 !important;         /* share ALL available width equally */
+    min-width: 0 !important;        /* allow shrinking below any threshold */
+    max-width: none !important;     /* never cap width — let flex do the work */
+    flex-shrink: 1 !important;      /* allow shrinking so they never overflow */
     flex-direction: column !important;
     justify-content: center !important;
     align-items: center !important;
-    padding: 6px 2px 6px !important;
+    padding: 6px 1px !important;
     font-size: 9px !important;
     font-weight: 600 !important;
     gap: 0 !important;
     border-radius: 0 !important;
     border-left: none !important;
     height: 48px !important;
-    overflow: visible !important;  /* allow badge to show above */
+    overflow: visible !important;   /* allow badge to float above */
     letter-spacing: 0 !important;
     position: relative !important;
-    flex-shrink: 0 !important;
   }
 
   /* Tab label text — truncate to fit */

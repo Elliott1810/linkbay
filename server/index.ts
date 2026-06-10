@@ -9,7 +9,9 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
 import path from "path";
+import fs from "fs";
 import { pushIpLog } from "./ipLog";
+import { storage } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -183,8 +185,139 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
+  // ── OG meta tag injection helper ─────────────────────────────────────────
+  // Escape any string for safe insertion into an HTML attribute value
+  function escHtml(str: string): string {
+    return (str || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // Build the OG + Twitter meta block for a profile page
+  function buildOgBlock(opts: {
+    title: string; description: string; imageUrl: string;
+    pageUrl: string; accentColor: string;
+  }): string {
+    const { title, description, imageUrl, pageUrl, accentColor } = opts;
+    const t = escHtml(title);
+    const d = escHtml(description);
+    const img = escHtml(imageUrl);
+    const url = escHtml(pageUrl);
+    return [
+      `<meta property="og:title" content="${t}" />`,
+      `<meta property="og:description" content="${d}" />`,
+      `<meta property="og:type" content="profile" />`,
+      `<meta property="og:url" content="${url}" />`,
+      imageUrl ? `<meta property="og:image" content="${img}" />` : "",
+      imageUrl ? `<meta property="og:image:width" content="1200" />` : "",
+      imageUrl ? `<meta property="og:image:height" content="630" />` : "",
+      `<meta property="og:site_name" content="Linkbay" />`,
+      `<meta name="twitter:card" content="${imageUrl ? "summary_large_image" : "summary"}" />`,
+      `<meta name="twitter:title" content="${t}" />`,
+      `<meta name="twitter:description" content="${d}" />`,
+      imageUrl ? `<meta name="twitter:image" content="${img}" />` : "",
+      `<meta name="theme-color" content="${escHtml(accentColor || "#e06b1a")}" />`,
+      // LinkedIn-specific: canonical
+      `<link rel="canonical" href="${url}" />`,
+    ].filter(Boolean).join("\n    ");
+  }
+
+  // Cache the base HTML so we don’t re-read it on every request
+  let _baseHtml: string | null = null;
+  function getBaseHtml(): string {
+    if (!_baseHtml) {
+      const htmlPath = path.join(process.cwd(), "dist/public/index.html");
+      _baseHtml = fs.readFileSync(htmlPath, "utf8");
+    }
+    return _baseHtml;
+  }
+
+  // Reserved paths that are SPA routes, not profile pages
+  const SPA_ROUTES = new Set([
+    "", "/", "/login", "/register", "/dashboard", "/builder",
+    "/pricing", "/about", "/terms", "/privacy", "/blog",
+    "/settings", "/billing", "/upgrade", "/help",
+  ]);
+
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
+
+    // OG injection — intercept /:username before the generic SPA catch-all
+    // Only fires for paths that look like a profile slug
+    app.get(/^\/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])$/, async (req: Request, res: Response, next) => {
+      const username = req.params[0];
+      // Skip if this is a known SPA route
+      if (SPA_ROUTES.has("/" + username)) return next();
+
+      try {
+        const page = await storage.getPageByUsername(username);
+        // If no page or unpublished, fall through to the SPA (which shows a 404 UI)
+        if (!page || !page.published) return next();
+
+        const owner = await storage.getUserByEmail(page.ownerEmail);
+
+        // Build OG fields
+        const pageTitle = page.title
+          ? `${page.title} | Linkbay`
+          : `${page.ownerName} on Linkbay`;
+        const pageDescription = [
+          page.bio,
+          page.location ? `📍 ${page.location}` : "",
+          page.contactEmail ? `✉ ${page.contactEmail}` : "",
+          "View my links and get in touch.",
+        ].filter(Boolean).join("  ·  ").slice(0, 200);
+
+        const pageUrl = `https://linkbay.ai/${username}`;
+        const accentColor = page.accentColor || "#e06b1a";
+
+        // og:image — prefer user's avatar, fall back to a branded placeholder URL
+        const avatarUrl = owner?.avatarUrl
+          ? (owner.avatarUrl.startsWith("http") ? owner.avatarUrl : `https://linkbay.ai${owner.avatarUrl}`)
+          : "";
+
+        const ogBlock = buildOgBlock({
+          title: pageTitle,
+          description: pageDescription,
+          imageUrl: avatarUrl,
+          pageUrl,
+          accentColor,
+        });
+
+        // Inject into the base HTML:
+        // 1. Replace default <title> tag
+        // 2. Replace the static OG block comment marker (or first og:title)
+        // 3. Inject dynamic page <title> and a <meta name="description">
+        let html = getBaseHtml();
+
+        // Replace <title>
+        html = html.replace(
+          /<title>[^<]*<\/title>/,
+          `<title>${escHtml(pageTitle)}<\/title>`
+        );
+
+        // Replace static og:title (and contiguous OG block) with dynamic version
+        // Strategy: inject right after <title> replacement
+        html = html.replace(
+          /<!-- Open Graph -->[\s\S]*?<!-- Twitter Card -->[\s\S]*?<\/head>/,
+          `<!-- Open Graph / Twitter (dynamic) -->
+    ${ogBlock}
+  <\/head>`
+        );
+
+        // Also update the static <meta name="description">
+        html = html.replace(
+          /<meta name="description" content="[^"]*" \/>/,
+          `<meta name="description" content="${escHtml(pageDescription)}" />`
+        );
+
+        res.set("Content-Type", "text/html; charset=utf-8");
+        // Cache for 5 minutes — enough for crawlers, short enough to pick up profile edits
+        res.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+        res.send(html);
+      } catch {
+        // On any error, fall through to the normal SPA handler
+        next();
+      }
+    });
+
     // SPA catch-all — serve index.html for all non-API/non-admin/non-uploads paths
     app.get(/(.*)/, (req: Request, res: Response) => {
       if (req.path.startsWith("/api") || req.path.startsWith("/uploads") || req.path.startsWith("/admin")) {

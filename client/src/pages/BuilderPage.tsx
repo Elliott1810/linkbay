@@ -1478,7 +1478,7 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
 
       {/* Add block type selector — all types (#30h) */}
       {addMode === null && (
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", opacity: atLimit ? 0.4 : 1, pointerEvents: atLimit ? "none" : "auto" }}>
+        <div className="block-type-picker-grid" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", opacity: atLimit ? 0.4 : 1, pointerEvents: atLimit ? "none" : "auto" }}>
           {[
             { type: "link" as BlockType, icon: "🔗", label: "Link" },
             { type: "text" as BlockType, icon: "📝", label: "Free text" },
@@ -1499,7 +1499,7 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
               key={opt.type}
               type="button"
               onClick={() => setAddMode(opt.type)}
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm block-type-picker-item"
               style={{ gap: "0.375rem", fontSize: 12 }}
               data-testid={`button-add-${opt.type}`}
             >
@@ -1915,7 +1915,7 @@ export default function BuilderPage() {
   return (
     <div style={{ minHeight: "100dvh", background: "var(--color-bg)" }}>
       {/* Top bar */}
-      <div style={{ height: 56, background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", padding: "0 1.5rem", gap: "1rem", position: "sticky", top: 0, zIndex: 100 }}>
+      <div className="builder-top-bar" style={{ height: 56, background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", padding: "0 1.5rem", gap: "1rem", position: "sticky", top: 0, zIndex: 100 }}>
         <Link href="/" style={{ color: "var(--color-text)", textDecoration: "none" }}>
           <svg width="100" height="26" viewBox="0 0 120 32" fill="none">
             <rect x="0" y="4" width="10" height="24" rx="3" fill="currentColor" opacity="0.9"/>
@@ -1926,7 +1926,7 @@ export default function BuilderPage() {
         </Link>
         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "center" }}>
           {step < 4 && Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-            <div key={i} style={{ height: 4, width: 48, borderRadius: 999, background: i < step ? "var(--color-primary)" : "var(--color-surface-dynamic)", transition: "background 0.3s ease" }} />
+            <div key={i} className="builder-step-pill" style={{ height: 4, width: 48, borderRadius: 999, background: i < step ? "var(--color-primary)" : "var(--color-surface-dynamic)", transition: "background 0.3s ease" }} />
           ))}
         </div>
         {step < 4 && (
@@ -1938,7 +1938,7 @@ export default function BuilderPage() {
 
       <div className="builder-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, minHeight: "calc(100dvh - 56px)" }}>
         {/* Left — form */}
-        <div style={{ padding: "3rem 2.5rem", maxWidth: 560, overflowY: "auto" }}>
+        <div className="builder-form-col" style={{ padding: "3rem 2.5rem", maxWidth: 560, overflowY: "auto" }}>
           {step === 1 && !showSuggestions && <Step1 state={state} update={update} />}
           {step === 1 && showSuggestions && (
             <AISuggestionsStep
@@ -1970,7 +1970,7 @@ export default function BuilderPage() {
 
           {/* Nav buttons — hidden during suggestions step (it has its own actions) */}
           {step < 4 && !showSuggestions && (
-            <div style={{ display: "flex", gap: "0.75rem", marginTop: "2rem" }}>
+            <div className="builder-nav-btns" style={{ display: "flex", gap: "0.75rem", marginTop: "2rem" }}>
               {step > 1 && (
                 <button onClick={() => { setStep(s => s - 1); setError(""); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", minHeight: "2.75rem" }}>
                   ← Back

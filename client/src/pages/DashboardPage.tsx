@@ -32,6 +32,7 @@ const icons: Record<string, JSX.Element> = {
   // #14: Contacts uses a different icon (address-book / card-style) to distinguish from Leads
   contacts: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h8"/></svg>,
   ai: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>,
+  signature: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8l7.89 5.26a2 2 0 0 0 2.22 0L21 8M5 19h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/></svg>,
 };
 
 const LINK_ICONS = ["🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇️", "⭐", "💬", "🌐", "📊"];
@@ -55,6 +56,7 @@ const navItems = [
   { id: "editor",    label: "Page Editor",      icon: "edit"    },
   { id: "leads",     label: "Leads",            icon: "users"   },
   { id: "contacts",  label: "Contacts",         icon: "contacts" },
+  { id: "signature", label: "Email Signature",  icon: "signature" },
   { id: "settings",  label: "Settings",         icon: "settings" },
   { id: "billing",   label: "Billing",          icon: "billing" },
 ];
@@ -5209,6 +5211,351 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
   );
 }
 
+// --- Email Signature Panel ---
+type SigStyle = "classic" | "minimal" | "card";
+
+function buildSignatureHtml(opts: {
+  name: string; title: string; company: string; phone: string;
+  email: string; pageUrl: string; pageLabel: string;
+  accent: string; style: SigStyle; showDivider: boolean;
+  avatarUrl?: string;
+}): string {
+  const { name, title, company, phone, email, pageUrl, pageLabel, accent, style, showDivider, avatarUrl } = opts;
+  const safeAccent = accent || "#e06b1a";
+  const btnText = pageLabel || "View my profile";
+  const hasAvatar = !!avatarUrl;
+
+  const avatarBlock = hasAvatar ? `<img src="${avatarUrl}" width="56" height="56" style="width:56px;height:56px;border-radius:50%;object-fit:cover;display:block;border:2px solid ${safeAccent}" alt="${name}" />` : `<div style="width:56px;height:56px;border-radius:50%;background:${safeAccent};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;font-family:Arial,sans-serif;line-height:56px;text-align:center">${name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}</div>`;
+
+  const dividerHtml = showDivider ? `<div style="border-top:2px solid ${safeAccent};margin:0 0 12px 0;width:100%"></div>` : "";
+
+  const metaLine = [title, company].filter(Boolean).join(" · ");
+  const phoneHtml = phone ? `<tr><td style="padding:1px 0;font-size:12px;color:#666;font-family:Arial,sans-serif;">📞 <a href="tel:${phone}" style="color:#666;text-decoration:none">${phone}</a></td></tr>` : "";
+  const emailHtml = email ? `<tr><td style="padding:1px 0;font-size:12px;color:#666;font-family:Arial,sans-serif;">✉ <a href="mailto:${email}" style="color:${safeAccent};text-decoration:none">${email}</a></td></tr>` : "";
+  const btnHtml = pageUrl ? `<tr><td style="padding-top:10px"><a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;padding:7px 16px;border-radius:6px;text-decoration:none;letter-spacing:0.01em">${btnText} →</a></td></tr>` : "";
+
+  if (style === "minimal") {
+    return `<!-- Linkbay Email Signature -->
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif">
+  ${dividerHtml ? `<tr><td colspan="2" style="padding-bottom:8px">${dividerHtml}</td></tr>` : ""}
+  <tr>
+    <td style="padding-right:12px;vertical-align:top">${avatarBlock}</td>
+    <td style="vertical-align:top">
+      <table cellpadding="0" cellspacing="0" border="0">
+        <tr><td style="font-size:15px;font-weight:700;color:#111;font-family:Arial,sans-serif;white-space:nowrap">${name}</td></tr>
+        ${metaLine ? `<tr><td style="font-size:12px;color:#666;font-family:Arial,sans-serif;padding-bottom:4px">${metaLine}</td></tr>` : ""}
+        ${phoneHtml}${emailHtml}${btnHtml}
+      </table>
+    </td>
+  </tr>
+</table>`;
+  }
+
+  if (style === "card") {
+    return `<!-- Linkbay Email Signature -->
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;border-left:4px solid ${safeAccent};padding-left:14px;margin-top:4px">
+  <tr>
+    <td style="padding-right:14px;vertical-align:middle">${avatarBlock}</td>
+    <td style="vertical-align:middle">
+      <table cellpadding="0" cellspacing="0" border="0">
+        <tr><td style="font-size:16px;font-weight:800;color:#111;font-family:Arial,sans-serif">${name}</td></tr>
+        ${metaLine ? `<tr><td style="font-size:12px;color:${safeAccent};font-family:Arial,sans-serif;font-weight:600;padding-bottom:6px">${metaLine}</td></tr>` : ""}
+        ${phoneHtml}${emailHtml}${btnHtml}
+      </table>
+    </td>
+  </tr>
+</table>`;
+  }
+
+  // classic (default)
+  return `<!-- Linkbay Email Signature -->
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif">
+  ${dividerHtml ? `<tr><td style="padding-bottom:10px">${dividerHtml}</td></tr>` : ""}
+  <tr>
+    <td style="padding-right:16px;vertical-align:top">${avatarBlock}</td>
+    <td style="vertical-align:top;border-left:1px solid #e5e7eb;padding-left:16px">
+      <table cellpadding="0" cellspacing="0" border="0">
+        <tr><td style="font-size:16px;font-weight:800;color:#111;font-family:Arial,sans-serif">${name}</td></tr>
+        ${metaLine ? `<tr><td style="font-size:12px;color:#555;font-family:Arial,sans-serif;padding-bottom:6px">${metaLine}</td></tr>` : ""}
+        ${phoneHtml}${emailHtml}${btnHtml}
+      </table>
+    </td>
+  </tr>
+</table>`;
+}
+
+function buildSignaturePlain(opts: { name: string; title: string; company: string; phone: string; email: string; pageUrl: string; pageLabel: string }): string {
+  const { name, title, company, phone, email, pageUrl, pageLabel } = opts;
+  const lines = [
+    name,
+    [title, company].filter(Boolean).join(" | "),
+    phone ? `☎ ${phone}` : "",
+    email ? `✉ ${email}` : "",
+    pageUrl ? `${pageLabel || "Profile"}: ${pageUrl}` : "",
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+const CLIENT_GUIDES: Array<{ id: string; label: string; icon: string; steps: string[] }> = [
+  {
+    id: "gmail",
+    label: "Gmail",
+    icon: "📧",
+    steps: [
+      "Click the gear icon (⚙️) in Gmail → \"See all settings\"",
+      'Scroll to the \"Signature\" section → click \"Create new\"',
+      "Give it a name (e.g. \"Professional\")",
+      'Click inside the signature box → press Ctrl+V (or ⌘+V on Mac) to paste',
+      "Scroll down and click \"Save Changes\"",
+    ],
+  },
+  {
+    id: "outlook",
+    label: "Outlook",
+    icon: "📨",
+    steps: [
+      "Open Outlook → File → Options → Mail → Signatures",
+      "Click \"New\" to create a signature",
+      "Click inside the editor box and press Ctrl+V to paste",
+      "Set it as default for New messages and/or Replies",
+      "Click \"OK\" to save",
+    ],
+  },
+  {
+    id: "apple",
+    label: "Apple Mail",
+    icon: "🍎",
+    steps: [
+      "Open Mail → Preferences (or Settings) → Signatures",
+      "Select your account on the left, click \"+\"",
+      "Uncheck \"Always match my default message font\" if visible",
+      "Press ⌘+V to paste into the signature area",
+      "Close Preferences — changes save automatically",
+    ],
+  },
+];
+
+function EmailSignaturePanel({ user, pages }: { user: any; pages: any[] }) {
+  const page = pages[0] ?? null;
+  const defaultPageUrl = page ? `https://linkbay.ai/${page.username}` : "";
+  const defaultAccent = page?.accentColor || "#e06b1a";
+
+  const [name, setName] = useState<string>(user?.name || "");
+  const [jobTitle, setJobTitle] = useState<string>("");
+  const [company, setCompany] = useState<string>("");
+  const [phone, setPhone] = useState<string>(page?.phone || "");
+  const [sigEmail, setSigEmail] = useState<string>(page?.contactEmail || user?.email || "");
+  const [pageLabel, setPageLabel] = useState<string>("View my profile");
+  const [accent, setAccent] = useState<string>(defaultAccent);
+  const [style, setStyle] = useState<SigStyle>("classic");
+  const [showDivider, setShowDivider] = useState<boolean>(true);
+  const [copiedHtml, setCopiedHtml] = useState(false);
+  const [copiedPlain, setCopiedPlain] = useState(false);
+  const [activeGuide, setActiveGuide] = useState<string | null>(null);
+
+  const sigOpts = {
+    name, title: jobTitle, company, phone, email: sigEmail,
+    pageUrl: defaultPageUrl, pageLabel, accent, style, showDivider,
+    avatarUrl: user?.avatarUrl || undefined,
+  };
+
+  const htmlSig = buildSignatureHtml(sigOpts);
+  const plainSig = buildSignaturePlain(sigOpts);
+
+  const copyHtml = async () => {
+    try {
+      // Modern clipboard API — write as text/html so email clients accept formatted paste
+      const blob = new Blob([htmlSig], { type: "text/html" });
+      const plainBlob = new Blob([plainSig], { type: "text/plain" });
+      await navigator.clipboard.write([new ClipboardItem({ "text/html": blob, "text/plain": plainBlob })]);
+    } catch {
+      // Fallback: copy raw HTML as text
+      await navigator.clipboard.writeText(htmlSig);
+    }
+    setCopiedHtml(true);
+    setTimeout(() => setCopiedHtml(false), 2500);
+  };
+
+  const copyPlain = async () => {
+    await navigator.clipboard.writeText(plainSig);
+    setCopiedPlain(true);
+    setTimeout(() => setCopiedPlain(false), 2500);
+  };
+
+  const inputLabel = (label: string) => (
+    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text-muted)", marginBottom: 3, letterSpacing: "0.04em", textTransform: "uppercase" as const }}>{label}</div>
+  );
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: "1.5rem 1.75rem" }}>
+      <div style={{ maxWidth: 860, margin: "0 auto" }}>
+
+        {/* Header */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h1 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span style={{ fontSize: 22 }}>✉️</span> Email Signature
+          </h1>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", margin: "0.375rem 0 0", lineHeight: 1.5 }}>
+            Generate a professional HTML signature with a direct link to your Linkbay page. Paste it straight into Gmail, Outlook, or Apple Mail.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", alignItems: "start" }}>
+
+          {/* LEFT — controls */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+
+            {/* Style picker */}
+            <div style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1rem 1.125rem" }}>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>Style</div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                {(["classic", "minimal", "card"] as SigStyle[]).map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStyle(s)}
+                    style={{
+                      flex: 1, padding: "0.5rem", borderRadius: "var(--radius-md)",
+                      border: style === s ? `2px solid ${accent}` : "1.5px solid var(--color-border)",
+                      background: style === s ? `rgba(${accent === "#e06b1a" ? "224,107,26" : "100,100,100"},0.07)` : "var(--color-bg)",
+                      cursor: "pointer", fontSize: 12, fontWeight: style === s ? 700 : 500,
+                      color: style === s ? "var(--color-text)" : "var(--color-text-muted)",
+                    }}
+                  >
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Personal details */}
+            <div style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1rem 1.125rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.125rem" }}>Your details</div>
+              <div>{inputLabel("Full name")}<input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Jane Smith" style={{ width: "100%", boxSizing: "border-box" as const }} /></div>
+              <div>{inputLabel("Job title")}<input className="input" value={jobTitle} onChange={e => setJobTitle(e.target.value)} placeholder="Marketing Consultant" style={{ width: "100%", boxSizing: "border-box" as const }} /></div>
+              <div>{inputLabel("Company")}<input className="input" value={company} onChange={e => setCompany(e.target.value)} placeholder="Acme Ltd" style={{ width: "100%", boxSizing: "border-box" as const }} /></div>
+              <div>{inputLabel("Phone")}<input className="input" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+44 7700 900000" style={{ width: "100%", boxSizing: "border-box" as const }} /></div>
+              <div>{inputLabel("Email")}<input className="input" value={sigEmail} onChange={e => setSigEmail(e.target.value)} placeholder="jane@example.com" style={{ width: "100%", boxSizing: "border-box" as const }} /></div>
+            </div>
+
+            {/* Link button settings */}
+            <div style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1rem 1.125rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.125rem" }}>Profile link button</div>
+              <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>Linking to: <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>{defaultPageUrl || "(no page yet)"}</span></div>
+              <div>{inputLabel("Button label")}<input className="input" value={pageLabel} onChange={e => setPageLabel(e.target.value)} placeholder="View my profile" style={{ width: "100%", boxSizing: "border-box" as const }} /></div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.25rem" }}>
+                {inputLabel("Accent colour")}
+                <input type="color" value={accent} onChange={e => setAccent(e.target.value)} style={{ width: 34, height: 28, borderRadius: 6, border: "1px solid var(--color-border)", cursor: "pointer", padding: 2 }} />
+                <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{accent}</span>
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: 12, cursor: "pointer", marginTop: "0.125rem" }}>
+                <input type="checkbox" checked={showDivider} onChange={e => setShowDivider(e.target.checked)} />
+                <span style={{ color: "var(--color-text-muted)" }}>Show divider line above signature</span>
+              </label>
+            </div>
+
+          </div>
+
+          {/* RIGHT — preview + copy */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", position: "sticky", top: 0 }}>
+
+            {/* Preview box */}
+            <div style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+              <div style={{ padding: "0.625rem 1rem", borderBottom: "1px solid var(--color-divider)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} />
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#f59e0b" }} />
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e" }} />
+                <span style={{ fontSize: 10, color: "var(--color-text-faint)", marginLeft: "0.375rem", fontWeight: 500 }}>Preview</span>
+              </div>
+              {/* Email chrome mockup */}
+              <div style={{ background: "#fff", padding: "1rem 1.25rem" }}>
+                <div style={{ borderBottom: "1px solid #e5e7eb", paddingBottom: "0.5rem", marginBottom: "0.75rem" }}>
+                  <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>From: {sigEmail || user?.email || "you@example.com"}</div>
+                  <div style={{ fontSize: 11, color: "#9ca3af" }}>To: client@example.com</div>
+                </div>
+                <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.6, marginBottom: "1rem", fontFamily: "Arial, sans-serif" }}>
+                  Hi Sarah,<br />Hope you’re well. I’ve attached the proposal as discussed.
+                </div>
+                <div style={{ color: "#374151", fontFamily: "Arial, sans-serif" }}
+                  dangerouslySetInnerHTML={{ __html: htmlSig }}
+                />
+              </div>
+            </div>
+
+            {/* Copy buttons */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.625rem" }}>
+              <button
+                className="btn btn-primary"
+                onClick={copyHtml}
+                style={{ justifyContent: "center", gap: "0.375rem" }}
+              >
+                {copiedHtml ? <>{icons.check} Copied!</> : <>{icons.copy} Copy HTML</>}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={copyPlain}
+                style={{ justifyContent: "center", gap: "0.375rem" }}
+              >
+                {copiedPlain ? <>{icons.check} Copied!</> : <>Copy plain text</>}
+              </button>
+            </div>
+
+            <p style={{ fontSize: 11, color: "var(--color-text-faint)", margin: 0, lineHeight: 1.5, textAlign: "center" as const }}>
+              Click <strong>Copy HTML</strong>, then paste directly into your email client’s signature editor to keep full formatting.
+            </p>
+
+            {/* How to install guides */}
+            <div style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+              <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-divider)" }}>
+                <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>How to install</div>
+              </div>
+              <div style={{ padding: "0.5rem" }}>
+                {CLIENT_GUIDES.map(guide => (
+                  <div key={guide.id}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveGuide(prev => prev === guide.id ? null : guide.id)}
+                      style={{
+                        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "0.5rem 0.625rem", background: "none", border: "none", cursor: "pointer",
+                        borderRadius: "var(--radius-md)",
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span>{guide.icon}</span>{guide.label}
+                      </span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points={activeGuide === guide.id ? "18 15 12 9 6 15" : "6 9 12 15 18 9"} />
+                      </svg>
+                    </button>
+                    {activeGuide === guide.id && (
+                      <ol style={{ margin: "0 0 0.5rem 0", padding: "0 0.625rem 0.5rem 2rem", listStyle: "decimal" }}>
+                        {guide.steps.map((step, i) => (
+                          <li key={i} style={{ fontSize: 12, color: "var(--color-text-muted)", lineHeight: 1.6, marginBottom: "0.25rem" }}>{step}</li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Raw HTML expandable */}
+            <details style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+              <summary style={{ padding: "0.625rem 1rem", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", listStyle: "none", display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                View raw HTML
+              </summary>
+              <pre style={{ margin: 0, padding: "0.75rem 1rem", fontSize: 10, overflowX: "auto", color: "var(--color-text-muted)", lineHeight: 1.5, maxHeight: 240, overflowY: "auto" }}>{htmlSig}</pre>
+            </details>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Main Dashboard ---
 // ────────────────────────────────────────────────────────────────────────
 // useLicence hook
@@ -5848,6 +6195,7 @@ export default function DashboardPage() {
             </div>
           </div>
         );
+      case "signature": return <EmailSignaturePanel user={user} pages={pages} />;
       case "settings": return <SettingsPanel user={user} pages={pages} onLogout={async () => { await logout(); navigate("/"); }} />;
       case "billing": return <BillingPanel />;
       default: return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;

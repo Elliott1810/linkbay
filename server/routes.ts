@@ -8,10 +8,10 @@ import Stripe from "stripe";
 import OpenAI from "openai";
 
 // ─── Tier limits ─────────────────────────────────────────────────────────────
-const TIER_LIMITS: Record<string, { pages: number; blocks: number; analytics: boolean; contacts: boolean }> = {
-  free:     { pages: 1,   blocks: 5,        analytics: false, contacts: false },
-  pro:      { pages: 3,   blocks: Infinity, analytics: true,  contacts: true  },
-  business: { pages: Infinity, blocks: Infinity, analytics: true, contacts: true },
+const TIER_LIMITS: Record<string, { pages: number; blocks: number; analytics: boolean; contacts: boolean; csvExport: boolean; qrCode: boolean; removebranding: boolean; priorityAiRpm: number; leadNotifyEmail: boolean }> = {
+  free:     { pages: 1,   blocks: 5,        analytics: false, contacts: false, csvExport: false, qrCode: false,  removebranding: false, priorityAiRpm: 5,   leadNotifyEmail: false },
+  pro:      { pages: 3,   blocks: Infinity, analytics: true,  contacts: true,  csvExport: false, qrCode: true,   removebranding: false, priorityAiRpm: 20,  leadNotifyEmail: true  },
+  business: { pages: Infinity, blocks: Infinity, analytics: true, contacts: true, csvExport: true, qrCode: true, removebranding: true,  priorityAiRpm: 100, leadNotifyEmail: true  },
 };
 function getLimits(tier: string) { return TIER_LIMITS[tier] || TIER_LIMITS.free; }
 
@@ -1826,6 +1826,11 @@ export function registerLicenceRoutes(app: Express) {
           blocks: limits.blocks === Infinity ? null : limits.blocks,
           analytics: limits.analytics,
           contacts: limits.contacts,
+          csvExport: limits.csvExport,
+          qrCode: limits.qrCode,
+          removeBranding: limits.removebranding,
+          leadNotifyEmail: limits.leadNotifyEmail,
+          priorityAiRpm: limits.priorityAiRpm,
         },
         priceIds: {
           proMonthly: process.env.STRIPE_PRO_MONTHLY_PRICE_ID || "",
@@ -2145,6 +2150,7 @@ Output schema:
   "background": string,  // one of: none, bg-aurora, bg-blush, bg-dusk, bg-ember, bg-fog, bg-forest, bg-glacier, bg-haze, bg-ivory, bg-lava, bg-midnight, bg-mint, bg-mocha, bg-ocean, bg-peach, bg-plum, bg-rose, bg-sand, bg-slate, bg-twilight
   "accentColor": string, // hex colour matching the brand
   "fontFamily": string,  // one of: inter, cabinet-grotesk, general-sans, playfair, space-grotesk
+  "blockStyle": string,  // one of: default, rounded, sharp, bordered, outlined, elevated, ghost, floating, underline, neon, frosted — choose to suit the visual theme
   "blocks": Block[]      // 3-6 blocks
 }
 

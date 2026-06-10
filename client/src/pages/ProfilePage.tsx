@@ -840,6 +840,12 @@ export default function ProfilePage() {
     floating: "1.25rem",
     underline: "0px",
     neon: "var(--radius-lg)",
+    // 5 new professional presets
+    "dark-glass": "var(--radius-lg)",
+    "minimal-hc": "var(--radius-md, 8px)",
+    "shadow-depth": "var(--radius-lg)",
+    "refined-border": "10px",
+    "compact-row": "0px",
   };
   const blockRadius = blockRadiusMap[blockStyle] ?? "var(--radius-lg)";
   // Goal 6: auto text color based on background luminance, or explicit textColor override

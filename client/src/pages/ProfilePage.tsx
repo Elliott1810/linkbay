@@ -579,7 +579,8 @@ function TextBlock({ block, accent }: { block: Block; accent: string }) {
   return (
     <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)" }}>
       {block.title && <h3 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem", color: accent }}>{block.title}</h3>}
-      <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: "var(--color-text)", whiteSpace: "pre-wrap" }}>
+      {/* #16: body text uses accent colour */}
+      <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: accent, whiteSpace: "pre-wrap" }}>
         {body}
       </p>
     </div>
@@ -587,6 +588,7 @@ function TextBlock({ block, accent }: { block: Block; accent: string }) {
 }
 
 // ─── Tracked link card ───────────────────────────────────────
+// #19: TrackedLinkCard supports style = "featured" | "outline" | "default"
 function TrackedLinkCard({ link, accentColor, featured }: { link: PageData["links"][0]; accentColor: string; featured?: boolean }) {
   const mutation = useMutation({
     mutationFn: async () => {
@@ -599,13 +601,17 @@ function TrackedLinkCard({ link, accentColor, featured }: { link: PageData["link
     if (link.url && link.url !== "#") window.open(link.url, "_blank", "noopener");
   };
 
-  if (featured) {
+  // Resolve effective style — featured prop is legacy; prefer link.style
+  const effectiveStyle = featured ? "featured" : (link.style || "default");
+
+  // #16a: featured style
+  if (effectiveStyle === "featured") {
     return (
       <button
         onClick={handleClick}
         style={{
           display: "block", width: "100%", padding: "1.125rem 1.25rem",
-          background: accentColor, color: "#fff",
+          background: accentColor, color: accentColor === "#ffffff" || accentColor === "#fff" ? "#1a1917" : "#fff",
           borderRadius: "var(--radius-lg)", border: "none", textAlign: "left",
           cursor: "pointer", marginBottom: "1rem", transition: "all var(--transition-interactive)"
         }}
@@ -619,6 +625,33 @@ function TrackedLinkCard({ link, accentColor, featured }: { link: PageData["link
     );
   }
 
+  // #19: outline style — transparent bg, accent border, accent text
+  if (effectiveStyle === "outline") {
+    return (
+      <button
+        onClick={handleClick}
+        className="profile-link-card"
+        style={{ width: "100%", background: "transparent", border: `2px solid ${accentColor}`, textAlign: "left" }}
+        data-testid={`link-card-${link.id}`}
+      >
+        {link.icon ? (
+          <div style={{ fontSize: "1.5rem", flexShrink: 0 }}>{link.icon}</div>
+        ) : (
+          <div style={{ width: "1.5rem", flexShrink: 0 }} />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* #16a: text uses accent colour */}
+          <div style={{ fontWeight: 600, fontSize: "var(--text-sm)", color: accentColor }}>{link.label}</div>
+          {link.description && <div style={{ fontSize: "var(--text-xs)", color: accentColor, marginTop: 2, opacity: 0.8 }}>{link.description}</div>}
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: accentColor, flexShrink: 0 }}>
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </button>
+    );
+  }
+
+  // Default style
   return (
     <button
       onClick={handleClick}
@@ -632,10 +665,11 @@ function TrackedLinkCard({ link, accentColor, featured }: { link: PageData["link
         <div style={{ width: "1.5rem", flexShrink: 0 }} />
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{link.label}</div>
-        {link.description && <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: 2 }}>{link.description}</div>}
+        {/* #16a: all text uses accent colour */}
+        <div style={{ fontWeight: 600, fontSize: "var(--text-sm)", color: accentColor }}>{link.label}</div>
+        {link.description && <div style={{ fontSize: "var(--text-xs)", color: accentColor, marginTop: 2, opacity: 0.75 }}>{link.description}</div>}
       </div>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: "var(--color-text-faint)", flexShrink: 0 }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: accentColor, flexShrink: 0 }}>
         <path d="M5 12h14M12 5l7 7-7 7"/>
       </svg>
     </button>
@@ -733,6 +767,8 @@ export default function ProfilePage() {
   const { user } = useAuth();
   // Preview mode: when embedded in dashboard iframe, hide CTAs and Linkbay branding
   const isPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "1";
+  // #12: nophoto mode — hide real avatar, show initials placeholder in preview
+  const noPhoto = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("nophoto") === "1";
 
   const { data, isLoading, isError } = useQuery<PageData>({
     queryKey: ["/api/pages/public", username, isPreview],
@@ -794,7 +830,7 @@ export default function ProfilePage() {
   // Map blockStyle to actual CSS border-radius value for inline override
   const blockRadiusMap: Record<string, string> = {
     default: "var(--radius-lg)",
-    rounded: "1.5rem",
+    frosted: "var(--radius-lg)",
     sharp: "0px",
     bordered: "var(--radius-lg)",
     outlined: "var(--radius-lg)",
@@ -802,7 +838,7 @@ export default function ProfilePage() {
     ghost: "var(--radius-lg)",
     floating: "1.25rem",
     underline: "0px",
-    gradient: "var(--radius-lg)",
+    neon: "var(--radius-lg)",
   };
   const blockRadius = blockRadiusMap[blockStyle] ?? "var(--radius-lg)";
   // Goal 6: auto text color based on background luminance, or explicit textColor override
@@ -833,6 +869,7 @@ export default function ProfilePage() {
         fontFamily,
         ...bgStyle,
         colorScheme: "light",
+        "--color-primary": accent,
         "--color-text": autoText,
         "--color-text-muted": autoTextMuted,
         "--color-bg": "#ffffff",
@@ -881,12 +918,12 @@ export default function ProfilePage() {
             const avatarSize = isPreview ? 36 : 72;
             const avatarFontSize = isPreview ? "1.25rem" : "1.75rem";
             const avatarInitialBg = wcagContrast(accent) === "#ffffff" ? accent : autoText;
-            return page.avatarUrl ? (
+            return page.avatarUrl && !noPhoto ? (
               <img
                 src={resolveMediaUrl(page.avatarUrl)}
                 alt={page.ownerName}
-                className="avatar-img"
                 style={{
+                  /* #9: no avatar-img class — its !important width/height revert override inline styles */
                   width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
                   objectFit: "cover",
                   margin: "0 auto 0.75rem",

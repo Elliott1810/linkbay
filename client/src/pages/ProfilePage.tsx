@@ -23,7 +23,7 @@ import { Globe } from "lucide-react";
 // ─── Types ───────────────────────────────────────────────────
 interface Block {
   id: string;
-  type: "link" | "text" | "poll" | "lead-form" | "image" | "video" | "social-links" | "countdown" | "divider" | "button" | "testimonial" | "faq" | "link";
+  type: "link" | "text" | "poll" | "lead-form" | "image" | "video" | "social-links" | "countdown" | "divider" | "button" | "testimonial" | "faq" | "vcard" | "booking";
   // link
   label?: string;
   url?: string;
@@ -68,6 +68,17 @@ interface Block {
   // faq
   faqs?: { q: string; a: string }[];
   items?: { question: string; answer: string }[];
+  // vcard
+  vcName?: string;
+  vcJobTitle?: string;
+  vcCompany?: string;
+  vcPhone?: string;
+  vcEmail?: string;
+  vcWebsite?: string;
+  // booking
+  platform?: string;
+  embedUrl?: string;
+  embedHeight?: number;
 }
 
 // ─── Block interaction tracker ───────────────────────────────
@@ -287,6 +298,130 @@ function FaqBlock({ block, accent, pageId }: { block: Block; accent: string; pag
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: "0.375rem", lineHeight: 1.6 }}>{f.a}</p>
         </details>
       ))}
+    </div>
+  );
+}
+
+// ─── vCard Block ─────────────────────────────────────────────
+function VCardBlock({ block, accent }: { block: Block; accent: string }) {
+  const handleDownload = () => {
+    const lines: string[] = [
+      "BEGIN:VCARD",
+      "VERSION:3.0",
+    ];
+    const name = block.vcName || "";
+    if (name) lines.push(`FN:${name}`);
+    const jobTitle = block.vcJobTitle || "";
+    if (jobTitle) lines.push(`TITLE:${jobTitle}`);
+    const company = block.vcCompany || "";
+    if (company) lines.push(`ORG:${company}`);
+    const phone = block.vcPhone || "";
+    if (phone) lines.push(`TEL:${phone}`);
+    const email = block.vcEmail || "";
+    if (email) lines.push(`EMAIL:${email}`);
+    const website = block.vcWebsite || "";
+    if (website) lines.push(`URL:${website}`);
+    lines.push("END:VCARD");
+    const blob = new Blob([lines.join("\n")], { type: "text/vcard;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${name || "contact"}.vcf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const name = block.vcName || "";
+  const jobTitle = block.vcJobTitle || "";
+  const company = block.vcCompany || "";
+  const subline = [jobTitle, company].filter(Boolean).join(" · ");
+
+  return (
+    <div className="vcard-block">
+      <div className="vcard-block__info">
+        <div className="vcard-block__name">{name || "Contact"}</div>
+        {subline && <div className="vcard-block__role">{subline}</div>}
+      </div>
+      <button
+        type="button"
+        className="vcard-block__btn"
+        style={{ background: accent, color: "#fff" }}
+        onClick={handleDownload}
+        aria-label="Save contact to phone"
+      >
+        💾 Save to Contacts
+      </button>
+    </div>
+  );
+}
+
+// ─── Booking Block ─────────────────────────────────────────────
+function BookingBlock({ block, accent }: { block: Block; accent: string }) {
+  const platform = block.platform;
+  const rawUrl = block.embedUrl;
+  const label = block.title || block.label || "Book a call";
+  const height: number = block.embedHeight ?? 650;
+
+  if (!rawUrl) {
+    return (
+      <div className="booking-embed booking-embed--placeholder">
+        <span style={{ fontSize: 24 }}>📅</span>
+        <span style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No booking URL set. Edit this block to add one.</span>
+      </div>
+    );
+  }
+
+  // Build the embed URL with platform-specific params
+  function buildEmbedUrl(raw: string, plat: string | undefined): string {
+    try {
+      const u = new URL(raw);
+      if (plat === "calendly" || u.hostname.includes("calendly.com")) {
+        if (!u.searchParams.has("embed_type")) u.searchParams.set("embed_type", "Inline");
+        if (!u.searchParams.has("hide_landing_page_details")) u.searchParams.set("hide_landing_page_details", "1");
+        if (!u.searchParams.has("hide_event_type_details")) u.searchParams.set("hide_event_type_details", "1");
+        if (!u.searchParams.has("hide_gdpr_banner")) u.searchParams.set("hide_gdpr_banner", "1");
+      } else if (plat === "cal" || u.hostname.includes("cal.com")) {
+        if (!u.searchParams.has("embed")) u.searchParams.set("embed", "true");
+      }
+      return u.toString();
+    } catch {
+      return raw;
+    }
+  }
+
+  const embedUrl = buildEmbedUrl(rawUrl, platform);
+
+  // Determine if URL is safe to iframe (only allow https)
+  const isSafe = embedUrl.startsWith("https://");
+
+  if (!isSafe) {
+    return (
+      <div className="booking-embed booking-embed--fallback">
+        <span style={{ fontSize: 24 }}>📅</span>
+        <p style={{ fontSize: "var(--text-sm)", fontWeight: 600, marginBottom: "0.5rem" }}>{label}</p>
+        <a href={rawUrl} target="_blank" rel="noopener noreferrer" className="booking-embed__link" style={{ background: accent, color: "#fff" }}>
+          Open booking page →
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="booking-embed">
+      {label && <div className="booking-embed__label" style={{ color: accent }}>📅 {label}</div>}
+      <div className="booking-embed__frame-wrap" style={{ height }}>
+        <iframe
+          src={embedUrl}
+          title={label}
+          frameBorder="0"
+          scrolling="yes"
+          allow="camera; microphone; fullscreen; payment"
+          style={{ width: "100%", height: "100%", border: "none", borderRadius: "var(--radius-lg)" }}
+          loading="lazy"
+        />
+      </div>
     </div>
   );
 }
@@ -1058,6 +1193,8 @@ export default function ProfilePage() {
                 case "button": inner = <ButtonBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
                 case "testimonial": inner = <TestimonialBlock key={block.id} block={block} accent={accent} />; break;
                 case "faq": inner = <FaqBlock key={block.id} block={block} accent={accent} pageId={page.id} />; break;
+                case "vcard": inner = <VCardBlock key={block.id} block={block} accent={accent} />; break;
+                case "booking": inner = <BookingBlock key={block.id} block={block} accent={accent} />; break;
                 default: return null;
               }
               return (

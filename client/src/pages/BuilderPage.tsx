@@ -183,15 +183,26 @@ export const COLOR_OPTIONS = [
 // Dark backgrounds are flagged in BACKGROUND_OPTIONS. Used to auto-set text colour.
 export function getBackgroundLuminance(bg: string | null | undefined): "dark" | "light" {
   if (!bg || bg === "none") return "light";
+  // #12: plain hex custom color — always light (user controls the color)
+  if (bg.startsWith("#")) return "light";
   // New CSS class system
   if (bg.startsWith("bg-")) {
     const opt = BACKGROUND_OPTIONS.find(o => o.value === bg);
     return opt?.dark ? "dark" : "light";
   }
-  // Legacy JSON system
+  // JSON system — handles both legacy { color } and new { bgValue, blockStyle } formats
   if (bg.startsWith("{")) {
     try {
       const parsed = JSON.parse(bg);
+      // #13: new format stores CSS class in bgValue
+      if (parsed.bgValue) {
+        if (parsed.bgValue.startsWith("bg-")) {
+          const opt = BACKGROUND_OPTIONS.find(o => o.value === parsed.bgValue);
+          return opt?.dark ? "dark" : "light";
+        }
+        // hex color stored in bgValue (custom-color)
+        if (parsed.bgValue.startsWith("#")) return "light";
+      }
       const color = parsed.color || "";
       const darkColors = new Set(["charcoal", "midnight", "midnight-blue", "deep-purple", "espresso", "forest", "ocean", "aurora", "sunset"]);
       if (darkColors.has(color)) return "dark";
@@ -203,12 +214,20 @@ export function getBackgroundLuminance(bg: string | null | undefined): "dark" | 
 // Returns the CSS class name for new-format backgrounds, or {} for legacy/none
 export function backgroundToCss(bg: string | null | undefined): React.CSSProperties {
   if (!bg || bg === "none") return {};
+  // #12: plain hex color (custom colour picker)
+  if (bg.startsWith("#")) return { backgroundColor: bg };
   // New CSS-class system: class is applied directly to the element — no inline style needed
   if (bg.startsWith("bg-")) return {};
-  // Legacy JSON system — basic fallback so old profiles don't break
+  // JSON system — handles both legacy { color } and new { bgValue, blockStyle } formats
   if (bg.startsWith("{")) {
     try {
       const parsed = JSON.parse(bg);
+      // #13: new format — bgValue holds the CSS class or hex color
+      if (parsed.bgValue) {
+        if (parsed.bgValue.startsWith("bg-")) return {}; // CSS class applied via backgroundToClass
+        if (parsed.bgValue.startsWith("#")) return { backgroundColor: parsed.bgValue };
+      }
+      // Legacy format: { color: "..." }
       const color = parsed.color as string | undefined;
       if (!color || color === "none") return {};
       const legacyMap: Record<string, React.CSSProperties> = {
@@ -241,6 +260,13 @@ export function backgroundToCss(bg: string | null | undefined): React.CSSPropert
 export function backgroundToClass(bg: string | null | undefined): string {
   if (!bg || bg === "none") return "";
   if (bg.startsWith("bg-")) return bg;
+  // #13: JSON format with bgValue holding a CSS class
+  if (bg.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(bg);
+      if (parsed.bgValue && parsed.bgValue.startsWith("bg-")) return parsed.bgValue;
+    } catch { /* ignore */ }
+  }
   return "";
 }
 
@@ -269,7 +295,7 @@ function LivePreview({ state }: { state: BuilderState }) {
         <div style={{ padding: "1.25rem 1rem 2rem", background: "#fff" /* Always light preview */ }}>
           {/* Hero */}
           <div style={{ textAlign: "center", marginBottom: "1rem", padding: "1.25rem 0.75rem", background: `linear-gradient(135deg, ${accent}18, ${accent}06)`, borderRadius: "1rem", border: `1px solid ${accent}20` }}>
-            <div style={{ width: 52, height: 52, borderRadius: "50%", background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.25rem", fontWeight: 800, margin: "0 auto 0.625rem", border: "2px solid white", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem", fontWeight: 800, margin: "0 auto 0.5rem", flexShrink: 0, border: "2px solid white", boxShadow: "0 2px 8px rgba(0,0,0,0.12)", overflow: "hidden" }}>
               {(state.name || "Y").charAt(0).toUpperCase()}
             </div>
             <div style={{ fontSize: 14, fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", color: "#1a1917" }}>{state.name || "Your Name"}</div>

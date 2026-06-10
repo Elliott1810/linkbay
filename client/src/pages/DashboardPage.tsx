@@ -870,18 +870,24 @@ const PAGE_FONT_OPTIONS = [
   { label: "Josefin Sans", value: "josefin-sans" },
 ];
 
-// G7: 10 block style options — stored in background JSON as `blockStyle` key
+// G7: 10 + 5 block style options — stored in background JSON as `blockStyle` key
 const BLOCK_STYLE_OPTIONS = [
-  { value: "default",    label: "Default",      desc: "Clean, minimal cards" },
-  { value: "frosted",    label: "Frosted",      desc: "Frosted glass, blurred" },
-  { value: "sharp",      label: "Sharp",        desc: "Flat, zero radius" },
-  { value: "bordered",   label: "Bordered",     desc: "Accent colour border" },
-  { value: "outlined",   label: "Outlined",     desc: "2px strong outline" },
-  { value: "elevated",   label: "Elevated",     desc: "Layered shadow depth" },
-  { value: "ghost",      label: "Ghost",        desc: "Transparent with border" },
-  { value: "floating",   label: "Floating",     desc: "Lifted cards with shadow" },
-  { value: "underline",  label: "Underline",    desc: "Accent underline only" },
-  { value: "neon",       label: "Neon / Glow",  desc: "Glowing accent outline" },
+  { value: "default",        label: "Default",           desc: "Clean, minimal cards" },
+  { value: "frosted",        label: "Frosted",           desc: "Frosted glass, blurred" },
+  { value: "sharp",          label: "Sharp",             desc: "Flat, zero radius" },
+  { value: "bordered",       label: "Bordered",          desc: "Accent colour border" },
+  { value: "outlined",       label: "Outlined",          desc: "2px strong outline" },
+  { value: "elevated",       label: "Elevated",          desc: "Layered shadow depth" },
+  { value: "ghost",          label: "Ghost",             desc: "Transparent with border" },
+  { value: "floating",       label: "Floating",          desc: "Lifted cards with shadow" },
+  { value: "underline",      label: "Underline",         desc: "Accent underline only" },
+  { value: "neon",           label: "Neon / Glow",       desc: "Glowing accent outline" },
+  // 5 new professional presets
+  { value: "dark-glass",     label: "Dark Glass",        desc: "Dark glassmorphism + accent glow" },
+  { value: "minimal-hc",     label: "Minimal HC",        desc: "High-contrast + spring bounce" },
+  { value: "shadow-depth",   label: "Shadow Depth",      desc: "Layered 3D shadow stack" },
+  { value: "refined-border", label: "Refined Border",    desc: "Thin business card border" },
+  { value: "compact-row",    label: "Compact Row",       desc: "Mobile list rows, no radius" },
 ];
 
 function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave: (d: any) => void; saving: boolean; saveMsg: string }) {

@@ -1452,6 +1452,156 @@ img.avatar-img {
   box-shadow: none !important;
 }
 
+/* ─── 5 New Professional Preset Block Styles ──────────────────────────────────
+   Each uses var(--color-primary) for accent, inherits from the user's profile
+   accent colour set via CSS custom property on the page wrapper.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* 1. Dark Glass — sleek dark-mode glassmorphism */
+.block-style-dark-glass .block-card {
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden !important;
+  background: rgba(10, 10, 18, 0.72) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid color-mix(in srgb, var(--color-primary, #e06b1a) 55%, transparent) !important;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04) inset,
+    0 8px 32px rgba(0,0,0,0.45),
+    0 0 20px color-mix(in srgb, var(--color-primary, #e06b1a) 18%, transparent) !important;
+  transition: box-shadow 0.25s ease, transform 0.2s ease;
+}
+.block-style-dark-glass .block-card:hover {
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06) inset,
+    0 12px 40px rgba(0,0,0,0.55),
+    0 0 32px color-mix(in srgb, var(--color-primary, #e06b1a) 28%, transparent) !important;
+  transform: translateY(-2px);
+}
+.block-style-dark-glass .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: var(--radius-lg) !important;
+  color: #f5f5f7 !important;
+}
+.block-style-dark-glass .block-card > * a,
+.block-style-dark-glass .block-card > * span {
+  color: #f5f5f7 !important;
+}
+
+/* 2. Minimal High-Contrast — crisp white/dark bg, micro-animation on hover */
+.block-style-minimal-hc .block-card {
+  border-radius: var(--radius-md, 8px) !important;
+  overflow: hidden !important;
+  background: var(--color-surface, #fff) !important;
+  border: none !important;
+  box-shadow: none !important;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+}
+.block-style-minimal-hc .block-card:hover {
+  transform: scale(1.025);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important;
+}
+.block-style-minimal-hc .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: var(--radius-md, 8px) !important;
+}
+/* Accent left-bar on each minimal-hc card */
+.block-style-minimal-hc .block-card::before {
+  content: "";
+  display: block;
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--color-primary, #e06b1a);
+  border-radius: 0 2px 2px 0;
+  pointer-events: none;
+}
+.block-style-minimal-hc .block-card {
+  position: relative;
+}
+
+/* 3. Shadow Depth — rich multi-layer shadow stack for strong emphasis */
+.block-style-shadow-depth .block-card {
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden !important;
+  background: var(--color-surface, #fff) !important;
+  border: none !important;
+  box-shadow:
+    0 1px 2px rgba(0,0,0,0.07),
+    0 4px 8px rgba(0,0,0,0.07),
+    0 8px 16px rgba(0,0,0,0.06),
+    0 16px 32px rgba(0,0,0,0.05),
+    0 0 0 1px color-mix(in srgb, var(--color-primary, #e06b1a) 20%, transparent) !important;
+  transition: box-shadow 0.22s ease, transform 0.22s ease;
+}
+.block-style-shadow-depth .block-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.09),
+    0 6px 12px rgba(0,0,0,0.09),
+    0 12px 24px rgba(0,0,0,0.08),
+    0 24px 48px rgba(0,0,0,0.07),
+    0 0 0 1.5px color-mix(in srgb, var(--color-primary, #e06b1a) 40%, transparent) !important;
+}
+.block-style-shadow-depth .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: var(--radius-lg) !important;
+}
+
+/* 4. Refined Border — thin 1px muted business card style */
+.block-style-refined-border .block-card {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, var(--color-primary, #e06b1a) 35%, rgba(0,0,0,0.12)) !important;
+  box-shadow: none !important;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.block-style-refined-border .block-card:hover {
+  background: color-mix(in srgb, var(--color-primary, #e06b1a) 4%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-primary, #e06b1a) 70%, transparent) !important;
+}
+.block-style-refined-border .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 10px !important;
+}
+
+/* 5. Compact Row — mobile-optimised slim list row, no card radius */
+.block-style-compact-row .block-card {
+  border-radius: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-primary, #e06b1a) 20%, rgba(0,0,0,0.08)) !important;
+  box-shadow: none !important;
+  transition: background 0.15s ease;
+}
+.block-style-compact-row .block-card:hover {
+  background: color-mix(in srgb, var(--color-primary, #e06b1a) 5%, transparent) !important;
+}
+.block-style-compact-row .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+/* Remove gap between rows so they form a continuous list */
+.block-style-compact-row { gap: 0 !important; }
+/* First row — remove top border */
+.block-style-compact-row .block-card:first-child {
+  border-top: 1px solid color-mix(in srgb, var(--color-primary, #e06b1a) 20%, rgba(0,0,0,0.08)) !important;
+}
+
 /* #5: Glass info card — applied to profile main card + bio block */
 .block-style-glass-info {
   backdrop-filter: blur(12px) !important;

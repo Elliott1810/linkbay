@@ -128,7 +128,7 @@ export default function AuthPage({ mode: initialMode = "login" }: { mode?: "logi
   return (
     <div style={{ minHeight: "100dvh", background: "var(--color-bg)", display: "flex", flexDirection: "column" }}>
       {/* Top bar */}
-      <div style={{ padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="auth-top-bar" style={{ padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Link href="/" style={{ color: "var(--color-text)", textDecoration: "none" }}>
           <Logo />
         </Link>
@@ -148,7 +148,7 @@ export default function AuthPage({ mode: initialMode = "login" }: { mode?: "logi
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem 1rem" }}>
         <div style={{ width: "100%", maxWidth: 420 }}>
           {/* Heading */}
-          <div style={{ marginBottom: "2rem", textAlign: "center" }}>
+          <div className="auth-heading" style={{ marginBottom: "2rem", textAlign: "center" }}>
             <h1 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>
               {mode === "login" ? "Welcome back" : "Create your account"}
             </h1>

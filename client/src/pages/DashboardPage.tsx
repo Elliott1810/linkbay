@@ -862,15 +862,15 @@ const PAGE_FONT_OPTIONS = [
 // G7: 10 block style options — stored in background JSON as `blockStyle` key
 const BLOCK_STYLE_OPTIONS = [
   { value: "default",    label: "Default",      desc: "Clean, minimal cards" },
-  { value: "rounded",    label: "Rounded",      desc: "Soft radius, no border" },
+  { value: "frosted",    label: "Frosted",      desc: "Frosted glass, blurred" },
   { value: "sharp",      label: "Sharp",        desc: "Flat, zero radius" },
-  { value: "bordered",   label: "Bordered",     desc: "1px accent border" },
+  { value: "bordered",   label: "Bordered",     desc: "Accent colour border" },
   { value: "outlined",   label: "Outlined",     desc: "2px strong outline" },
   { value: "elevated",   label: "Elevated",     desc: "Layered shadow depth" },
   { value: "ghost",      label: "Ghost",        desc: "Transparent with border" },
   { value: "floating",   label: "Floating",     desc: "Lifted cards with shadow" },
   { value: "underline",  label: "Underline",    desc: "Accent underline only" },
-  { value: "gradient",   label: "Gradient",     desc: "Accent-tinted fill" },
+  { value: "neon",       label: "Neon / Glow",  desc: "Glowing accent outline" },
 ];
 
 function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave: (d: any) => void; saving: boolean; saveMsg: string }) {
@@ -985,32 +985,60 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           {["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].map(c => (
             <button key={c} type="button" onClick={() => setAccentColor(c)} style={{ width: 24, height: 24, borderRadius: "50%", background: c, border: `2.5px solid ${accentColor === c ? "var(--color-text)" : "transparent"}`, cursor: "pointer" }} />
           ))}
-          {/* #11/#7c: Custom colour icon — square (not round), inline with accent pills */}
-          {/* Clicking opens native colour picker; hex input lives here too */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer", position: "relative" }} title="Custom colour">
-              <div style={{ width: 24, height: 24, borderRadius: 4, background: accentColor, border: `2.5px solid ${!["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].includes(accentColor) ? "var(--color-text)" : "transparent"}`, flexShrink: 0, cursor: "pointer" }} />
-              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Custom</span>
-              <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer", top: 0, left: 0 }} />
-            </label>
-            {/* #11: hex input lives below the custom swatch only */}
+          {/* #7: Custom colour swatch + hex inline to the right */}
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", position: "relative" }} title="Custom colour">
+            <div style={{ width: 24, height: 24, borderRadius: 4, background: accentColor, border: `2.5px solid ${!["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].includes(accentColor) ? "var(--color-text)" : "transparent"}`, flexShrink: 0, cursor: "pointer" }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Custom</span>
+            <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: 24, height: 24, cursor: "pointer", top: 0, left: 0 }} />
             <input
               className="input"
               value={accentColor}
               onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setAccentColor(e.target.value); }}
               placeholder="#e06b1a"
-              style={{ fontSize: 11, width: 82, fontFamily: "monospace", padding: "0.15rem 0.35rem" }}
+              style={{ fontSize: 11, width: 78, fontFamily: "monospace", padding: "0.15rem 0.35rem" }}
               data-testid="input-accent-hex"
+            />
+          </label>
+        </div>
+      </div>
+      {/* ─── Background picker — Custom colour first, then CSS gradient swatches ─── */}
+      <div>
+        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background</label>
+        {/* #8: Custom colour is first / primary option */}
+        <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.625rem" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", position: "relative", flexShrink: 0 }} title="Custom background colour">
+            <div style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", background: activeBgHex, border: `2px solid ${customBgIsActive ? "var(--color-primary)" : "var(--color-border)"}`, flexShrink: 0, boxShadow: customBgIsActive ? "0 0 0 2px var(--amber-subtle, rgba(224,107,26,0.2))" : undefined }} />
+            <input
+              type="color"
+              value={customBgColor}
+              onChange={e => {
+                setCustomBgColor(e.target.value);
+                handleSetBackground(e.target.value);
+              }}
+              style={{ position: "absolute", opacity: 0, width: 36, height: 36, cursor: "pointer", top: 0, left: 0 }}
+            />
+          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: customBgIsActive ? "var(--color-primary)" : "var(--color-text-muted)" }}>Custom colour</span>
+            <input
+              className="input"
+              value={customBgColor}
+              onChange={e => {
+                if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) {
+                  setCustomBgColor(e.target.value);
+                  if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) handleSetBackground(e.target.value);
+                }
+              }}
+              placeholder="#ffffff"
+              style={{ fontSize: 11, width: 82, fontFamily: "monospace", padding: "0.15rem 0.35rem" }}
+              data-testid="input-bg-hex"
             />
           </div>
         </div>
-      </div>
-      {/* ─── Background picker — CSS gradient swatches + custom colour ─── */}
-      <div>
-        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background</label>
+        {/* Gradient swatches — None removed since Custom Colour is now the no-background option */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
-          {BACKGROUND_OPTIONS.map(opt => {
-            const isActive = !customBgIsActive && (background === opt.value || (!background && opt.value === "none") || (() => { try { const p = JSON.parse(background); return (p.bgValue === opt.value || (!p.bgValue && opt.value === "none")); } catch { return false; } })());
+          {BACKGROUND_OPTIONS.filter(opt => opt.value !== "none").map(opt => {
+            const isActive = !customBgIsActive && (background === opt.value || (() => { try { const p = JSON.parse(background); return (p.bgValue === opt.value); } catch { return false; } })());
             return (
               <button
                 key={opt.value}
@@ -1037,37 +1065,6 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
               </button>
             );
           })}
-        </div>
-        {/* #12: Custom colour swatch */}
-        <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.625rem" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", position: "relative", flexShrink: 0 }} title="Custom background colour">
-            <div style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", background: activeBgHex, border: `2px solid ${customBgIsActive ? "var(--color-primary)" : "var(--color-border)"}`, flexShrink: 0, boxShadow: customBgIsActive ? "0 0 0 2px var(--amber-subtle, rgba(224,107,26,0.2))" : undefined }} />
-            <input
-              type="color"
-              value={customBgColor}
-              onChange={e => {
-                setCustomBgColor(e.target.value);
-                handleSetBackground(e.target.value);
-              }}
-              style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", cursor: "pointer", top: 0, left: 0 }}
-            />
-          </label>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: customBgIsActive ? "var(--color-primary)" : "var(--color-text-muted)" }}>Custom colour</span>
-            <input
-              className="input"
-              value={customBgColor}
-              onChange={e => {
-                if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) {
-                  setCustomBgColor(e.target.value);
-                  if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) handleSetBackground(e.target.value);
-                }
-              }}
-              placeholder="#ffffff"
-              style={{ fontSize: 11, width: 82, fontFamily: "monospace", padding: "0.15rem 0.35rem" }}
-              data-testid="input-bg-hex"
-            />
-          </div>
         </div>
       </div>
       <div>
@@ -1747,11 +1744,31 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
             onApply={async (data: any) => {
               try {
                 const updateData: any = {};
-                if (data.background) updateData.background = data.background;
+                if (data.background || data.blockStyle) {
+                  // #17: merge blockStyle from AI into background JSON
+                  const bgVal = data.background || "none";
+                  const bStyle = data.blockStyle || "default";
+                  updateData.background = bStyle !== "default" ? JSON.stringify({ bgValue: bgVal, blockStyle: bStyle }) : bgVal;
+                } else if (data.background) {
+                  updateData.background = data.background;
+                }
                 if (data.accentColor) updateData.accentColor = data.accentColor;
                 if (data.title) updateData.title = data.title;
                 if (data.bio) updateData.bio = data.bio;
-                if (data.blocks) updateData.blocks = JSON.stringify(data.blocks);
+                if (data.fontFamily) updateData.pageFont = data.fontFamily;
+                if (data.blocks) {
+                  // #18: normalise AI blocks (link, socials, lead_form) to app block types
+                  const genId = () => "blk-" + Math.random().toString(36).slice(2, 8);
+                  const normalised = (data.blocks as any[]).flatMap((b: any) => {
+                    switch (b.type) {
+                      case "link": return [{ id: b.id || genId(), type: "link", title: b.title || b.label || "Link", url: b.url || "", description: b.description || "", icon: b.icon || "🔗", linkStyle: b.linkStyle || "default" }];
+                      case "socials": return [{ id: b.id || genId(), type: "social-links", socials: (b.links || []).map((l: any) => ({ platform: l.platform, url: l.url })) }];
+                      case "lead_form": return [{ id: b.id || genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || "", buttonText: b.buttonText || "Send" }];
+                      default: return [b];
+                    }
+                  });
+                  updateData.blocks = JSON.stringify(normalised);
+                }
                 await savePageMutation.mutateAsync(updateData);
                 setAiWizardOpen(false);
               } catch {}
@@ -1950,7 +1967,8 @@ function LivePreviewPanel({ username, previewKey }: { username?: string; preview
   const [manualBump, setManualBump] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   if (!username) return null;
-  const src = `/${encodeURIComponent(username)}?preview=1&t=${previewKey}-${manualBump}`;
+  // #12: nophoto=1 hides real avatar in preview, showing initials placeholder instead
+  const src = `/${encodeURIComponent(username)}?preview=1&nophoto=1&t=${previewKey}-${manualBump}`;
 
   if (collapsed) {
     return (
@@ -2257,6 +2275,7 @@ function AIBlockRecommender({ onAddAll, onSkip, remainingSlots }: { onAddAll: (b
             case "text": return [{ id: genId(), type: "text", content: b.content || "" }];
             case "poll": return [{ id: genId(), type: "poll", question: b.question || "Quick question", options: b.options || ["Option A", "Option B"] }];
             case "lead_form": return [{ id: genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || "", buttonText: b.buttonText || "Send" } as any];
+            case "link": return [{ id: genId(), type: "link", title: b.title || b.label || "Link", url: b.url || "", description: b.description || "", icon: b.icon || "🔗", linkStyle: b.linkStyle || "default" } as any];
             case "socials": return [{ id: genId(), type: "social-links", socials: (b.links || []).map((l: any) => ({ platform: l.platform, url: l.url })) } as any];
             case "countdown": return [{ id: genId(), type: "countdown", title: b.title || "Coming soon", targetDate: b.targetDate || "2026-12-31" } as any];
             default: return [];
@@ -2847,7 +2866,13 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Analytics</h1>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{days === 0 ? "All-time" : `${days}-day`} performance for linkbay.ai/{page?.username}</p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+          {/* #6: page selector now on LEFT of date pills */}
+          {pages.length > 1 && scope === "page" && (
+            <select value={selectedPageId ?? ""} onChange={e => { setSelectedPageId(Number(e.target.value)); setActivePageId(Number(e.target.value)); }} style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              {pages.map((p: any) => <option key={p.id} value={p.id}>linkbay.ai/{p.username}</option>)}
+            </select>
+          )}
           {/* G10: Date range tabs — 7d/14d/30d/60d/All */}
           <div style={{ display: "flex", gap: "0.25rem" }}>
             {([7, 14, 30, 60, 0] as number[]).map(d => (
@@ -2866,11 +2891,6 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
               </button>
             ))}
           </div>
-          {pages.length > 1 && scope === "page" && (
-            <select value={selectedPageId ?? ""} onChange={e => { setSelectedPageId(Number(e.target.value)); setActivePageId(Number(e.target.value)); }} style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-              {pages.map((p: any) => <option key={p.id} value={p.id}>linkbay.ai/{p.username}</option>)}
-            </select>
-          )}
         </div>
       </div>
 
@@ -3384,8 +3404,13 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
       "testimonial": "Testimonial", "social-links": "Social Links", "divider": "Divider", "link": "Link",
     };
     const typeLabel = BLOCK_TYPE_LABELS[t] || t.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-    const title = block.title || block.label || block.question || "";
-    return title ? `${typeLabel} — ${title}` : typeLabel;
+    // #5: for video blocks, prefer caption as the label if no title
+    const rawTitle = (t === "video" ? (block.title || block.caption || block.label || block.question || "") : (block.title || block.label || block.question || ""));
+    // #2: if an FAQ block has a title of 'Faq' or 'Bio' (case-insensitive) and has a body/content that looks like a bio, label it Bio
+    const isBioFaq = t === "faq" && (rawTitle.toLowerCase() === "faq" || rawTitle.toLowerCase() === "bio") && !!(block.body || block.content || (block.faqs && block.faqs.length === 0));
+    const title = isBioFaq ? "" : rawTitle;
+    const resolvedTypeLabel = isBioFaq ? "Bio" : typeLabel;
+    return title ? `${resolvedTypeLabel} — ${title}` : resolvedTypeLabel;
   };
 
   const blockTypeIcon: Record<string, string> = {
@@ -3575,12 +3600,11 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
               </>);
           })()}
 
-          {/* Live blocks — G6c: filter non-interaction types */}
+          {/* Live blocks — #3a: redesigned to match Top Interactions style */}
           <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
             <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>
               Live blocks ({displayLiveBlocks.length})
             </h2>
-            {/* #28: search */}
             <input className="input" placeholder="Search live blocks…" value={searchLive} onChange={e => setSearchLive(e.target.value)} style={{ fontSize: 12, marginBottom: "0.75rem" }} />
             {liveBlocks.length > displayLiveBlocks.length && (
               <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>Text, Image, Divider, and Testimonial blocks are excluded from interaction tracking.</p>
@@ -3588,70 +3612,60 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             {displayLiveBlocks.length === 0 ? (
               <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No trackable blocks on this page.</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {displayLiveBlocks.filter((block: any) => !searchLive || blockLabel(block).toLowerCase().includes(searchLive.toLowerCase())).map((block: any) => {
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+                {displayLiveBlocks.filter((block: any) => !searchLive || blockLabel(block).toLowerCase().includes(searchLive.toLowerCase())).flatMap((block: any) => {
                   const stats = blockStats.get(block.id) ?? { count: 0, views: 0, interactions: 0, eventTypes: {} as Record<string, number> };
-                  const pct = totalInteractions > 0 ? Math.round((stats.count / totalInteractions) * 100) : 0;
                   const isSocial = block.type === "social-links";
                   const platformMap = socialPlatformStats.get(block.id);
-                  return (
-                    <div key={block.id} style={{ padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                        <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
-                            <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{blockLabel(block)}</span>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: stats.count > 0 ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, marginLeft: "0.5rem" }}>{stats.count} ({pct}%)</span>
+                  const pageViewsTotal = Math.max((analytics as any)?.periodViews ?? (analytics as any)?.totalViews ?? 1, 1);
+
+                  // #11: Social links — render one row per platform instead of a single block row
+                  if (isSocial && platformMap && platformMap.size > 0) {
+                    return Array.from(platformMap.entries()).sort((a, b) => b[1] - a[1]).map(([platform, cnt]) => {
+                      const interactionRate = Math.min(Math.round((cnt / pageViewsTotal) * 1000) / 10, 100);
+                      const platformEmoji: Record<string, string> = { twitter: "🐦", instagram: "📸", facebook: "👍", linkedin: "💼", youtube: "▶️", tiktok: "🎵", github: "🐙", spotify: "🎧", snapchat: "👻", pinterest: "📌", whatsapp: "💬", telegram: "✈️" };
+                      const emoji = platformEmoji[platform] || "🌐";
+                      return (
+                        <div key={`${block.id}-${platform}`} style={{ marginBottom: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
+                            <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{SOCIAL_PLATFORM_LABELS[platform] || platform}</span>
+                            <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Interaction rate: {interactionRate.toFixed(1)}%</span>
                           </div>
-                          {/* Stacked bar: views (amber) + interactions (primary) */}
-                          {(() => {
-                            // #9/#9a: use explicit views/interactions from unified aggregation
-                            const blockViewCount = stats.views;
-                            const interCount2 = stats.interactions;
-                            const pageViewsTotal = Math.max((analytics as any)?.periodViews ?? (analytics as any)?.totalViews ?? 1, 1);
-                            const interactionRate = Math.min(Math.round((interCount2 / pageViewsTotal) * 1000) / 10, 100);
-                            const viewRate = Math.min(Math.round((blockViewCount / pageViewsTotal) * 1000) / 10, 100);
-                            return (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 3 }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--color-text-faint)" }}>
-                                  <span>Views vs Interactions</span>
-                                  <span style={{ fontWeight: 700, color: interactionRate > 0 ? "var(--color-primary)" : "var(--color-text-faint)" }}>{interactionRate.toFixed(1)}% interacted</span>
-                                </div>
-                                <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
-                                  <div style={{ height: "100%", width: `${viewRate}%`, background: "#f59e0b", opacity: 0.5, transition: "width 0.4s" }} />
-                                  <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
-                                </div>
-                                <div style={{ display: "flex", gap: "0.75rem", fontSize: 9, color: "var(--color-text-faint)" }}>
-                                  <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />{blockViewCount} views</span>
-                                  <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />{interCount2} interactions</span>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                          {/* G6d: per-platform breakdown for social-links */}
-                          {isSocial && platformMap && platformMap.size > 0 && (
-                            <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                              {Array.from(platformMap.entries()).sort((a, b) => b[1] - a[1]).map(([platform, cnt]) => (
-                                <div key={platform} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--color-text-muted)", paddingLeft: "0.5rem" }}>
-                                  <span>{SOCIAL_PLATFORM_LABELS[platform] || platform}</span>
-                                  <span style={{ fontWeight: 600 }}>{cnt} interactions</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                            <div style={{ height: "100%", width: `${Math.min(100 - interactionRate, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
+                            <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
+                          </div>
+                          <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
+                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {pageViewsTotal}</span>
+                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {cnt}</span>
+                          </div>
                         </div>
-                        <button
-                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "archive" })}
-                          disabled={archiveMutation.isPending}
-                          className="btn btn-secondary btn-sm"
-                          style={{ fontSize: 11, flexShrink: 0 }}
-                          title="Archive block"
-                        >
-                          Archive
-                        </button>
+                      );
+                    });
+                  }
+
+                  // Standard block row — matches Top Interactions style
+                  const interactionRate = Math.min(Math.round((stats.interactions / pageViewsTotal) * 1000) / 10, 100);
+                  const emoji = blockTypeEmoji(block.type);
+                  return [(
+                    <div key={block.id} style={{ marginBottom: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
+                        <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{blockLabel(block)}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                          <span style={{ fontWeight: 700, color: "var(--color-primary)" }}>Interaction rate: {interactionRate.toFixed(1)}%</span>
+                          <button onClick={() => archiveMutation.mutate({ blockId: block.id, action: "archive" })} disabled={archiveMutation.isPending} className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "0.15rem 0.5rem" }} title="Archive block">Archive</button>
+                        </div>
+                      </div>
+                      <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                        <div style={{ height: "100%", width: `${Math.min(100 - interactionRate, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
+                        <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
+                      </div>
+                      <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Views: {pageViewsTotal}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {stats.interactions}</span>
                       </div>
                     </div>
-                  );
+                  )];
                 })}
               </div>
             )}
@@ -3673,31 +3687,27 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 {archivedBlocks.filter((block: any) => !searchArchived || blockLabel(block).toLowerCase().includes(searchArchived.toLowerCase())).map((block: any) => {
                   const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { totalInteractions: 0, totalViews: 0 };
+                  const total = atBlock.totalInteractions ?? 0;
+                  const views = atBlock.totalViews ?? 0;
+                  const interactionRate = views > 0 ? Math.min(Math.round((total / views) * 1000) / 10, 100) : 0;
+                  const emoji = blockTypeEmoji(block.type);
                   return (
-                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.75 }}>
-                      <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
-                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.totalInteractions ?? 0} interactions · {atBlock.totalViews ?? 0} views (lifetime)</div>
+                    <div key={block.id} style={{ opacity: 0.8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
+                        <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{blockLabel(block)} <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", marginLeft: 3 }}>archived</span></span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                          <span style={{ fontWeight: 700, color: "var(--color-text-faint)" }}>Rate: {interactionRate.toFixed(1)}%</span>
+                          <button onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })} disabled={archiveMutation.isPending} className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "0.15rem 0.5rem" }}>Restore</button>
+                          <button onClick={() => archiveMutation.mutate({ blockId: block.id, action: "hide" })} disabled={archiveMutation.isPending} className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "0.15rem 0.5rem" }} title="Move to hidden">Hide</button>
+                        </div>
                       </div>
-                      <div style={{ display: "flex", gap: "0.375rem", flexShrink: 0 }}>
-                        <button
-                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })}
-                          disabled={archiveMutation.isPending}
-                          className="btn btn-secondary btn-sm"
-                          style={{ fontSize: 11 }}
-                        >
-                          Restore
-                        </button>
-                        <button
-                          onClick={() => archiveMutation.mutate({ blockId: block.id, action: "hide" })}
-                          disabled={archiveMutation.isPending}
-                          className="btn btn-secondary btn-sm"
-                          style={{ fontSize: 11 }}
-                          title="Move to hidden (won't re-appear in live)"
-                        >
-                          Hide
-                        </button>
+                      <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                        <div style={{ height: "100%", width: `${Math.min(100 - interactionRate, 100)}%`, background: "#f59e0b", opacity: 0.25, transition: "width 0.4s" }} />
+                        <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-text-faint)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
+                      </div>
+                      <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.4, marginRight: 3, verticalAlign: "middle" }} />Views: {views}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-text-faint)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
                       </div>
                     </div>
                   );
@@ -3727,21 +3737,27 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                   <div style={{ textAlign: "center", padding: "1.25rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No hidden blocks.</div>
                 ) : hiddenBlocks.filter((block: any) => !searchHidden || blockLabel(block).toLowerCase().includes(searchHidden.toLowerCase())).map((block: any) => {
                   const atBlock = allTimeBlocks.find((b: any) => b.blockId === block.id) ?? { totalInteractions: 0, totalViews: 0 };
+                  const total = atBlock.totalInteractions ?? 0;
+                  const views = atBlock.totalViews ?? 0;
+                  const interactionRate = views > 0 ? Math.min(Math.round((total / views) * 1000) / 10, 100) : 0;
+                  const emoji = blockTypeEmoji(block.type);
                   return (
-                    <div key={block.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", opacity: 0.7 }}>
-                      <span style={{ fontSize: "1.1rem" }}>{blockTypeIcon[block.type] || "📦"}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{blockLabel(block)}</div>
-                        <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{atBlock.totalInteractions ?? 0} interactions · {atBlock.totalViews ?? 0} views (lifetime)</div>
+                    <div key={block.id} style={{ opacity: 0.65 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
+                        <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{blockLabel(block)} <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", marginLeft: 3 }}>hidden</span></span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                          <span style={{ fontWeight: 700, color: "var(--color-text-faint)" }}>Rate: {interactionRate.toFixed(1)}%</span>
+                          <button onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })} disabled={archiveMutation.isPending} className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "0.15rem 0.5rem" }}>Restore to live</button>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => archiveMutation.mutate({ blockId: block.id, action: "restore" })}
-                        disabled={archiveMutation.isPending}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: 11, flexShrink: 0 }}
-                      >
-                        Restore to live
-                      </button>
+                      <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                        <div style={{ height: "100%", width: `${Math.min(100 - interactionRate, 100)}%`, background: "#f59e0b", opacity: 0.2, transition: "width 0.4s" }} />
+                        <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-text-faint)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
+                      </div>
+                      <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.4, marginRight: 3, verticalAlign: "middle" }} />Views: {views}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-text-faint)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
+                      </div>
                     </div>
                   );
                 })}
@@ -3985,8 +4001,8 @@ function LeadsPanel({ pages }: { pages: any[] }) {
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           {pages.length > 1 && (
-            <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} className="input" style={{ fontSize: "var(--text-sm)", width: "auto" }}>
-              {pages.map((p: any) => <option key={p.id} value={p.id}>{p.username}</option>)}
+            <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              {pages.map((p: any) => <option key={p.id} value={p.id}>linkbay.ai/{p.username}</option>)}
             </select>
           )}
           <button className="btn btn-primary btn-sm" onClick={() => setAddLeadOpen(true)} data-testid="button-add-lead">+ Add lead</button>
@@ -4174,8 +4190,9 @@ function FollowUpBadge({ dateStr }: { dateStr: string }) {
   );
 }
 
-function ContactsPanel() {
+function ContactsPanel({ pages }: { pages: any[] }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [contactPageFilter, setContactPageFilter] = useState<number | "all">("all");
   const [addOpen, setAddOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [search, setSearch] = useState(""); // legacy — kept for compat
@@ -4405,7 +4422,14 @@ function ContactsPanel() {
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>Contacts</h1>
           <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginTop: "0.25rem" }}>{(contacts || []).length} total</p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+          {/* #15: Page selector in Blocks style */}
+          {pages.length > 1 && (
+            <select value={contactPageFilter} onChange={e => setContactPageFilter(e.target.value === "all" ? "all" : Number(e.target.value))} style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              <option value="all">All pages</option>
+              {pages.map((p: any) => <option key={p.id} value={p.id}>linkbay.ai/{p.username}</option>)}
+            </select>
+          )}
           {notificationStatus !== "granted" && notificationStatus !== "unsupported" && (
             <button onClick={enableNotifications} className="btn btn-secondary btn-sm" data-testid="button-enable-notifications">🔔 Enable notifications</button>
           )}
@@ -5207,8 +5231,8 @@ function UpgradeModal({ onClose, onBilling }: { onClose: () => void; onBilling: 
         <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Unlock more pages, analytics, contacts and AI features.</p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
           {([
-            { tier: "Pro", price: "£5", period: "/mo", color: "#e06b1a", features: ["3 pages", "Unlimited blocks", "Analytics", "Contacts", "AI builder"] },
-            { tier: "Business", price: "£20", period: "/mo", color: "#0891b2", features: ["Unlimited pages", "Unlimited blocks", "Analytics", "Contacts", "AI builder"] },
+            { tier: "Pro", price: "£5", period: "/mo", color: "#e06b1a", features: ["3 pages", "Unlimited blocks", "Analytics", "Contacts", "AI builder", "QR codes", "Lead notifications"] },
+            { tier: "Business", price: "£20", period: "/mo", color: "#0891b2", features: ["Unlimited pages", "Unlimited blocks", "Analytics", "Contacts", "AI builder", "QR codes", "CSV export", "Remove branding", "Lead notifications"] },
           ] as const).map(plan => (
             <div key={plan.tier} style={{ border: `2px solid ${plan.color}`, borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
               <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: plan.color, marginBottom: "0.25rem" }}>{plan.tier}</div>
@@ -5273,7 +5297,7 @@ function BillingPanel() {
       monthlyPrice: 0,
       annualPrice: 0,
       color: "var(--color-text-muted)",
-      features: ["1 page", "5 content blocks", "Basic profile"],
+      features: ["1 page", "5 content blocks", "Basic profile", "Linkbay branding"],
       priceIdMonthly: "",
       priceIdAnnual: "",
     },
@@ -5283,7 +5307,7 @@ function BillingPanel() {
       monthlyPrice: 5,
       annualPrice: 4,
       color: "#e06b1a",
-      features: ["3 pages", "Unlimited blocks", "Analytics", "Contacts", "AI page builder", "Priority support"],
+      features: ["3 pages", "Unlimited blocks", "Analytics", "Contacts", "AI page builder", "QR codes", "Lead notifications", "Priority support"],
       priceIdMonthly: lic?.priceIds?.proMonthly || "",
       priceIdAnnual: lic?.priceIds?.proAnnual || "",
     },
@@ -5293,7 +5317,7 @@ function BillingPanel() {
       monthlyPrice: 20,
       annualPrice: 16,
       color: "#0891b2",
-      features: ["Unlimited pages", "Unlimited blocks", "Analytics", "Contacts", "AI page builder", "Custom domain", "Priority support"],
+      features: ["Unlimited pages", "Unlimited blocks", "Analytics", "Contacts", "AI page builder", "QR codes", "CSV export", "Remove branding", "Custom domain", "Lead notifications", "Priority support"],
       priceIdMonthly: lic?.priceIds?.businessMonthly || "",
       priceIdAnnual: lic?.priceIds?.businessAnnual || "",
     },
@@ -5302,7 +5326,7 @@ function BillingPanel() {
   const currentTier = lic?.tier || "free";
 
   return (
-    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto", maxWidth: 720 }}>
+    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto", maxWidth: 1100 }}>
       {toast && (
         <div style={{ background: "var(--color-success-subtle, #d1fae5)", border: "1px solid var(--color-success, #10b981)", borderRadius: "var(--radius-md)", padding: "0.75rem 1rem", marginBottom: "1.25rem", fontSize: "var(--text-sm)", color: "var(--color-success, #065f46)" }}>
           {toast}
@@ -5418,6 +5442,10 @@ function BillingPanel() {
               ["Analytics", "✕", "✓", "✓"],
               ["Contacts", "✕", "✓", "✓"],
               ["AI page builder", "✕", "✓", "✓"],
+              ["QR codes", "✕", "✓", "✓"],
+              ["Lead notifications", "✕", "✓", "✓"],
+              ["CSV export", "✕", "✕", "✓"],
+              ["Remove branding", "✕", "✕", "✓"],
               ["Custom domain", "✕", "✕", "✓"],
               ["Priority support", "✕", "✓", "✓"],
             ] as [string, string, string, string][]).map(([feature, free, pro, biz], i) => (
@@ -5800,7 +5828,7 @@ export default function DashboardPage() {
         : <BlockAnalysisPanel pages={pages} activePageId={activePageId} licenceTier={licenceTier} />;
       case "leads": return <LeadsPanel pages={pages} />;
       case "contacts": return tierLimits.contacts
-        ? <ContactsPanel />
+        ? <ContactsPanel pages={pages} />
         : (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "3rem 2rem" }}>
             <div style={{ textAlign: "center", maxWidth: 360 }}>

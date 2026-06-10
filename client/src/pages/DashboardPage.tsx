@@ -79,7 +79,7 @@ function NoPageState() {
             {icons.plus} Create my page
           </Link>
         </div>
-        <div style={{ marginTop: "2.5rem", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+        <div className="nopage-feature-grid" style={{ marginTop: "2.5rem", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
           {[
             { icon: "📊", title: "Analytics", desc: "Track every view and click" },
             { icon: "✉️", title: "Lead capture", desc: "Collect leads from visitors" },
@@ -516,7 +516,7 @@ function OverviewPanel({
           {page?.published ? "● Published" : "○ Draft"}
         </span>
         {/* G2: Date range selector — 7d/14d/30d/60d/All */}
-        <div style={{ display: "flex", gap: "0.25rem", marginLeft: "auto" }}>
+        <div className="date-range-row" style={{ display: "flex", gap: "0.25rem", marginLeft: "auto" }}>
           {([7, 14, 30, 60, 0] as number[]).map(d => (
             <button
               key={d}
@@ -537,7 +537,7 @@ function OverviewPanel({
 
       {/* Today's activity strip */}
       {!statsLoading && (todayViews > 0 || todayLeads > 0) && (
-        <div style={{
+        <div className="today-strip" style={{
           display: "flex", gap: "1rem", alignItems: "center",
           padding: "0.625rem 1rem", marginBottom: "1rem",
           background: "linear-gradient(90deg, var(--color-primary-highlight) 0%, transparent 100%)",
@@ -770,7 +770,7 @@ function OverviewPanel({
               )}
             </div>
             {/* G5a: Social share buttons — added Facebook */}
-            <div style={{ display: "flex", gap: "0.375rem" }}>
+            <div className="social-share-btns" style={{ display: "flex", gap: "0.375rem" }}>
               <a
                 href={twitterUrl}
                 target="_blank"
@@ -987,7 +987,7 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Location</label>
         <input className="input" value={location} onChange={e => setLocation(e.target.value)} style={{ fontSize: 13 }} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.625rem" }}>
+      <div className="settings-phone-email-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.625rem" }}>
         <div>
           <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Phone (optional)</label>
           <input type="tel" className="input" value={phone} onChange={e => setPhone(e.target.value)} style={{ fontSize: 13 }} placeholder="+44 7700 900000" data-testid="input-page-phone" />
@@ -1144,7 +1144,7 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
       </div>
       <button
         onClick={() => onSave({ title, bio, location, phone, contactEmail, accentColor, background, avatarShape, pageFont })}
-        className="btn btn-primary btn-sm"
+        className="btn btn-primary btn-sm settings-save-btn"
         disabled={saving}
         style={{ justifyContent: "center" }}
         data-testid="button-save-page-settings"
@@ -2952,8 +2952,8 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
   }));
 
   return (
-    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
+    <div className="analytics-panel-content" style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
+      <div className="analytics-panel-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
         <div>
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Analytics</h1>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{days === 0 ? "All-time" : `${days}-day`} performance for linkbay.ai/{page?.username}</p>
@@ -3581,7 +3581,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
   });
 
   return (
-    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
+    <div className="blocks-panel-content" style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "0.75rem" }}>
         <div>
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>Block Analysis</h1>
@@ -3706,7 +3706,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>
               Live blocks ({displayLiveBlocks.length})
             </h2>
-            <input className="input" placeholder="Search live blocks…" value={searchLive} onChange={e => setSearchLive(e.target.value)} style={{ fontSize: 12, marginBottom: "0.75rem" }} />
+            <div className="blocks-search-row" style={{ marginBottom: "0.75rem" }}><input className="input" placeholder="Search live blocks…" value={searchLive} onChange={e => setSearchLive(e.target.value)} style={{ fontSize: 12, width: "100%" }} /></div>
             {liveBlocks.length > displayLiveBlocks.length && (
               <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Text, image, divider, vCard and testimonial blocks are excluded from interaction tracking.</p>
             )}
@@ -4047,7 +4047,7 @@ function LeadsPanel({ pages }: { pages: any[] }) {
   };
 
   return (
-    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
+    <div className="leads-panel-content" style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
       {/* Lead detail modal */}
       {selectedLead && (
         <LeadDetailModal
@@ -4114,15 +4114,15 @@ function LeadsPanel({ pages }: { pages: any[] }) {
           )}
           <button className="btn btn-primary btn-sm" onClick={() => setAddLeadOpen(true)} data-testid="button-add-lead">+ Add lead</button>
           {leadsTier === "business" ? (
-            <button className="btn btn-secondary btn-sm" onClick={exportCSV} data-testid="button-export-leads">↓ Export CSV</button>
+            <button className="btn btn-secondary btn-sm leads-export-btn" onClick={exportCSV} data-testid="button-export-leads">↓ Export CSV</button>
           ) : (
-            <button className="btn btn-secondary btn-sm" style={{ opacity: 0.6, cursor: "default" }} title="Business plan required" data-testid="button-export-leads-locked">↓ Export CSV <span style={{ fontSize: 9, padding: "1px 5px", background: "rgba(224,107,26,0.15)", color: "var(--color-primary)", borderRadius: 999, fontWeight: 700, marginLeft: 4 }}>BIZ</span></button>
+            <button className="btn btn-secondary btn-sm leads-export-btn" style={{ opacity: 0.6, cursor: "default" }} title="Business plan required" data-testid="button-export-leads-locked">↓ Export CSV <span style={{ fontSize: 9, padding: "1px 5px", background: "rgba(224,107,26,0.15)", color: "var(--color-primary)", borderRadius: 999, fontWeight: 700, marginLeft: 4 }}>BIZ</span></button>
           )}
         </div>
       </div>
 
       {/* Filter bar */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+      <div className="leads-search-row" style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
         <select
           value={filterCategory}
           onChange={e => setFilterCategory(e.target.value)}
@@ -4489,7 +4489,7 @@ function ContactsPanel({ pages }: { pages: any[] }) {
   };
 
   return (
-    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
+    <div className="contacts-panel-content" style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "0.75rem" }}>
         <div>
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>Contacts</h1>
@@ -5024,7 +5024,7 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
   });
 
   return (
-    <div style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
+    <div className="settings-panel-content" style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
       <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "1.5rem" }}>Settings</h1>
 
       {/* Profile */}
@@ -5465,7 +5465,7 @@ function EmailSignaturePanel({ user, pages }: { user: any; pages: any[] }) {
   );
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "1.5rem 1.75rem" }}>
+    <div className="signature-panel-content" style={{ flex: 1, overflow: "auto", padding: "1.5rem 1.75rem" }}>
       <div style={{ maxWidth: 860, margin: "0 auto" }}>
 
         {/* Header */}
@@ -5535,7 +5535,7 @@ function EmailSignaturePanel({ user, pages }: { user: any; pages: any[] }) {
           </div>
 
           {/* RIGHT — preview + copy */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", position: "sticky", top: 0 }}>
+          <div className="signature-preview-wrap" style={{ display: "flex", flexDirection: "column", gap: "1rem", position: "sticky", top: 0 }}>
 
             {/* Preview box */}
             <div style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
@@ -5802,7 +5802,7 @@ function BillingPanel() {
       </div>
 
       {/* Plan cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
+      <div className="billing-plans-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
         {plans.map(plan => {
           const isCurrent = currentTier === plan.id;
           const price = annual ? plan.annualPrice : plan.monthlyPrice;

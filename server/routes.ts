@@ -356,14 +356,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY count DESC
       `).all(pageId) as Array<{ block_id: string; block_type: string; type: string; count: number }>;
 
-      // Aggregate by blockId across event types
-      const blockMap = new Map<string, { blockId: string; blockType: string; totalInteractions: number; byEventType: Record<string, number> }>();
+      // Aggregate by blockId across event types — #9: split views vs interactions properly
+      const BLOCK_INTERACTION_EVENTS = new Set(["submit", "click", "vote", "expand", "play", "link_click"]);
+      const blockMap = new Map<string, { blockId: string; blockType: string; totalInteractions: number; totalViews: number; byEventType: Record<string, number> }>();
       for (const e of allTimeBlockEvents) {
         const key = e.block_id;
-        if (!blockMap.has(key)) blockMap.set(key, { blockId: e.block_id, blockType: e.block_type, totalInteractions: 0, byEventType: {} });
+        if (!blockMap.has(key)) blockMap.set(key, { blockId: e.block_id, blockType: e.block_type, totalInteractions: 0, totalViews: 0, byEventType: {} });
         const b = blockMap.get(key)!;
-        b.totalInteractions += e.count;
         b.byEventType[e.type] = (b.byEventType[e.type] || 0) + e.count;
+        if (e.type === "view") b.totalViews += e.count;
+        else if (BLOCK_INTERACTION_EVENTS.has(e.type) || e.type.startsWith("block_interact")) b.totalInteractions += e.count;
+        else b.totalInteractions += e.count;
       }
 
       res.json({
@@ -1127,28 +1130,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-      const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
-      fs.mkdirSync(uploadsDir, { recursive: true });
-
-      // Delete old avatar if exists
-      const currentUser = await storage.getUserById(req.session.userId!);
-      if (currentUser?.avatarUrl) {
-        const oldPath = path.join(process.cwd(), currentUser.avatarUrl.replace(/^\//, ""));
-        try { fs.unlinkSync(oldPath); } catch {}
-      }
-
-      // G9: Compress and save new avatar as WebP, 200x200 (smaller, faster to load)
-      const filename = `avatar-${req.session.userId}-${Date.now()}.webp`;
-      const filepath = path.join(uploadsDir, filename);
-      await sharp(req.file.buffer)
+      // #16: Convert to base64 and store in DB instead of filesystem
+      // Compress to WebP 200x200 first, then encode as base64
+      const webpBuffer = await sharp(req.file.buffer)
         .resize(200, 200, { fit: "cover", position: "centre" })
         .webp({ quality: 82 })
-        .toFile(filepath);
-
-      const avatarUrl = `/uploads/avatars/${filename}`;
-      const user = await storage.updateUserAvatar(req.session.userId!, avatarUrl);
+        .toBuffer();
+      const base64 = `data:image/webp;base64,${webpBuffer.toString("base64")}`;
+      const user = await storage.updateUserAvatar(req.session.userId!, base64);
       req.session.save(() => {});
-      res.json({ success: true, avatarUrl, user: { id: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl } });
+      res.json({ success: true, avatarUrl: base64, user: { id: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl } });
     } catch (err) {
       console.error("Avatar upload error:", err);
       res.status(500).json({ error: "Upload failed" });
@@ -1157,11 +1148,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/account/avatar", requireAuth as any, async (req, res) => {
     try {
-      const currentUser = await storage.getUserById(req.session.userId!);
-      if (currentUser?.avatarUrl) {
-        const oldPath = path.join(process.cwd(), currentUser.avatarUrl.replace(/^\//, ""));
-        try { fs.unlinkSync(oldPath); } catch {}
-      }
+      // #16: base64 stored in DB — no filesystem cleanup needed
       await storage.updateUserAvatar(req.session.userId!, null);
       res.json({ success: true });
     } catch {
@@ -2075,7 +2062,7 @@ export function registerLicenceRoutes(app: Express) {
       try { blocks = JSON.parse((page as any)?.blocks || "[]"); } catch {}
       const blockSummary = blocks.slice(0, 10).map((b: any) => `${b.type}: ${b.title || b.label || b.question || "(untitled)"}`).join(", ");
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const prompt = `You are a conversion optimisation expert for link-in-bio pages.\n\nPage: ${page?.title || "Untitled"}\nBlocks: ${blockSummary || "(none)"}\nLast 30 days: ${views} views, ${clicks} clicks, ${leads} leads\nClick rate: ${views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0}%\n\nProvide 3-5 concise, actionable recommendations for:\n1. Block placement and ordering to improve engagement\n2. Block type suggestions to add/remove\n3. Quick wins to improve click rate\n\nBe specific and direct. Format as a numbered list with one sentence per point.`;
+      const prompt = `You are a friendly growth advisor reviewing someone's link-in-bio page. Be conversational, warm and direct — like advice from a knowledgeable friend, not a consultant's report.\n\nPage: ${page?.title || "Untitled"}\nContent blocks: ${blockSummary || "(none)"}\nLast 30 days: ${views} views, ${clicks} clicks, ${leads} leads captured\nInteraction rate: ${views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0}%\n\nFirst, briefly comment on how the page is performing overall — acknowledge what's working well if the numbers look good, or note if things are quiet and that's completely normal. If week-on-week trend data is available, mention it. Keep this to 1-2 sentences.\n\nThen, if there are genuine improvements to make, give UP TO 5 specific suggestions. Only include a suggestion if it would make a real difference — don't pad with generic advice. Each suggestion should be one clear, actionable sentence. Do not number them if there are fewer than 3.\n\nIf the page is genuinely well-optimised, say so briefly and focus more on the performance commentary. Avoid bullet-point lists of generic best practices.`;
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],

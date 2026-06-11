@@ -1043,16 +1043,12 @@ export default function ProfilePage() {
 
       <div className="profile-content-wrap" style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
 
-        {/* Cover / hero card — glass finish (#5) */}
-        <div className={blockStyle !== "divider" ? `block-style-${blockStyle} block-style-glass-info` : undefined} style={{
-          background: luminance === "dark" ? `rgba(255,255,255,0.12)` : `rgba(0,0,0,0.06)`,
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
+        {/* Cover / hero card — uses the same block style as all other blocks */}
+        <div className={blockStyle !== "divider" ? `block-card block-style-${blockStyle}` : undefined} style={{
           borderRadius: blockRadius,
           padding: "2.5rem 2rem",
           marginBottom: "1.25rem",
           textAlign: "center",
-          border: `1px solid ${luminance === "dark" ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.08)"}`
         }}>
           {/* #1/#7a: Avatar — centred, correct size, no overflow. Pentagon/Diamond removed (#7d) */}
           {(() => {
@@ -1207,18 +1203,7 @@ export default function ProfilePage() {
         )}
 
         {/* Floating copy URL button (hidden in preview) */}
-        {!isPreview && (
-          <button
-            onClick={() => {
-              const url = `${window.location.origin}/${page.username}`;
-              navigator.clipboard?.writeText(url).catch(() => {});
-            }}
-            style={{ position: "fixed", bottom: 20, right: 20, background: accent, color: "#fff", border: "none", borderRadius: 999, padding: "0.625rem 1rem", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "var(--shadow-lg)", zIndex: 50 }}
-            data-testid="button-copy-page-url"
-          >
-            🔗 Copy URL
-          </button>
-        )}
+{/* Copy URL FAB removed */}
 
         {/* Powered by Linkbay — hidden in preview and for Pro/Business owners (#6) */}
         {!isPreview && (page.ownerTier !== "pro" && page.ownerTier !== "business") && (

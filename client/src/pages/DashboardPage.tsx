@@ -6396,8 +6396,66 @@ export default function DashboardPage() {
     }
   };
 
+  // Impersonation: stop handler
+  const stopImpersonating = async () => {
+    try {
+      await apiRequest("POST", "/api/auth/stop-impersonation", {});
+    } catch {}
+    // Redirect back to admin panel
+    window.location.href = "/admin";
+  };
+
+  const isImpersonating = !!(user as any)?.isImpersonating;
+
   return (
-    <div className="dashboard-shell" style={{ display: "flex", height: "100dvh", overflow: "hidden", background: "var(--color-bg)" }}>
+    <div className="dashboard-shell" style={{ display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden", background: "var(--color-bg)" }}>
+      {/* ── Admin Impersonation Banner ── */}
+      {isImpersonating && (
+        <div style={{
+          position: "relative",
+          zIndex: 9999,
+          background: "#1d4ed8",
+          color: "#fff",
+          padding: "0.5rem 1rem",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "1rem",
+          flexShrink: 0,
+          fontSize: 13,
+          fontFamily: "Cabinet Grotesk, sans-serif",
+          fontWeight: 600,
+          boxShadow: "0 2px 8px rgba(29,78,216,0.35)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+            <span style={{ fontSize: 16 }}>&#128100;</span>
+            <span>You are viewing as <strong style={{ color: "#bfdbfe" }}>{user?.email}</strong></span>
+            <span style={{ opacity: 0.65, fontSize: 11, fontWeight: 400 }}>Admin impersonation mode — all actions affect this user’s real data</span>
+          </div>
+          <button
+            onClick={stopImpersonating}
+            style={{
+              background: "rgba(255,255,255,0.18)",
+              border: "1.5px solid rgba(255,255,255,0.45)",
+              color: "#fff",
+              borderRadius: 6,
+              padding: "0.3rem 0.875rem",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+              transition: "background 0.15s ease",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.28)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.18)")}
+          >
+            ✕ Stop impersonating
+          </button>
+        </div>
+      )}
+      {/* Main shell: sidebar + content — fills remaining height */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
       {/* Sidebar */}
       <nav className={`dashboard-sidebar${sidebarCollapsed ? " collapsed" : ""}`} style={{
         width: sidebarCollapsed ? 64 : 220, flexShrink: 0,
@@ -6715,6 +6773,7 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+      </div>{/* end main shell (sidebar + content) */}
     </div>
   );
 }

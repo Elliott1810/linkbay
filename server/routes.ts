@@ -1854,6 +1854,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     /* Stack columns that overflow on mobile */
     td.msg{max-width:150px}
     .delbtn{padding:1px 4px;font-size:9px}
+    .imp-btn,.rpw-btn,.so-btn{padding:2px 5px !important;font-size:9px !important;margin-right:2px !important}
   }
   .search-bar{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem}
   .search-bar input{flex:1;padding:6px 10px;border:1px solid #e5e3df;border-radius:6px;font-size:13px;background:#f8f7f5;outline:none;transition:border-color .15s}
@@ -1961,9 +1962,9 @@ function toggleSection(btn){
             <td class="ts">${u.last_sign_in ? ago(u.last_sign_in) : "—"}</td>
             <td>${activeUserEmails.has(u.email) ? '<span style="color:#16a34a;font-weight:700">● Online</span>' : '<span style="color:#aaa">—</span>'}</td>
             <td style="white-space:nowrap">
-              <form method="POST" action="/admin/impersonate" style="display:inline" onsubmit="return confirm('Log in as ${escHtml(u.email)}? You will be taken to their dashboard. Click \'Stop Impersonating\' in the banner to return.')"><input type="hidden" name="userId" value="${u.id}"><button type="submit" style="background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">&#128100; Impersonate</button></form>
-              <form method="POST" action="/admin/reset-password" style="display:inline" onsubmit="return confirm('Reset password for ${escHtml(u.email)}?')"><input type="hidden" name="email" value="${escHtml(u.email)}"><button type="submit" style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">Reset PW</button></form>
-              <form method="POST" action="/admin/signout-user" style="display:inline" onsubmit="return confirm('Sign out ${escHtml(u.email)}?')"><input type="hidden" name="email" value="${escHtml(u.email)}"><button type="submit" style="background:#fde68a;border:1px solid #fbbf24;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">Sign Out</button></form>
+              <form method="POST" action="/admin/impersonate" style="display:inline" onsubmit="return confirm('Log in as ${escHtml(u.email)}? You will be taken to their dashboard. Click \'Stop Impersonating\' in the banner to return.')"><input type="hidden" name="userId" value="${u.id}"><button type="submit" class="imp-btn" style="background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">&#128100; Impersonate</button></form>
+              <form method="POST" action="/admin/reset-password" style="display:inline" onsubmit="return confirm('Reset password for ${escHtml(u.email)}?')"><input type="hidden" name="email" value="${escHtml(u.email)}"><button type="submit" class="rpw-btn" style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">Reset PW</button></form>
+              <form method="POST" action="/admin/signout-user" style="display:inline" onsubmit="return confirm('Sign out ${escHtml(u.email)}?')"><input type="hidden" name="email" value="${escHtml(u.email)}"><button type="submit" class="so-btn" style="background:#fde68a;border:1px solid #fbbf24;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">Sign Out</button></form>
               <form method="POST" action="/admin/delete-user?id=${u.id}" onsubmit="return confirm('Delete user and all their pages?')" style="display:inline"><button class="delbtn" type="submit">Delete</button></form>
             </td>
           </tr>`).join("")}

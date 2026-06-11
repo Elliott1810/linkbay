@@ -2142,3 +2142,13 @@ img.avatar-img {
     flex-wrap: wrap;
   }
 }
+
+/* ─── Email Signature Panel — stack preview below controls on mobile ─── */
+@media (max-width: 720px) {
+  .signature-layout-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .signature-preview-wrap {
+    position: static !important;
+  }
+}

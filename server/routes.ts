@@ -2440,5 +2440,106 @@ ${ fontHint   ? `- Font: ${fontHint} (use exactly this)` : `- Font style: ${font
       return res.status(500).json({ error: "AI generation failed" });
     }
   });
+
+  // ── POST /api/ai/onboarding-suggest ───────────────────────────────────────────────
+  /**
+   * Generates a personalised headline, bio, theme preset, and starter blocks
+   * from the onboarding wizard inputs (niche, voice, goals, tagline).
+   * Requires auth. Rate-limited to 20/user/hour (shared with generate-page).
+   */
+  app.post("/api/ai/onboarding-suggest", requireAuth as any, async (req: Request, res: Response) => {
+    if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI not configured — OPENAI_API_KEY missing" });
+
+    const rateLimitKey = `user:${req.session.userId}`;
+    const now = Date.now();
+    const bucket = aiRateLimit.get(rateLimitKey);
+    if (bucket && bucket.resetAt > now) {
+      if (bucket.count >= 20) return res.status(429).json({ error: "Rate limit: max 20 AI generations per hour" });
+      bucket.count++;
+    } else {
+      aiRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    }
+
+    try {
+      const safe = (s: unknown) => String(s || "").slice(0, 300).replace(/[<>{}\\]/g, "");
+      const userName  = safe(req.body.userName);
+      const niche     = safe(req.body.niche);
+      const voice     = safe(req.body.voice);
+      const tagline   = safe(req.body.tagline);
+      const goals     = (Array.isArray(req.body.goals) ? req.body.goals : []).map((g: unknown) => safe(g)).slice(0, 8).join(", ");
+      const themeHint = req.body.themeHint as { background: string; accentColor: string; pageFont: string } | undefined;
+
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const systemPrompt = `You are an expert copywriter and brand strategist for Linkbay, a link-in-bio platform.
+Your ONLY output is a single valid JSON object. No markdown, no explanations, no text outside the JSON.
+
+Output schema:
+{
+  "headline": string,      // punchy 5-12 word page headline for this person
+  "bio": string,           // 2-3 sentence professional bio, personalised to their niche, voice, and goals
+  "accentColor": string,   // hex colour — must match themeHint if provided, else choose to suit niche
+  "background": string,    // CSS class — one of: none,bg-aurora,bg-blush,bg-dusk,bg-ember,bg-fog,bg-forest,bg-glacier,bg-haze,bg-ivory,bg-lava,bg-midnight,bg-mint,bg-mocha,bg-ocean,bg-peach,bg-plum,bg-rose,bg-sand,bg-slate,bg-twilight
+  "pageFont": string,      // one of: inter,cabinet-grotesk,general-sans,playfair,space-grotesk
+  "blocks": Block[]        // 3-5 starter blocks for their goals
+}
+
+Block types:
+{ id:"blk-1", type:"link",        title:"...", url:"https://...", description:"...", icon:"emoji", style:"featured"|"default"|"outline" }
+{ id:"blk-2", type:"text",        content:"markdown bio text" }
+{ id:"blk-3", type:"lead-form",   title:"...", formDescription:"...", buttonText:"..." }
+{ id:"blk-4", type:"social-links", platforms:"[{\\"platform\\":\\"linkedin\\",\\"url\\":\\"https://linkedin.com/in/...\\"}]" }
+{ id:"blk-5", type:"booking",     title:"...", platform:"calendly", embedUrl:"", embedHeight:650 }
+{ id:"blk-6", type:"countdown",   title:"...", targetDate:"2026-12-31" }
+
+Rules:
+- ALWAYS use the person's name and specific tagline — never placeholder text
+- Headline must match the voice tone: professional=formal, warm=friendly, bold=punchy, creative=expressive, expert=authoritative
+- Bio must sound human and specific — two sentences about what they do, one about what the visitor should do next
+- If goals include "Get new clients" or "Capture leads": add a lead-form block with service-specific title
+- If goals include "Drive bookings": add a booking block
+- If goals include "Promote a launch": add a countdown block dated 90 days from now
+- If goals include "Link my socials" or "Grow my audience": add a social-links block
+- Always start with one featured link block as the primary CTA
+- ALWAYS respect themeHint.accentColor and themeHint.background if provided
+- ALWAYS respect themeHint.pageFont if provided
+- Output ONLY the JSON object`;
+
+      const userPrompt = `Build a Linkbay page for:
+- Name: ${userName}
+- Niche / profession: ${niche}
+- What they do: ${tagline}
+- Brand voice: ${voice}
+- Page goals: ${goals}
+${ themeHint ? `- Theme accent: ${themeHint.accentColor} (use exactly this)\n- Background: ${themeHint.background} (use exactly this)\n- Font: ${themeHint.pageFont} (use exactly this)` : "" }`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1500,
+        temperature: 0.75,
+      });
+
+      const raw = completion.choices[0]?.message?.content || "{}";
+      let parsed: Record<string, unknown>;
+      try { parsed = JSON.parse(raw); } catch { return res.status(500).json({ error: "AI returned malformed JSON" }); }
+
+      if (parsed.error) return res.status(400).json({ error: "AI could not generate suggestions" });
+
+      // Validate required fields
+      if (!parsed.headline || !parsed.bio || !Array.isArray(parsed.blocks)) {
+        return res.status(500).json({ error: "AI response missing required fields" });
+      }
+
+      return res.json(parsed);
+    } catch (e: any) {
+      console.error("AI onboarding-suggest error:", e.message);
+      return res.status(500).json({ error: "AI generation failed. Please try again." });
+    }
+  });
 }
 

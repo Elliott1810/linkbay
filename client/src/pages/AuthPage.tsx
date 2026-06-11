@@ -59,10 +59,15 @@ export default function AuthPage({ mode: initialMode = "login" }: { mode?: "logi
       const res = await apiRequest("POST", endpoint, body);
       return res.json();
     },
-    onSuccess: async () => {
+    onSuccess: async (data: any) => {
       // Invalidate auth cache so AuthProvider re-fetches session
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      navigate("/dashboard");
+      // New signups (no pages yet) go to the onboarding wizard
+      if (mode === "signup") {
+        navigate("/onboarding");
+      } else {
+        navigate("/dashboard");
+      }
     },
     onError: (err: Error) => {
       const { status, message } = parseApiError(err);

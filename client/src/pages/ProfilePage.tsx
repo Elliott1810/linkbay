@@ -1043,11 +1043,11 @@ export default function ProfilePage() {
 
       <div className="profile-content-wrap" style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
 
-        {/* Cover / hero card — uses the same block style as all other blocks */}
-        <div className={blockStyle !== "divider" ? `block-card block-style-${blockStyle}` : undefined} style={{
+        {/* Cover / hero card — wrapped in block-style class so CSS applies identically to other blocks */}
+        <div className={`block-style-${blockStyle}`} style={{ marginBottom: "1.25rem" }}>
+        <div className="block-card" style={{
           borderRadius: blockRadius,
           padding: "2.5rem 2rem",
-          marginBottom: "1.25rem",
           textAlign: "center",
         }}>
           {/* #1/#7a: Avatar — centred, correct size, no overflow. Pentagon/Diamond removed (#7d) */}
@@ -1143,12 +1143,13 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {/* #4a: Profile views uses safeAccent */}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.25rem 0.75rem", background: "var(--color-surface)", borderRadius: "var(--radius-full)", fontSize: "var(--text-xs)", border: "1px solid var(--color-border)" }}>
-            <span style={{ color: safeAccent }}>●</span>
+          {/* Profile views badge — accent fill with auto-contrast text for readability on any background */}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.3rem 0.875rem", background: `${accent}22`, borderRadius: "var(--radius-full)", fontSize: "var(--text-xs)", border: `1px solid ${accent}40` }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: safeAccent, display: "inline-block", flexShrink: 0 }} />
             <span style={{ fontWeight: 600, color: safeAccent }}>{(page.viewCount + 1).toLocaleString()} profile views</span>
           </div>
         </div>
+        </div>{/* end block-style wrapper */}
 
         {/* Featured links */}
         {featuredLinks.map(link => (

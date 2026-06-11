@@ -1797,9 +1797,14 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
           </button>
         </div>
 
-        <Link href={`/${page?.username}`} className="btn btn-secondary" style={{ width: "100%", justifyContent: "center", fontSize: "var(--text-xs)" }} data-testid="link-preview-page">
+        <button
+          className="btn btn-secondary"
+          style={{ width: "100%", justifyContent: "center", fontSize: "var(--text-xs)" }}
+          data-testid="link-preview-page"
+          onClick={() => window.open(`/${page?.username}?t=${Date.now()}`, "_blank")}
+        >
           {icons.external} Preview page
-        </Link>
+        </button>
 
         <div style={{ height: 1, background: "var(--color-divider)", margin: "1.25rem 0" }} />
 
@@ -3501,6 +3506,8 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+      // Invalidate block analytics so all-time views refresh after archive/restore
+      queryClient.invalidateQueries({ queryKey: ["/api/pages", selectedPageId, "block-analytics"] });
     },
   });
 
@@ -3638,7 +3645,13 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
           {/* #9 Block stats charts: Interactions bar (toggleable) + 2 Pie charts */}
           {displayLiveBlocks.length > 0 && (() => {
             const PIE_COLORS = ["#e06b1a","#f59e0b","#0891b2","#059669","#7c3aed","#e11d48","#334155","#8b5cf6","#10b981","#ef4444"];
-            const barData = displayLiveBlocks.map((block: any) => {
+            // Sort blocks by interaction count descending for charts
+            const sortedDisplayBlocks = [...displayLiveBlocks].sort((a: any, b: any) => {
+              const sa = blockStats.get(a.id) ?? { interactions: 0, views: 0 };
+              const sb = blockStats.get(b.id) ?? { interactions: 0, views: 0 };
+              return sb.interactions - sa.interactions;
+            });
+            const barData = sortedDisplayBlocks.map((block: any) => {
               const s = blockStats.get(block.id) ?? { count: 0, views: 0, interactions: 0, eventTypes: {} as Record<string, number> };
               const viewCnt = s.views;
               const interCnt = s.interactions;
@@ -3728,7 +3741,11 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
               <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No trackable blocks on this page.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-                {displayLiveBlocks.filter((block: any) => !searchLive || blockLabel(block).toLowerCase().includes(searchLive.toLowerCase())).flatMap((block: any) => {
+                {[...displayLiveBlocks].sort((a: any, b: any) => {
+                  const sa = blockStats.get(a.id) ?? { interactions: 0 };
+                  const sb = blockStats.get(b.id) ?? { interactions: 0 };
+                  return sb.interactions - sa.interactions;
+                }).filter((block: any) => !searchLive || blockLabel(block).toLowerCase().includes(searchLive.toLowerCase())).flatMap((block: any) => {
                   const stats = blockStats.get(block.id) ?? { count: 0, views: 0, interactions: 0, eventTypes: {} as Record<string, number> };
                   const isSocial = block.type === "social-links";
                   const platformMap = socialPlatformStats.get(block.id);
@@ -5491,7 +5508,7 @@ function EmailSignaturePanel({ user, pages }: { user: any; pages: any[] }) {
           </p>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", alignItems: "start" }}>
+        <div className="signature-layout-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", alignItems: "start" }}>
 
           {/* LEFT — controls */}
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>

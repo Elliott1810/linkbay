@@ -402,16 +402,18 @@ function OverviewPanel({
   const totalLeads = stats?.totalLeads ?? 0;
   const todayViews = stats?.todayViews ?? 0;
   const todayLeads = stats?.todayLeads ?? 0;
+  // Block interactions: sum of all block event totals from the analytics query
+  const totalBlockInteractions = analytics?.totalBlockInteractions ?? totalClicks;
   // G12/G4: always 1 decimal place
-  const clickRate = totalViews > 0 ? (Math.round((totalClicks / totalViews) * 1000) / 10).toFixed(1) : "0.0";
+  const blockInterRate = totalViews > 0 ? (Math.round((totalBlockInteractions / totalViews) * 1000) / 10).toFixed(1) : "0.0";
 
   // G3a: 'All Time' label when days=0
   const periodLabel = days === 0 ? "All time" : `Last ${days} days`;
   // S7 #21/#21b: rename Clicks → Interactions, Click Rate → Interaction Rate
   const statsData = [
     { label: "Page views", value: totalViews.toLocaleString(), delta: periodLabel },
-    { label: "Link interactions", value: totalClicks.toLocaleString(), delta: periodLabel },
-    { label: "Interaction rate", value: `${clickRate}%`, delta: days === 0 ? "All-time avg" : `${days}-day avg`, tooltip: "Link clicks ÷ page views" },
+    { label: "Block interactions", value: totalBlockInteractions.toLocaleString(), delta: periodLabel },
+    { label: "Interaction rate", value: `${blockInterRate}%`, delta: days === 0 ? "All-time avg" : `${days}-day avg`, tooltip: "Block interactions ÷ page views" },
     { label: "Leads captured", value: totalLeads.toLocaleString(), delta: periodLabel },
   ];
 
@@ -900,6 +902,7 @@ const BLOCK_STYLE_OPTIONS = [
   { value: "shadow-depth",   label: "Shadow Depth",      desc: "Layered 3D shadow stack" },
   { value: "refined-border", label: "Refined Border",    desc: "Thin business card border" },
   { value: "compact-row",    label: "Compact Row",       desc: "Mobile list rows, no radius" },
+  { value: "stripe",         label: "Stripe",            desc: "Bold accent left stripe, clean surface" },
 ];
 
 function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave: (d: any) => void; saving: boolean; saveMsg: string }) {
@@ -1008,37 +1011,40 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
           <input type="email" className="input" value={contactEmail} onChange={e => setContactEmail(e.target.value)} style={{ fontSize: 13 }} placeholder="hi@example.com" data-testid="input-page-contact-email" />
         </div>
       </div>
-      <div>
-        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Accent colour</label>
-        <div className="accent-colour-row" style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: "0.375rem", alignItems: "center", flexWrap: "wrap" }}>
+      {/* Accent colour */}
+      <div className="page-settings-colour-section">
+        <label className="page-settings-section-label">Accent colour</label>
+        <div className="accent-colour-row">
+          <div className="accent-swatches">
             {["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].map(c => (
-              <button key={c} type="button" onClick={() => setAccentColor(c)} style={{ width: 28, height: 28, borderRadius: "50%", background: c, border: `2.5px solid ${accentColor === c ? "var(--color-text)" : "transparent"}`, cursor: "pointer", flexShrink: 0, boxShadow: accentColor === c ? `0 0 0 1px ${c}40` : undefined }} />
+              <button key={c} type="button" onClick={() => setAccentColor(c)}
+                className="accent-swatch-btn"
+                style={{ background: c, border: `2.5px solid ${accentColor === c ? "var(--color-text)" : "transparent"}`, transform: accentColor === c ? "scale(1.18)" : "scale(1)", boxShadow: accentColor === c ? `0 0 0 2px ${c}55` : undefined }}
+              />
             ))}
           </div>
-          {/* #7: Custom colour swatch + hex inline to the right */}
-          <label className="accent-custom-label" style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", position: "relative" }} title="Custom colour">
-            <div style={{ width: 28, height: 28, borderRadius: 6, background: accentColor, border: `2.5px solid ${!["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].includes(accentColor) ? "var(--color-text)" : "transparent"}`, flexShrink: 0, cursor: "pointer" }} />
+          <label className="accent-custom-label" title="Custom colour">
+            <div className="accent-custom-swatch" style={{ background: accentColor, border: `2.5px solid ${!["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].includes(accentColor) ? "var(--color-text)" : "transparent"}` }} />
             <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Custom</span>
-            <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: 28, height: 28, cursor: "pointer", top: 0, left: 0 }} />
+            <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} className="accent-hidden-color-input" />
             <input
-              className="input"
+              className="input accent-hex-input"
               value={accentColor}
               onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setAccentColor(e.target.value); }}
               placeholder="#e06b1a"
-              style={{ fontSize: 11, width: 82, fontFamily: "monospace", padding: "0.25rem 0.4rem" }}
               data-testid="input-accent-hex"
             />
           </label>
         </div>
       </div>
-      {/* ─── Background picker — Custom colour first, then CSS gradient swatches ─── */}
-      <div>
-        <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Background</label>
-        {/* #8: Custom colour is first / primary option */}
-        <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.625rem" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "pointer", position: "relative", flexShrink: 0 }} title="Custom background colour">
-            <div style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", background: activeBgHex, border: `2px solid ${customBgIsActive ? "var(--color-primary)" : "var(--color-border)"}`, flexShrink: 0, boxShadow: customBgIsActive ? "0 0 0 2px var(--amber-subtle, rgba(224,107,26,0.2))" : undefined }} />
+
+      {/* Background picker */}
+      <div className="page-settings-colour-section">
+        <label className="page-settings-section-label">Background</label>
+        {/* Custom colour row */}
+        <div className={`bg-custom-row${customBgIsActive ? " bg-custom-row--active" : ""}`}>
+          <label className="bg-custom-picker" title="Custom background colour">
+            <div className="bg-custom-swatch" style={{ background: activeBgHex }} />
             <input
               type="color"
               value={customBgColor}
@@ -1046,11 +1052,11 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
                 setCustomBgColor(e.target.value);
                 handleSetBackground(e.target.value);
               }}
-              style={{ position: "absolute", opacity: 0, width: 36, height: 36, cursor: "pointer", top: 0, left: 0 }}
+              className="accent-hidden-color-input"
             />
           </label>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: customBgIsActive ? "var(--color-primary)" : "var(--color-text-muted)" }}>Custom colour</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 3, color: customBgIsActive ? "var(--color-primary)" : "var(--color-text-muted)" }}>Custom colour</div>
             <input
               className="input"
               value={customBgColor}
@@ -1061,13 +1067,13 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
                 }
               }}
               placeholder="#ffffff"
-              style={{ fontSize: 11, width: 82, fontFamily: "monospace", padding: "0.15rem 0.35rem" }}
+              style={{ fontSize: 11, width: 88, fontFamily: "monospace", padding: "0.2rem 0.375rem" }}
               data-testid="input-bg-hex"
             />
           </div>
         </div>
-        {/* Gradient swatches — None removed since Custom Colour is now the no-background option */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: "0.375rem" }}>
+        {/* Preset gradient swatches */}
+        <div className="bg-swatches-grid">
           {BACKGROUND_OPTIONS.filter(opt => opt.value !== "none").map(opt => {
             const isActive = !customBgIsActive && (background === opt.value || (() => { try { const p = JSON.parse(background); return (p.bgValue === opt.value); } catch { return false; } })());
             return (
@@ -3039,8 +3045,8 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
             const cards = [
               { label: days === 0 ? "Total views (all time)" : `Views (${days}d)`, value: (days === 0 ? analytics.totalViews : analytics.periodViews)?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodViews ?? 0, prev?.views ?? 0) },
               { label: "Views per visitor", value: analytics.avgSessionViews != null ? analytics.avgSessionViews.toFixed(1) : "—", delta: null, tooltip: "Average page views per unique visitor" },
-              { label: days === 0 ? "Interactions (all time)" : `Interactions (${days}d)`, value: analytics.periodClicks?.toLocaleString() ?? "0", delta: pctLabel(analytics.periodClicks ?? 0, prev?.clicks ?? 0) },
-              { label: "Interaction rate", value: analytics.clickRate ? `${analytics.clickRate}%` : "0%", delta: prev ? pctLabel(analytics.clickRate ?? 0, prevClickRate) : null, tooltip: "Link clicks ÷ page views for this period" },
+              { label: days === 0 ? "Block interactions (all time)" : `Block interactions (${days}d)`, value: (analytics.totalBlockInteractions ?? analytics.periodClicks ?? 0).toLocaleString(), delta: pctLabel(analytics.totalBlockInteractions ?? analytics.periodClicks ?? 0, prev?.clicks ?? 0) },
+              { label: "Interaction rate", value: analytics.totalBlockInteractions != null && (analytics.periodViews ?? 0) > 0 ? `${(Math.round((analytics.totalBlockInteractions / (analytics.periodViews ?? 1)) * 1000) / 10).toFixed(1)}%` : (analytics.clickRate ? `${analytics.clickRate}%` : "0%"), delta: prev ? pctLabel(analytics.clickRate ?? 0, prevClickRate) : null, tooltip: "Block interactions ÷ page views for this period" },
               { label: "Unique visitors", value: (analytics.uniqueVisitors ?? 0).toLocaleString(), delta: pctLabel(analytics.uniqueVisitors ?? 0, prev?.uniqueVisitors ?? 0) },
               { label: "Repeat visitors", value: (analytics.repeatVisitors ?? 0).toLocaleString(), delta: prev ? pctLabel(analytics.repeatVisitors ?? 0, prev?.repeatVisitors ?? 0) : null },
               { label: "Best day", value: bestDayLabel, delta: null },
@@ -3679,9 +3685,10 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             });
             const barData = sortedDisplayBlocks.map((block: any) => {
               const ti = topInteractionsMap.get(block.id);
-              // total = views + interactions (matches Top Interactions "Interactions" label exactly)
+              // interactions: use topInteractionsMap.total (views+interactions) to match Top Interactions exactly
               const interCnt = ti?.total ?? 0;
-              const viewCnt = ti?.views ?? 0;
+              // views: use blockStats from periodEvents (covers ALL blocks, not just top-10)
+              const viewCnt = blockStats.get(block.id)?.views ?? 0;
               return {
                 name: (block.title || block.label || block.question || block.type || "Block").slice(0, 14),
                 interactions: interCnt,
@@ -4170,17 +4177,17 @@ function LeadsPanel({ pages }: { pages: any[] }) {
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Leads</h1>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{totalCount} total · {filteredLeads.length} shown</p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div className="leads-header-actions" style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           {pages.length > 1 && (
             <select value={selectedPageId ?? ""} onChange={e => setSelectedPageId(Number(e.target.value))} style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
               {pages.map((p: any) => <option key={p.id} value={p.id}>linkbay.ai/{p.username}</option>)}
             </select>
           )}
-          <button className="btn btn-primary btn-sm" onClick={() => setAddLeadOpen(true)} data-testid="button-add-lead">+ Add lead</button>
+          <button className="btn btn-primary btn-sm leads-action-btn" onClick={() => setAddLeadOpen(true)} data-testid="button-add-lead">+ Add lead</button>
           {leadsTier === "business" ? (
-            <button className="btn btn-secondary btn-sm leads-export-btn" onClick={exportCSV} data-testid="button-export-leads">↓ Export CSV</button>
+            <button className="btn btn-secondary btn-sm leads-action-btn leads-export-btn" onClick={exportCSV} data-testid="button-export-leads">↓ Export CSV</button>
           ) : (
-            <button className="btn btn-secondary btn-sm leads-export-btn" style={{ opacity: 0.6, cursor: "default" }} title="Business plan required" data-testid="button-export-leads-locked">↓ Export CSV <span style={{ fontSize: 9, padding: "1px 5px", background: "rgba(224,107,26,0.15)", color: "var(--color-primary)", borderRadius: 999, fontWeight: 700, marginLeft: 4 }}>BIZ</span></button>
+            <button className="btn btn-secondary btn-sm leads-action-btn leads-export-btn" style={{ opacity: 0.6, cursor: "default" }} title="Business plan required" data-testid="button-export-leads-locked">↓ Export CSV <span style={{ fontSize: 9, padding: "1px 5px", background: "rgba(224,107,26,0.15)", color: "var(--color-primary)", borderRadius: 999, fontWeight: 700, marginLeft: 4 }}>BIZ</span></button>
           )}
         </div>
       </div>
@@ -5376,50 +5383,72 @@ function buildSignatureHtml(opts: {
   const emailHtml = email ? `<tr><td style="padding:1px 0;font-size:12px;color:#666;font-family:Arial,sans-serif;">✉ <a href="mailto:${email}" style="color:${safeAccent};text-decoration:none">${email}</a></td></tr>` : "";
   const btnHtml = pageUrl ? `<tr><td style="padding-top:10px"><a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;padding:7px 16px;border-radius:6px;text-decoration:none;letter-spacing:0.01em">${btnText} →</a></td></tr>` : "";
 
+  // ── Minimal: clean inline layout, monogram or avatar, accent dot separator ──
   if (style === "minimal") {
+    const dotSep = `<span style="color:${safeAccent};margin:0 5px;font-size:11px">•</span>`;
+    const metaParts = [title, company].filter(Boolean);
+    const metaHtml = metaParts.length ? metaParts.map(p => `<span style="font-size:11px;color:#777;font-family:Arial,sans-serif">${p}</span>`).join(dotSep) : "";
+    const contactLine = [phone ? `<a href="tel:${phone}" style="font-size:11px;color:#777;text-decoration:none;font-family:Arial,sans-serif">${phone}</a>` : "", email ? `<a href="mailto:${email}" style="font-size:11px;color:${safeAccent};text-decoration:none;font-family:Arial,sans-serif">${email}</a>` : ""].filter(Boolean).join(dotSep);
     return `<!-- Linkbay Email Signature -->
-<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif">
-  ${dividerHtml ? `<tr><td colspan="2" style="padding-bottom:8px">${dividerHtml}</td></tr>` : ""}
-  <tr>
-    <td style="padding-right:12px;vertical-align:top">${avatarBlock}</td>
-    <td style="vertical-align:top">
-      <table cellpadding="0" cellspacing="0" border="0">
-        <tr><td style="font-size:15px;font-weight:700;color:#111;font-family:Arial,sans-serif;white-space:nowrap">${name}</td></tr>
-        ${metaLine ? `<tr><td style="font-size:12px;color:#666;font-family:Arial,sans-serif;padding-bottom:4px">${metaLine}</td></tr>` : ""}
-        ${phoneHtml}${emailHtml}${btnHtml}
-      </table>
-    </td>
-  </tr>
-</table>`;
-  }
-
-  if (style === "card") {
-    return `<!-- Linkbay Email Signature -->
-<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;border-left:4px solid ${safeAccent};padding-left:14px;margin-top:4px">
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:480px">
+  ${dividerHtml ? `<tr><td colspan="2" style="padding-bottom:10px">${dividerHtml}</td></tr>` : ""}
   <tr>
     <td style="padding-right:14px;vertical-align:middle">${avatarBlock}</td>
     <td style="vertical-align:middle">
       <table cellpadding="0" cellspacing="0" border="0">
-        <tr><td style="font-size:16px;font-weight:800;color:#111;font-family:Arial,sans-serif">${name}</td></tr>
-        ${metaLine ? `<tr><td style="font-size:12px;color:${safeAccent};font-family:Arial,sans-serif;font-weight:600;padding-bottom:6px">${metaLine}</td></tr>` : ""}
-        ${phoneHtml}${emailHtml}${btnHtml}
+        <tr><td style="font-size:15px;font-weight:700;color:#111;font-family:Arial,sans-serif;letter-spacing:-0.01em;padding-bottom:2px">${name}</td></tr>
+        ${metaHtml ? `<tr><td style="padding-bottom:4px">${metaHtml}</td></tr>` : ""}
+        ${contactLine ? `<tr><td style="padding-bottom:8px">${contactLine}</td></tr>` : ""}
+        ${pageUrl ? `<tr><td><a href="${pageUrl}" style="display:inline-block;font-size:11px;font-weight:700;color:${safeAccent};font-family:Arial,sans-serif;text-decoration:none;border-bottom:1.5px solid ${safeAccent};padding-bottom:1px">${btnText} →</a></td></tr>` : ""}
       </table>
     </td>
   </tr>
 </table>`;
   }
 
-  // classic (default)
-  return `<!-- Linkbay Email Signature -->
-<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif">
-  ${dividerHtml ? `<tr><td style="padding-bottom:10px">${dividerHtml}</td></tr>` : ""}
+  // ── Card: coloured header band with name/title, details below ──
+  if (style === "card") {
+    const accentBg = safeAccent;
+    const avatarCardBlock = hasAvatar
+      ? `<img src="${avatarUrl}" width="52" height="52" style="width:52px;height:52px;border-radius:50%;object-fit:cover;display:block;border:3px solid rgba(255,255,255,0.85)" alt="${name}" />`
+      : `<div style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;font-family:Arial,sans-serif;line-height:52px;text-align:center;border:2px solid rgba(255,255,255,0.45)">${name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}</div>`;
+    return `<!-- Linkbay Email Signature -->
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;border-radius:10px;overflow:hidden;max-width:420px;border:1px solid #e5e7eb">
+  ${dividerHtml ? `<tr><td colspan="2" style="padding:8px 16px 0">${dividerHtml}</td></tr>` : ""}
   <tr>
-    <td style="padding-right:16px;vertical-align:top">${avatarBlock}</td>
-    <td style="vertical-align:top;border-left:1px solid #e5e7eb;padding-left:16px">
+    <td style="background:${accentBg};padding:16px 18px;vertical-align:middle" width="88">${avatarCardBlock}</td>
+    <td style="background:${accentBg};padding:16px 18px 16px 0;vertical-align:middle">
+      <div style="font-size:17px;font-weight:800;color:#fff;font-family:Arial,sans-serif;letter-spacing:-0.01em;line-height:1.2">${name}</div>
+      ${metaLine ? `<div style="font-size:11px;color:rgba(255,255,255,0.82);font-family:Arial,sans-serif;margin-top:3px">${metaLine}</div>` : ""}
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" style="background:#fff;padding:12px 18px">
       <table cellpadding="0" cellspacing="0" border="0">
-        <tr><td style="font-size:16px;font-weight:800;color:#111;font-family:Arial,sans-serif">${name}</td></tr>
-        ${metaLine ? `<tr><td style="font-size:12px;color:#555;font-family:Arial,sans-serif;padding-bottom:6px">${metaLine}</td></tr>` : ""}
-        ${phoneHtml}${emailHtml}${btnHtml}
+        ${phone ? `<tr><td style="padding:2px 0;font-size:12px;color:#555;font-family:Arial,sans-serif"><span style="color:${safeAccent};margin-right:5px">☎</span><a href="tel:${phone}" style="color:#555;text-decoration:none">${phone}</a></td></tr>` : ""}
+        ${email ? `<tr><td style="padding:2px 0;font-size:12px;font-family:Arial,sans-serif"><span style="color:${safeAccent};margin-right:5px">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none">${email}</a></td></tr>` : ""}
+        ${pageUrl ? `<tr><td style="padding-top:10px"><a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;padding:7px 16px;border-radius:6px;text-decoration:none">${btnText} →</a></td></tr>` : ""}
+      </table>
+    </td>
+  </tr>
+</table>`;
+  }
+
+  // ── Classic: refined two-column with subtle header accent bar ──
+  return `<!-- Linkbay Email Signature -->
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:480px">
+  ${dividerHtml ? `<tr><td colspan="2" style="padding-bottom:12px">${dividerHtml}</td></tr>` : ""}
+  <tr>
+    <td style="padding-right:16px;vertical-align:top">
+      ${avatarBlock}
+      ${pageUrl ? `<div style="margin-top:8px;text-align:center"><a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;text-decoration:none;white-space:nowrap">${btnText}</a></div>` : ""}
+    </td>
+    <td style="vertical-align:top;border-left:3px solid ${safeAccent};padding-left:16px">
+      <table cellpadding="0" cellspacing="0" border="0">
+        <tr><td style="font-size:17px;font-weight:800;color:#111;font-family:Arial,sans-serif;letter-spacing:-0.01em;line-height:1.2;padding-bottom:3px">${name}</td></tr>
+        ${metaLine ? `<tr><td style="font-size:12px;color:${safeAccent};font-family:Arial,sans-serif;font-weight:600;padding-bottom:8px">${metaLine}</td></tr>` : ""}
+        ${phone ? `<tr><td style="padding:1px 0;font-size:12px;color:#666;font-family:Arial,sans-serif">☎ <a href="tel:${phone}" style="color:#666;text-decoration:none">${phone}</a></td></tr>` : ""}
+        ${email ? `<tr><td style="padding:1px 0;font-size:12px;font-family:Arial,sans-serif">✉ <a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></td></tr>` : ""}
       </table>
     </td>
   </tr>

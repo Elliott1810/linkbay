@@ -3442,6 +3442,30 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
     staleTime: 30000,
   });
 
+  // Fetch main analytics to get topInteractions — these are the source-of-truth figures
+  const { data: mainAnalytics } = useQuery({
+    queryKey: ["/api/pages", selectedPageId, "analytics", effectiveDays],
+    queryFn: async () => {
+      if (!selectedPageId) return null;
+      const res = await apiRequest("GET", `/api/pages/${selectedPageId}/analytics?days=${effectiveDays}`);
+      return res.json();
+    },
+    enabled: !!selectedPageId,
+    staleTime: 30000,
+  });
+
+  // Build a lookup map from blockId → { total (views+interactions), views, interactions }
+  // topInteractions uses id format "block-{blockId}" for blocks
+  const topInteractionsMap = new Map<string, { total: number; views: number; interactions: number }>();
+  const rawTopInter: any[] = mainAnalytics?.topInteractions ?? [];
+  for (const item of rawTopInter) {
+    if (item.id && item.id.startsWith("block-")) {
+      const bid = item.id.slice(6); // strip "block-" prefix
+      topInteractionsMap.set(bid, { total: item.total ?? 0, views: item.views ?? 0, interactions: item.interactions ?? 0 });
+    }
+  }
+  const mainPeriodViews: number = Math.max(mainAnalytics?.periodViews ?? mainAnalytics?.totalViews ?? 0, 1);
+
   const page = pages.find((p: any) => p.id === selectedPageId);
 
   const pageBlocks: any[] = (() => {
@@ -3508,6 +3532,8 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
       queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
       // Invalidate block analytics so all-time views refresh after archive/restore
       queryClient.invalidateQueries({ queryKey: ["/api/pages", selectedPageId, "block-analytics"] });
+      // Also invalidate main analytics so topInteractionsMap stays in sync
+      queryClient.invalidateQueries({ queryKey: ["/api/pages", selectedPageId, "analytics"] });
     },
   });
 
@@ -3645,16 +3671,17 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
           {/* #9 Block stats charts: Interactions bar (toggleable) + 2 Pie charts */}
           {displayLiveBlocks.length > 0 && (() => {
             const PIE_COLORS = ["#e06b1a","#f59e0b","#0891b2","#059669","#7c3aed","#e11d48","#334155","#8b5cf6","#10b981","#ef4444"];
-            // Sort blocks by interaction count descending for charts
+            // Sort blocks by total (views+interactions) descending — matches Top Interactions order
             const sortedDisplayBlocks = [...displayLiveBlocks].sort((a: any, b: any) => {
-              const sa = blockStats.get(a.id) ?? { interactions: 0, views: 0 };
-              const sb = blockStats.get(b.id) ?? { interactions: 0, views: 0 };
-              return sb.interactions - sa.interactions;
+              const ta = topInteractionsMap.get(a.id)?.total ?? 0;
+              const tb = topInteractionsMap.get(b.id)?.total ?? 0;
+              return tb - ta;
             });
             const barData = sortedDisplayBlocks.map((block: any) => {
-              const s = blockStats.get(block.id) ?? { count: 0, views: 0, interactions: 0, eventTypes: {} as Record<string, number> };
-              const viewCnt = s.views;
-              const interCnt = s.interactions;
+              const ti = topInteractionsMap.get(block.id);
+              // total = views + interactions (matches Top Interactions "Interactions" label exactly)
+              const interCnt = ti?.total ?? 0;
+              const viewCnt = ti?.views ?? 0;
               return {
                 name: (block.title || block.label || block.question || block.type || "Block").slice(0, 14),
                 interactions: interCnt,
@@ -3742,14 +3769,21 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
                 {[...displayLiveBlocks].sort((a: any, b: any) => {
-                  const sa = blockStats.get(a.id) ?? { interactions: 0 };
-                  const sb = blockStats.get(b.id) ?? { interactions: 0 };
-                  return sb.interactions - sa.interactions;
+                  const ta = topInteractionsMap.get(a.id)?.total ?? 0;
+                  const tb = topInteractionsMap.get(b.id)?.total ?? 0;
+                  return tb - ta;
                 }).filter((block: any) => !searchLive || blockLabel(block).toLowerCase().includes(searchLive.toLowerCase())).flatMap((block: any) => {
-                  const stats = blockStats.get(block.id) ?? { count: 0, views: 0, interactions: 0, eventTypes: {} as Record<string, number> };
+                  const ti = topInteractionsMap.get(block.id);
+                  const stats = {
+                    count: (ti?.total ?? 0),
+                    views: ti?.views ?? 0,
+                    // total = views + interactions — exact match with Top Interactions table
+                    interactions: ti?.total ?? 0,
+                    eventTypes: {} as Record<string, number>,
+                  };
                   const isSocial = block.type === "social-links";
                   const platformMap = socialPlatformStats.get(block.id);
-                  const pageViewsTotal = Math.max((analytics as any)?.periodViews ?? (analytics as any)?.totalViews ?? 1, 1);
+                  const pageViewsTotal = mainPeriodViews;
 
                   // #11: Social links — render one row per platform instead of a single block row
                   if (isSocial && platformMap && platformMap.size > 0) {

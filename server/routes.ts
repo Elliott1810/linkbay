@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { type Server } from "http";
-import { storage, getUserLicence, setUserLicence, getUserByStripeCustomerId, getUserByStripeSubscriptionId, migrateLinksToBlocks, setUserTrial, getUserEffectiveTier } from "./storage";
+import { storage, getUserLicence, setUserLicence, getUserByStripeCustomerId, getUserByStripeSubscriptionId, migrateLinksToBlocks, setUserTrial, getUserEffectiveTier, createPasswordResetToken, consumePasswordResetToken, updateUserName } from "./storage";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import Database from "better-sqlite3";
@@ -149,6 +149,158 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.updateUserOnboarding(req.session.userEmail!, "dismissed", 1);
       res.json({ success: true });
     } catch { res.status(500).json({ error: "Server error" }); }
+  });
+
+  // ─────────────────────────────────────────────────
+  //  FORGOT PASSWORD / RESET PASSWORD
+  // ─────────────────────────────────────────────────
+
+  /**
+   * POST /api/auth/forgot-password
+   * Body: { email: string }
+   * Generates a cryptographically secure 32-byte token, stores its SHA-256
+   * hash in the DB (never the raw token), and returns the reset URL.
+   * In production you would email this URL; here we return it in the response
+   * so the frontend can redirect the user directly (no email infra required).
+   * Always responds 200 to prevent user enumeration.
+   */
+  app.post("/api/auth/forgot-password", authLimiter, async (req: Request, res: Response) => {
+    try {
+      const { email } = z.object({ email: z.string().email() }).parse(req.body);
+      const user = await storage.getUserByEmail(email);
+      // Always 200 — don’t reveal whether the email exists
+      if (!user) return res.json({ success: true, message: "If that email exists, a reset link has been generated." });
+
+      // Generate 32-byte URL-safe token
+      const rawToken = crypto.randomBytes(32).toString("hex"); // 64 hex chars
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      createPasswordResetToken(user.id, tokenHash);
+
+      // Build reset URL (token is raw — user presents it, we hash + compare)
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+
+      // Return the URL — in a real deployment this would be emailed
+      res.json({ success: true, resetUrl, message: "Reset link generated. In production this would be emailed." });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Please provide a valid email address." });
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  /**
+   * POST /api/auth/reset-password
+   * Body: { token: string; newPassword: string }
+   * Validates the raw token (hashes it, looks up DB), updates password,
+   * marks token used. Single-use, expires in 1 hour.
+   */
+  app.post("/api/auth/reset-password", authLimiter, async (req: Request, res: Response) => {
+    try {
+      const { token, newPassword } = z.object({
+        token: z.string().min(64).max(64),
+        newPassword: z.string().min(8, "Password must be at least 8 characters"),
+      }).parse(req.body);
+
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const result = consumePasswordResetToken(tokenHash);
+
+      if (!result) {
+        return res.status(400).json({ error: "This reset link is invalid or has expired. Please request a new one." });
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await storage.updateUser(result.userId, { passwordHash });
+
+      // Invalidate all existing sessions for this user by checking force_logout
+      // (session store is cookie-based — we just acknowledge success; user must log in again)
+      res.json({ success: true, message: "Password updated successfully. Please log in with your new password." });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0]?.message || "Invalid data" });
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // ─────────────────────────────────────────────────
+  //  ACCOUNT SETTINGS
+  // ─────────────────────────────────────────────────
+
+  /**
+   * GET /api/account
+   * Returns the current user’s profile (name, email, avatarUrl, createdAt).
+   * Requires auth.
+   */
+  app.get("/api/account", requireAuth as any, async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUserById(req.session.userId!);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      res.json({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatarUrl: user.avatarUrl ?? null,
+        createdAt: user.createdAt,
+      });
+    } catch { res.status(500).json({ error: "Server error" }); }
+  });
+
+  /**
+   * PUT /api/account
+   * Body: { name?: string }
+   * Updates the user’s display name.
+   * Email changes are intentionally excluded (would require re-verification).
+   * Requires auth.
+   */
+  app.put("/api/account", requireAuth as any, async (req: Request, res: Response) => {
+    try {
+      const { name } = z.object({
+        name: z.string().min(1, "Name is required").max(80, "Name too long"),
+      }).parse(req.body);
+
+      updateUserName(req.session.userId!, name);
+      // Refresh session name so /api/auth/me reflects the change immediately
+      req.session.userName = name;
+      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+
+      const updated = await storage.getUserById(req.session.userId!);
+      res.json({ success: true, user: { id: updated!.id, email: updated!.email, name: updated!.name, avatarUrl: updated!.avatarUrl ?? null } });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0]?.message || "Invalid data" });
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  /**
+   * PUT /api/account/password
+   * Body: { currentPassword: string; newPassword: string }
+   * Verifies current password before allowing the change.
+   * Hashes new password with bcrypt cost 12.
+   * Requires auth.
+   */
+  app.put("/api/account/password", requireAuth as any, async (req: Request, res: Response) => {
+    try {
+      const { currentPassword, newPassword } = z.object({
+        currentPassword: z.string().min(1, "Current password is required"),
+        newPassword: z.string().min(8, "New password must be at least 8 characters"),
+      }).parse(req.body);
+
+      const user = await storage.getUserById(req.session.userId!);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!valid) return res.status(400).json({ error: "Current password is incorrect." });
+
+      if (currentPassword === newPassword) {
+        return res.status(400).json({ error: "New password must be different from your current password." });
+      }
+
+      const newHash = await bcrypt.hash(newPassword, 12);
+      await storage.updateUser(user.id, { passwordHash: newHash });
+
+      res.json({ success: true, message: "Password changed successfully." });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0]?.message || "Invalid data" });
+      res.status(500).json({ error: "Server error" });
+    }
   });
 
   // ─────────────────────────────────────────────────

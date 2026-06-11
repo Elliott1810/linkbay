@@ -1010,21 +1010,23 @@ function PageSettingsForm({ page, onSave, saving, saveMsg }: { page: any; onSave
       </div>
       <div>
         <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.5rem" }}>Accent colour</label>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          {["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].map(c => (
-            <button key={c} type="button" onClick={() => setAccentColor(c)} style={{ width: 24, height: 24, borderRadius: "50%", background: c, border: `2.5px solid ${accentColor === c ? "var(--color-text)" : "transparent"}`, cursor: "pointer" }} />
-          ))}
+        <div className="accent-colour-row" style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "0.375rem", alignItems: "center", flexWrap: "wrap" }}>
+            {["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].map(c => (
+              <button key={c} type="button" onClick={() => setAccentColor(c)} style={{ width: 28, height: 28, borderRadius: "50%", background: c, border: `2.5px solid ${accentColor === c ? "var(--color-text)" : "transparent"}`, cursor: "pointer", flexShrink: 0, boxShadow: accentColor === c ? `0 0 0 1px ${c}40` : undefined }} />
+            ))}
+          </div>
           {/* #7: Custom colour swatch + hex inline to the right */}
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", position: "relative" }} title="Custom colour">
-            <div style={{ width: 24, height: 24, borderRadius: 4, background: accentColor, border: `2.5px solid ${!["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].includes(accentColor) ? "var(--color-text)" : "transparent"}`, flexShrink: 0, cursor: "pointer" }} />
+          <label className="accent-custom-label" style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", position: "relative" }} title="Custom colour">
+            <div style={{ width: 28, height: 28, borderRadius: 6, background: accentColor, border: `2.5px solid ${!["#e06b1a","#4f46e5","#0891b2","#059669","#e11d48","#7c3aed","#334155"].includes(accentColor) ? "var(--color-text)" : "transparent"}`, flexShrink: 0, cursor: "pointer" }} />
             <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Custom</span>
-            <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: 24, height: 24, cursor: "pointer", top: 0, left: 0 }} />
+            <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} style={{ position: "absolute", opacity: 0, width: 28, height: 28, cursor: "pointer", top: 0, left: 0 }} />
             <input
               className="input"
               value={accentColor}
               onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setAccentColor(e.target.value); }}
               placeholder="#e06b1a"
-              style={{ fontSize: 11, width: 78, fontFamily: "monospace", padding: "0.15rem 0.35rem" }}
+              style={{ fontSize: 11, width: 82, fontFamily: "monospace", padding: "0.25rem 0.4rem" }}
               data-testid="input-accent-hex"
             />
           </label>
@@ -3653,7 +3655,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             return (
               <>
               {/* #6/#7: Bar chart + single toggleable pie chart side by side on same row */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem", alignItems: "start" }}>
+              <div className="block-analysis-charts-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem", alignItems: "start" }}>
                 {/* Toggleable bar chart */}
                 <div className="card" style={{ padding: "1rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>

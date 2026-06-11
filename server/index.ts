@@ -90,6 +90,8 @@ declare module 'express-session' {
     userId?: number;
     userEmail?: string;
     userName?: string;
+    // Admin impersonation — set when an admin is viewing as a user
+    impersonatedBy?: string; // always "admin" when set
   }
 }
 

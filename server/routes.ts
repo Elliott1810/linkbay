@@ -2505,17 +2505,24 @@ ${ fontHint   ? `- Font: ${fontHint} (use exactly this)` : `- Font style: ${font
     }
   });
 
-  // ── POST /api/ai/builder-setup — pick bg + blockStyle + font from accent + useCase ─
+  // ── POST /api/ai/builder-setup — pick bg + blockStyle + font ──────────────────
   /**
-   * No auth required (called during builder before account creation).
-   * Takes accentColor (hex) + useCase string.
-   * Returns { background, blockStyle, font } chosen to complement the accent.
-   * Rate-limited by IP (20/hour) to prevent abuse.
+   * No auth required — called during builder before account creation.
+   * Accepts: accentColor, useCase, tagline, goal
+   * Returns: { background, blockStyle, font }
+   * Rules:
+   *   - NEVER returns "default" for blockStyle
+   *   - NEVER returns "none" for background — always picks a real background
+   *   - Ensures the chosen background has sufficient contrast for text readability
+   *     (light bg → dark accent; dark bg → light/vivid accent)
+   *   - Rate-limited by IP (20/hour)
    */
   app.post("/api/ai/builder-setup", async (req: Request, res: Response) => {
+    // Hardcoded contrast-safe fallback (never "default" or "none")
+    const SAFE_FALLBACK = { background: "bg-warm-white", blockStyle: "elevated", font: "general-sans" };
+
     if (!process.env.OPENAI_API_KEY) {
-      // Fallback if AI not configured
-      return res.json({ background: "none", blockStyle: "default", font: "general-sans" });
+      return res.json(SAFE_FALLBACK);
     }
     const rateLimitKey = `ip:${req.ip}`;
     const now = Date.now();
@@ -2528,53 +2535,90 @@ ${ fontHint   ? `- Font: ${fontHint} (use exactly this)` : `- Font style: ${font
     } else {
       bucket.count++;
     }
-    const { accentColor = "#e06b1a", useCase = "" } = req.body ?? {};
+
+    const safe = (s: string) => String(s || "").slice(0, 200).replace(/[<>{}\\]/g, "");
+    const accentColor = safe(req.body?.accentColor || "#e06b1a");
+    const useCase     = safe(req.body?.useCase || "");
+    const tagline     = safe(req.body?.tagline || "");
+    const goal        = safe(req.body?.goal || "");
+
+    // Determine if the accent colour is light or dark (to guide background choice)
+    const hexToLuminance = (hex: string): number => {
+      const h = hex.replace("#", "");
+      if (h.length !== 6) return 0.5;
+      const r = parseInt(h.slice(0,2),16)/255;
+      const g = parseInt(h.slice(2,4),16)/255;
+      const b = parseInt(h.slice(4,6),16)/255;
+      const toLinear = (c: number) => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+      return 0.2126*toLinear(r) + 0.7152*toLinear(g) + 0.0722*toLinear(b);
+    };
+    const accentIsLight = hexToLuminance(accentColor) > 0.35;
+
+    // Backgrounds by contrast category
+    // LIGHT backgrounds (need dark text & work with any accent)
+    const LIGHT_BACKGROUNDS = [
+      "bg-warm-white","bg-warm-sand","bg-stone","bg-mint","bg-lavender",
+      "bg-butter","bg-powder","bg-blush","bg-peach-cream","bg-slate-mist",
+      "bg-aurora","bg-blush-gradient","bg-tropical","bg-forest",
+    ];
+    // DARK backgrounds (need light/vivid accent — only safe with dark accents)
+    const DARK_BACKGROUNDS = [
+      "bg-charcoal","bg-midnight","bg-espresso","bg-deep-purple",
+    ];
+
+    const allowedBackgrounds = accentIsLight
+      ? LIGHT_BACKGROUNDS  // light accent → must use light background
+      : [...LIGHT_BACKGROUNDS, ...DARK_BACKGROUNDS]; // dark accent → any bg
+
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         temperature: 0.7,
-        max_tokens: 120,
+        max_tokens: 150,
+        response_format: { type: "json_object" },
         messages: [{
+          role: "system",
+          content: `You are a professional web designer. Choose a visual theme for a link-in-bio page.
+Output ONLY valid JSON: { "background": "...", "blockStyle": "...", "font": "..." }
+RULES (strictly enforce):
+1. background MUST be one of: ${allowedBackgrounds.join(", ")}
+2. blockStyle MUST be one of: frosted, sharp, bordered, outlined, elevated, ghost, floating, underline, shadow-depth, refined-border, compact-row, stripe — do NOT use "default"
+3. font MUST be one of: general-sans, cabinet-grotesk, inter, merriweather, playfair, mono — do NOT use "inter" unless the use case is clearly technical
+4. The background MUST ensure text is readable — pick light/neutral backgrounds for light accents, darker backgrounds only for dark/vivid accents
+5. Choices must feel cohesive, professional, and suited to the use case and brand
+`,
+        }, {
           role: "user",
-          content: `You are a web designer choosing a visual theme for a link-in-bio page.
-
-Accent colour: ${accentColor}
-Use case: ${useCase || "general"}
-
-Choose the best combination from these exact options:
-
-background (pick ONE):
-none, bg-warm-white, bg-warm-sand, bg-stone, bg-charcoal, bg-midnight, bg-espresso, bg-deep-purple, bg-mint, bg-lavender, bg-butter, bg-powder, bg-blush, bg-aurora, bg-blush-gradient, bg-tropical, bg-forest, bg-peach-cream, bg-slate-mist
-
-blockStyle (pick ONE):
-default, frosted, sharp, bordered, outlined, elevated, ghost, floating, underline, neon, dark-glass, minimal-hc, shadow-depth, refined-border, compact-row, stripe
-
-font (pick ONE):
-general-sans, cabinet-grotesk, inter, merriweather, playfair, mono
-
-Respond ONLY with valid JSON: { "background": "...", "blockStyle": "...", "font": "..." }
-Choose options that complement the accent colour and suit the use case professionally.`,
+          content: `Accent colour: ${accentColor}
+Use case: ${useCase || "general professional"}
+What they do: ${tagline || "professional services"}
+Page goal: ${goal || "share links and connect"}
+Accent is ${accentIsLight ? "LIGHT — you MUST pick a light background from the list" : "DARK/VIVID — you may pick light or dark backgrounds"}`,
         }],
       });
-      const text = (completion.choices[0]?.message?.content || "").trim();
+      const text = (completion.choices[0]?.message?.content || "{}").trim();
       let result: any = {};
-      try { result = JSON.parse(text.replace(/```json|```/g, "").trim()); } catch {
-        // try to extract JSON from response
-        const m = text.match(/{[^}]+}/);
+      try { result = JSON.parse(text); } catch {
+        const m = text.match(/{[\s\S]+}/);
         if (m) try { result = JSON.parse(m[0]); } catch {}
       }
-      // Validate each field, fall back to safe defaults
-      const VALID_BG = new Set(["none","bg-warm-white","bg-warm-sand","bg-stone","bg-charcoal","bg-midnight","bg-espresso","bg-deep-purple","bg-mint","bg-lavender","bg-butter","bg-powder","bg-blush","bg-aurora","bg-blush-gradient","bg-tropical","bg-forest","bg-peach-cream","bg-slate-mist"]);
-      const VALID_STYLE = new Set(["default","frosted","sharp","bordered","outlined","elevated","ghost","floating","underline","neon","dark-glass","minimal-hc","shadow-depth","refined-border","compact-row","stripe"]);
+      // Strict validation — never let "none", "default" or invalid values through
+      const VALID_BG = new Set([...LIGHT_BACKGROUNDS, ...DARK_BACKGROUNDS]);
+      const VALID_STYLE = new Set(["frosted","sharp","bordered","outlined","elevated","ghost","floating","underline","shadow-depth","refined-border","compact-row","stripe"]);
       const VALID_FONT = new Set(["general-sans","cabinet-grotesk","inter","merriweather","playfair","mono"]);
+
+      const bg = VALID_BG.has(result.background) && allowedBackgrounds.includes(result.background)
+        ? result.background
+        : (allowedBackgrounds[0] ?? "bg-warm-white");
+
       return res.json({
-        background: VALID_BG.has(result.background) ? result.background : "none",
-        blockStyle: VALID_STYLE.has(result.blockStyle) ? result.blockStyle : "default",
+        background: bg,
+        blockStyle: VALID_STYLE.has(result.blockStyle) ? result.blockStyle : "elevated",
         font: VALID_FONT.has(result.font) ? result.font : "general-sans",
       });
     } catch (e: any) {
-      return res.json({ background: "none", blockStyle: "default", font: "general-sans" });
+      return res.json(SAFE_FALLBACK);
     }
   });
 

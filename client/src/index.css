@@ -979,11 +979,16 @@ a, button, [role="button"] {
   }
 
   /* Inner wrapper (sidebar + content) must flex below the banner */
-  .dashboard-shell > div:not(.impersonation-banner) {
+  .dashboard-inner {
     order: 1 !important;
     flex: 1 1 0 !important;
     min-height: 0 !important;
-    overflow: hidden !important;
+    /* Do NOT set overflow:hidden here — dashboard-main needs overflow-y:auto */
+    overflow: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    height: 100% !important;
   }
 
   /* Hide non-nav sidebar sections (logo, user, page switcher, bottom items) */

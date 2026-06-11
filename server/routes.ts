@@ -132,6 +132,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         onboardingSharedLink: !!(user as any).onboardingSharedLink,
         lastSignIn: (user as any).lastSignIn ?? null,
         newsletterOptin: !!(user as any).newsletterOptin,
+        // Impersonation context — lets client show the admin banner
+        isImpersonating: req.session.impersonatedBy === "admin",
       },
       pages,
     });
@@ -1565,6 +1567,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e) { res.status(500).send("Failed to set trial"); }
   });
 
+  // ── POST /admin/impersonate — log in as a user (admin-only, HTTP Basic auth) ──
+  app.post("/admin/impersonate", requireAdmin as any, async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(String(req.body?.userId || ""), 10);
+      if (!userId) return res.status(400).send("userId required");
+      const user = await storage.getUserById(userId);
+      if (!user) return res.redirect("/admin?err=userNotFound");
+      // Write user's credentials into session + flag as impersonated
+      req.session.userId = user.id;
+      req.session.userEmail = user.email;
+      req.session.userName = user.name ?? user.email;
+      req.session.impersonatedBy = "admin";
+      req.session.save((err) => {
+        if (err) return res.status(500).send("Session save failed");
+        // Redirect into the dashboard as this user
+        res.redirect("/dashboard");
+      });
+    } catch (e) { res.status(500).send("Impersonation failed"); }
+  });
+
+  // ── POST /api/auth/stop-impersonation — exit impersonation mode — no auth needed ──
+  // Called by the client-side impersonation banner. Destroys current session and
+  // redirects to /admin (browser picks up HTTP Basic credentials from browser cache).
+  app.post("/api/auth/stop-impersonation", (req: Request, res: Response) => {
+    if (req.session.impersonatedBy !== "admin") {
+      return res.status(400).json({ error: "Not in impersonation mode" });
+    }
+    req.session.destroy(() => {
+      res.json({ success: true });
+    });
+  });
+
   app.get("/admin", requireAdmin as any, async (req: Request, res: Response) => {
     // Read directly from SQLite for admin view
     const sqlite = require("better-sqlite3")(process.env.DB_PATH || "data.db") as import("better-sqlite3").Database;
@@ -1927,6 +1961,7 @@ function toggleSection(btn){
             <td class="ts">${u.last_sign_in ? ago(u.last_sign_in) : "—"}</td>
             <td>${activeUserEmails.has(u.email) ? '<span style="color:#16a34a;font-weight:700">● Online</span>' : '<span style="color:#aaa">—</span>'}</td>
             <td style="white-space:nowrap">
+              <form method="POST" action="/admin/impersonate" style="display:inline" onsubmit="return confirm('Log in as ${escHtml(u.email)}? You will be taken to their dashboard. Click \'Stop Impersonating\' in the banner to return.')"><input type="hidden" name="userId" value="${u.id}"><button type="submit" style="background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">&#128100; Impersonate</button></form>
               <form method="POST" action="/admin/reset-password" style="display:inline" onsubmit="return confirm('Reset password for ${escHtml(u.email)}?')"><input type="hidden" name="email" value="${escHtml(u.email)}"><button type="submit" style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">Reset PW</button></form>
               <form method="POST" action="/admin/signout-user" style="display:inline" onsubmit="return confirm('Sign out ${escHtml(u.email)}?')"><input type="hidden" name="email" value="${escHtml(u.email)}"><button type="submit" style="background:#fde68a;border:1px solid #fbbf24;color:#92400e;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;margin-right:4px">Sign Out</button></form>
               <form method="POST" action="/admin/delete-user?id=${u.id}" onsubmit="return confirm('Delete user and all their pages?')" style="display:inline"><button class="delbtn" type="submit">Delete</button></form>

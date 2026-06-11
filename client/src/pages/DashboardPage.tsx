@@ -2572,6 +2572,13 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
   const [linkUrl, setLinkUrl] = useState("");
   const [linkIcon, setLinkIcon] = useState("🔗");
   const [linkStyle, setLinkStyleState] = useState<"default" | "featured" | "outline">("default");
+  // vcard
+  const [vcName, setVcName] = useState("");
+  const [vcJobTitle, setVcJobTitle] = useState("");
+  const [vcCompany, setVcCompany] = useState("");
+  const [vcPhone, setVcPhone] = useState("");
+  const [vcEmail, setVcEmail] = useState("");
+  const [vcWebsite, setVcWebsite] = useState("");
   const [error, setError] = useState("");
 
   const reset = () => {
@@ -2585,6 +2592,7 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
     setTQuote(""); setTAuthor(""); setTRole("");
     setFaqs([{ q: "", a: "" }]);
     setLinkLabel(""); setLinkUrl(""); setLinkIcon("🔗"); setLinkStyleState("default");
+    setVcName(""); setVcJobTitle(""); setVcCompany(""); setVcPhone(""); setVcEmail(""); setVcWebsite("");
     setError("");
   };
 
@@ -2639,6 +2647,9 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
     } else if (blockType === "link") {
       if (!linkLabel.trim() || !linkUrl.trim()) { setError("Label and URL are required"); return; }
       onAdd({ id, type: "link", title: linkLabel.trim(), url: linkUrl.trim(), icon: linkIcon, linkStyle });
+    } else if (blockType === "vcard") {
+      if (!vcName.trim()) { setError("Full name is required"); return; }
+      onAdd({ id, type: "vcard", vcName: vcName.trim(), vcJobTitle: vcJobTitle.trim() || undefined, vcCompany: vcCompany.trim() || undefined, vcPhone: vcPhone.trim() || undefined, vcEmail: vcEmail.trim() || undefined, vcWebsite: vcWebsite.trim() || undefined });
     }
     reset();
   };
@@ -2677,6 +2688,7 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
           { id: "testimonial", label: "💬 Testimonial" },
           { id: "faq", label: "❓ FAQ" },
           { id: "link", label: "🔗 Link" },
+          { id: "vcard", label: "💾 vCard" },
         ] as const).map(t => (
 
           <button
@@ -2859,6 +2871,19 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
             </div>
           ))}
           <button type="button" onClick={() => setFaqs([...faqs, { q: "", a: "" }])} className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }}>+ Add Q&A</button>
+        </div>
+      )}
+
+      {/* vCard block form */}
+      {blockType === "vcard" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>Contact details — visitors can download to their phone</div>
+          <input className="input" placeholder="Full name *" value={vcName} onChange={e => setVcName(e.target.value)} style={{ fontSize: 13 }} />
+          <input className="input" placeholder="Job title (optional)" value={vcJobTitle} onChange={e => setVcJobTitle(e.target.value)} style={{ fontSize: 13 }} />
+          <input className="input" placeholder="Company (optional)" value={vcCompany} onChange={e => setVcCompany(e.target.value)} style={{ fontSize: 13 }} />
+          <input className="input" placeholder="Phone (optional)" value={vcPhone} onChange={e => setVcPhone(e.target.value)} style={{ fontSize: 13 }} />
+          <input className="input" placeholder="Email (optional)" value={vcEmail} onChange={e => setVcEmail(e.target.value)} style={{ fontSize: 13 }} />
+          <input className="input" placeholder="Website (https://...)" value={vcWebsite} onChange={e => setVcWebsite(e.target.value)} style={{ fontSize: 13 }} />
         </div>
       )}
 

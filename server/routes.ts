@@ -614,7 +614,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
         theme: z.string().max(40).optional(),
         background: z.string().max(400).optional(),
-        avatarShape: z.enum(["circle", "rounded"]).optional(),
+        avatarShape: z.enum(["circle", "rounded", "square"]).optional(),
         textColor: z.enum(["auto", "light", "dark"]).optional(),
         blocks: z.string().optional(),
         phone: z.string().max(40).optional(),
@@ -1296,10 +1296,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const voterEmail = req.session?.userEmail || null;
       // Derive a stable anonymous token from IP + user-agent hash if not signed in
-      const rawIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+      // Use multiple headers to build a reliable fingerprint even behind Railway's proxy
+      const rawIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+        || (req.headers["x-real-ip"] as string)
+        || req.socket?.remoteAddress
+        || req.ip
+        || "anon";
       const ua = String(req.headers["user-agent"] || "");
       // Use client-supplied voterToken (localStorage UUID) first, then fall back to IP+UA hash
-      const anonToken = voterToken || crypto.createHash("sha256").update(rawIp + ua).digest("hex").slice(0, 24);
+      // Guarantee a non-empty token so castVote never hits the "voter identity required" branch
+      const ipHash = crypto.createHash("sha256").update(rawIp + ua + "linkbay-poll").digest("hex").slice(0, 32);
+      const anonToken = (voterToken && String(voterToken).length > 0) ? String(voterToken) : ipHash;
 
       await storage.castVote({
         pageId: parseInt(pageId),

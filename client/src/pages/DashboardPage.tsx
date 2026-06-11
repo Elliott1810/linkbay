@@ -66,19 +66,30 @@ const navItems = [
 function NoPageState() {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
-      <div style={{ textAlign: "center", maxWidth: 460 }}>
-        <div style={{ fontSize: "3.5rem", marginBottom: "1.25rem" }}>🚀</div>
-        <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.75rem" }}>
-          Build your first page
-        </h2>
-        <p style={{ color: "var(--color-text-muted)", marginBottom: "2rem", lineHeight: 1.6 }}>
-          You don't have a page yet. Use the builder to create your branded link hub in under 3 minutes.
-        </p>
-        <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
-          <Link href="/builder" className="btn btn-primary" style={{ justifyContent: "center" }}>
-            {icons.plus} Create my page
+      <div style={{ textAlign: "center", maxWidth: 480 }}>
+        {/* AI onboarding CTA */}
+        <div style={{
+          background: "linear-gradient(135deg, rgba(224,107,26,0.08), rgba(224,107,26,0.03))",
+          border: "1.5px solid rgba(224,107,26,0.25)",
+          borderRadius: "var(--radius-xl, 1rem)",
+          padding: "2rem",
+          marginBottom: "1.5rem",
+        }}>
+          <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>✨</div>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>
+            Build your page in 60 seconds
+          </h2>
+          <p style={{ color: "var(--color-text-muted)", marginBottom: "1.5rem", lineHeight: 1.6, fontSize: "var(--text-sm)" }}>
+            Answer 3 quick questions and our AI will write your headline, bio, and set up your first blocks automatically.
+          </p>
+          <Link href="/onboarding" className="btn btn-primary" style={{ justifyContent: "center", display: "inline-flex", textDecoration: "none", minHeight: 48, minWidth: 220 }}>
+            ✨ Start AI setup
           </Link>
         </div>
+        <p style={{ fontSize: "var(--text-xs)", color: "var(--color-text-faint)", marginBottom: "0.75rem" }}>or</p>
+        <Link href="/builder" className="btn btn-secondary btn-sm" style={{ justifyContent: "center", textDecoration: "none" }}>
+          {icons.plus} Build from scratch
+        </Link>
         <div className="nopage-feature-grid" style={{ marginTop: "2.5rem", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
           {[
             { icon: "📊", title: "Analytics", desc: "Track every view and click" },
@@ -6159,6 +6170,29 @@ export default function DashboardPage() {
     } catch {}
   };
 
+  // Onboarding payload: read from sessionStorage after wizard redirect (?onboarding=1)
+  const [onboardingPayload, setOnboardingPayload] = useState<{
+    headline: string; bio: string; accentColor: string; background: string; pageFont: string;
+    blocks: unknown[]; niche: string; voice: string; goals: string[];
+  } | null>(null);
+  const [onboardingBannerDismissed, setOnboardingBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("onboarding") === "1") {
+      try {
+        const raw = sessionStorage.getItem("onboarding_payload");
+        if (raw) {
+          const payload = JSON.parse(raw);
+          setOnboardingPayload(payload);
+          sessionStorage.removeItem("onboarding_payload");
+        }
+      } catch {}
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   useEffect(() => {
     if (pages.length && activePageId == null) setActivePageId(pages[0].id);
   }, [pages, activePageId]);
@@ -6477,6 +6511,49 @@ export default function DashboardPage() {
             <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--color-primary)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{userInitials}</div>
           </div>
         </div>
+        {/* Onboarding payload banner — shown once after wizard */}
+        {onboardingPayload && !onboardingBannerDismissed && pages.length === 0 && (
+          <div style={{
+            margin: "1rem 1rem 0",
+            padding: "1.25rem 1.5rem",
+            background: "linear-gradient(135deg, rgba(224,107,26,0.1), rgba(224,107,26,0.04))",
+            border: "1.5px solid rgba(224,107,26,0.3)",
+            borderRadius: "var(--radius-lg)",
+            display: "flex", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap",
+          }}>
+            <div style={{ fontSize: 28, flexShrink: 0 }}>✨</div>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <p style={{ fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>
+                Your AI page is ready to launch
+              </p>
+              <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "0.875rem", lineHeight: 1.5 }}>
+                Headline: <em>"{onboardingPayload.headline}"</em>. Click below to create your page with this content pre-filled.
+              </p>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    // Re-save to sessionStorage so the NewPageWizardModal can pick it up
+                    try { sessionStorage.setItem("onboarding_prefill", JSON.stringify(onboardingPayload)); } catch {}
+                    setNewPageWizardOpen(true);
+                  }}
+                >
+                  ✨ Create my page
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setOnboardingBannerDismissed(true)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap", alignSelf: "flex-start" }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: onboardingPayload.accentColor, border: "2px solid var(--color-border)", flexShrink: 0 }} title={onboardingPayload.accentColor} />
+              <span style={{ fontSize: 10, color: "var(--color-text-faint)" }}>{onboardingPayload.accentColor}</span>
+            </div>
+          </div>
+        )}
         {renderPanel()}
       </div>
 

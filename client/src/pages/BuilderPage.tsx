@@ -858,6 +858,12 @@ function AISuggestionsStep({
     text: "📝", poll: "📊", "lead-form": "📬", "social-links": "🔗",
     video: "🎥", countdown: "⏳", link: "🔗",
   };
+  // Issue 5: detect annotated placeholder URLs (e.g. https://[your-website].com)
+  const isPlaceholderUrl = (url: string) =>
+    /\[your[\-a-z ]+\]/i.test(url) || /example\.com|placeholder\.com/i.test(url);
+  const placeholderLinkCount = (aiBlocks?.links || []).filter(l => isPlaceholderUrl(l.url)).length;
+  const placeholderBlockCount = (aiBlocks?.blocks || []).filter(b => isPlaceholderUrl((b as any).url || "")).length;
+  const totalPlaceholders = placeholderLinkCount + placeholderBlockCount;
 
   return (
     <div>
@@ -887,18 +893,33 @@ function AISuggestionsStep({
         </div>
       )}
 
+      {/* Issue 5: Placeholder URL notice */}
+      {totalPlaceholders > 0 && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "0.625rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-md)", background: "#fffbeb", border: "1.5px solid #f59e0b", marginBottom: "0.75rem" }}>
+          <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>✏️</span>
+          <p style={{ fontSize: "var(--text-xs)", color: "#92400e", margin: 0, lineHeight: 1.5 }}>
+            <strong>{totalPlaceholders} link{totalPlaceholders !== 1 ? "s" : ""} need your real URL</strong> — update them in step 3 before publishing.
+          </p>
+        </div>
+      )}
+
       {/* Block list */}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
-        {(aiBlocks?.links || []).map((l, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)", background: "var(--color-primary-highlight)" }}>
-            <span style={{ fontSize: 18, flexShrink: 0 }}>🔗</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>{l.label}</div>
-              {l.url && <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.url}</div>}
+        {(aiBlocks?.links || []).map((l, i) => {
+          const isPlaceholder = isPlaceholderUrl(l.url);
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: `1.5px solid ${isPlaceholder ? "#f59e0b" : "var(--color-primary)"}`, background: isPlaceholder ? "#fffbeb" : "var(--color-primary-highlight)" }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>🔗</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: isPlaceholder ? "#92400e" : "var(--color-primary)" }}>{l.label}</div>
+                {l.url && <div style={{ fontSize: 11, color: isPlaceholder ? "#b45309" : "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.url}</div>}
+              </div>
+              <span style={{ fontSize: 10, padding: "0.2rem 0.5rem", borderRadius: 999, background: isPlaceholder ? "#fef3c7" : "var(--color-surface-offset)", color: isPlaceholder ? "#92400e" : "var(--color-text-faint)", fontWeight: 600, textTransform: "uppercase" as const, flexShrink: 0 }}>
+                {isPlaceholder ? "✏️ edit" : "link"}
+              </span>
             </div>
-            <span style={{ fontSize: 10, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", fontWeight: 600, textTransform: "uppercase" as const, flexShrink: 0 }}>link</span>
-          </div>
-        ))}
+          );
+        })}
         {(aiBlocks?.blocks || []).map((b, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)", background: "var(--color-primary-highlight)" }}>
             <span style={{ fontSize: 18, flexShrink: 0 }}>{blockTypeIcon[(b as any).type] || "🧩"}</span>

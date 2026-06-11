@@ -1239,6 +1239,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Create page
+      // Validate font value if provided
+      const VALID_FONTS = new Set(["general-sans","cabinet-grotesk","inter","merriweather","playfair","mono"]);
+      const rawFont = req.body.font as string | undefined;
+      const safeFont = rawFont && VALID_FONTS.has(rawFont) ? rawFont : "inter";
+
       const page = await storage.createPage({
         username,
         ownerEmail: user.email,
@@ -1249,6 +1254,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         accentColor: accentColor || "#e06b1a",
         theme: "default",
         background: req.body.background || "none",
+        pageFont: safeFont,
         blocks: blocksJson,
         phone: phone || "",
         contactEmail: contactEmail || "",
@@ -2496,6 +2502,79 @@ ${ fontHint   ? `- Font: ${fontHint} (use exactly this)` : `- Font style: ${font
     } catch (e: any) {
       console.error("AI generation error:", e.message);
       return res.status(500).json({ error: "AI generation failed" });
+    }
+  });
+
+  // ── POST /api/ai/builder-setup — pick bg + blockStyle + font from accent + useCase ─
+  /**
+   * No auth required (called during builder before account creation).
+   * Takes accentColor (hex) + useCase string.
+   * Returns { background, blockStyle, font } chosen to complement the accent.
+   * Rate-limited by IP (20/hour) to prevent abuse.
+   */
+  app.post("/api/ai/builder-setup", async (req: Request, res: Response) => {
+    if (!process.env.OPENAI_API_KEY) {
+      // Fallback if AI not configured
+      return res.json({ background: "none", blockStyle: "default", font: "general-sans" });
+    }
+    const rateLimitKey = `ip:${req.ip}`;
+    const now = Date.now();
+    const bucket = aiRateLimit.get(rateLimitKey);
+    if (bucket && bucket.resetAt > now && bucket.count >= 20) {
+      return res.status(429).json({ error: "Rate limit exceeded. Try again later." });
+    }
+    if (!bucket || bucket.resetAt <= now) {
+      aiRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 3600_000 });
+    } else {
+      bucket.count++;
+    }
+    const { accentColor = "#e06b1a", useCase = "" } = req.body ?? {};
+    try {
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.7,
+        max_tokens: 120,
+        messages: [{
+          role: "user",
+          content: `You are a web designer choosing a visual theme for a link-in-bio page.
+
+Accent colour: ${accentColor}
+Use case: ${useCase || "general"}
+
+Choose the best combination from these exact options:
+
+background (pick ONE):
+none, bg-warm-white, bg-warm-sand, bg-stone, bg-charcoal, bg-midnight, bg-espresso, bg-deep-purple, bg-mint, bg-lavender, bg-butter, bg-powder, bg-blush, bg-aurora, bg-blush-gradient, bg-tropical, bg-forest, bg-peach-cream, bg-slate-mist
+
+blockStyle (pick ONE):
+default, frosted, sharp, bordered, outlined, elevated, ghost, floating, underline, neon, dark-glass, minimal-hc, shadow-depth, refined-border, compact-row, stripe
+
+font (pick ONE):
+general-sans, cabinet-grotesk, inter, merriweather, playfair, mono
+
+Respond ONLY with valid JSON: { "background": "...", "blockStyle": "...", "font": "..." }
+Choose options that complement the accent colour and suit the use case professionally.`,
+        }],
+      });
+      const text = (completion.choices[0]?.message?.content || "").trim();
+      let result: any = {};
+      try { result = JSON.parse(text.replace(/```json|```/g, "").trim()); } catch {
+        // try to extract JSON from response
+        const m = text.match(/{[^}]+}/);
+        if (m) try { result = JSON.parse(m[0]); } catch {}
+      }
+      // Validate each field, fall back to safe defaults
+      const VALID_BG = new Set(["none","bg-warm-white","bg-warm-sand","bg-stone","bg-charcoal","bg-midnight","bg-espresso","bg-deep-purple","bg-mint","bg-lavender","bg-butter","bg-powder","bg-blush","bg-aurora","bg-blush-gradient","bg-tropical","bg-forest","bg-peach-cream","bg-slate-mist"]);
+      const VALID_STYLE = new Set(["default","frosted","sharp","bordered","outlined","elevated","ghost","floating","underline","neon","dark-glass","minimal-hc","shadow-depth","refined-border","compact-row","stripe"]);
+      const VALID_FONT = new Set(["general-sans","cabinet-grotesk","inter","merriweather","playfair","mono"]);
+      return res.json({
+        background: VALID_BG.has(result.background) ? result.background : "none",
+        blockStyle: VALID_STYLE.has(result.blockStyle) ? result.blockStyle : "default",
+        font: VALID_FONT.has(result.font) ? result.font : "general-sans",
+      });
+    } catch (e: any) {
+      return res.json({ background: "none", blockStyle: "default", font: "general-sans" });
     }
   });
 

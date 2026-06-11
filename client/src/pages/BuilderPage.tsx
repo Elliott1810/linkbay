@@ -16,7 +16,7 @@ interface PageLink {
 }
 
 // Block types stored in pages.blocks JSON column
-type BlockType = "link" | "text" | "poll" | "lead-form" | "social-links" | "image" | "video" | "countdown" | "button" | "testimonial" | "faq" | "divider" | "vcard" | "booking";
+type BlockType = "link" | "text" | "poll" | "lead-form";
 
 interface Block {
   id: string;          // client-side UUID
@@ -37,38 +37,6 @@ interface Block {
   title?: string;        // Form heading
   formDescription?: string;  // Form subtitle
   buttonText?: string;   // Submit button label
-  // social-links block
-  platforms?: string;    // JSON array of {platform, url}
-  // image block
-  imageUrl?: string;
-  alt?: string;
-  caption?: string;
-  // video block
-  videoUrl?: string;
-  // countdown block
-  targetDate?: string;
-  // button block
-  buttonLabel?: string;
-  buttonUrl?: string;
-  // testimonial block
-  quote?: string;
-  author?: string;
-  role?: string;
-  // faq block
-  faqs?: string;         // JSON array of {question, answer}
-  // divider block — no extra fields
-  // vcard block
-  vcName?: string;
-  vcJobTitle?: string;
-  vcCompany?: string;
-  vcPhone?: string;
-  vcEmail?: string;
-  vcWebsite?: string;
-  // booking block
-  platform?: "calendly" | "cal" | "google" | "tidycal" | "other";
-  embedUrl?: string;
-  embedHeight?: number;
-  [key: string]: unknown;
 }
 
 interface BuilderState {
@@ -88,8 +56,10 @@ interface BuilderState {
   // Step 3
   links: PageLink[];
   blocks: Block[];
-  // Background
+  // Background / AI theme
   background: string;
+  font?: string;
+  blockStyle?: string;
 }
 
 const ACCENT_COLORS = [
@@ -194,26 +164,15 @@ export const COLOR_OPTIONS = [
 // Dark backgrounds are flagged in BACKGROUND_OPTIONS. Used to auto-set text colour.
 export function getBackgroundLuminance(bg: string | null | undefined): "dark" | "light" {
   if (!bg || bg === "none") return "light";
-  // #12: plain hex custom color — always light (user controls the color)
-  if (bg.startsWith("#")) return "light";
   // New CSS class system
   if (bg.startsWith("bg-")) {
     const opt = BACKGROUND_OPTIONS.find(o => o.value === bg);
     return opt?.dark ? "dark" : "light";
   }
-  // JSON system — handles both legacy { color } and new { bgValue, blockStyle } formats
+  // Legacy JSON system
   if (bg.startsWith("{")) {
     try {
       const parsed = JSON.parse(bg);
-      // #13: new format stores CSS class in bgValue
-      if (parsed.bgValue) {
-        if (parsed.bgValue.startsWith("bg-")) {
-          const opt = BACKGROUND_OPTIONS.find(o => o.value === parsed.bgValue);
-          return opt?.dark ? "dark" : "light";
-        }
-        // hex color stored in bgValue (custom-color)
-        if (parsed.bgValue.startsWith("#")) return "light";
-      }
       const color = parsed.color || "";
       const darkColors = new Set(["charcoal", "midnight", "midnight-blue", "deep-purple", "espresso", "forest", "ocean", "aurora", "sunset"]);
       if (darkColors.has(color)) return "dark";
@@ -225,20 +184,12 @@ export function getBackgroundLuminance(bg: string | null | undefined): "dark" | 
 // Returns the CSS class name for new-format backgrounds, or {} for legacy/none
 export function backgroundToCss(bg: string | null | undefined): React.CSSProperties {
   if (!bg || bg === "none") return {};
-  // #12: plain hex color (custom colour picker)
-  if (bg.startsWith("#")) return { backgroundColor: bg };
   // New CSS-class system: class is applied directly to the element — no inline style needed
   if (bg.startsWith("bg-")) return {};
-  // JSON system — handles both legacy { color } and new { bgValue, blockStyle } formats
+  // Legacy JSON system — basic fallback so old profiles don't break
   if (bg.startsWith("{")) {
     try {
       const parsed = JSON.parse(bg);
-      // #13: new format — bgValue holds the CSS class or hex color
-      if (parsed.bgValue) {
-        if (parsed.bgValue.startsWith("bg-")) return {}; // CSS class applied via backgroundToClass
-        if (parsed.bgValue.startsWith("#")) return { backgroundColor: parsed.bgValue };
-      }
-      // Legacy format: { color: "..." }
       const color = parsed.color as string | undefined;
       if (!color || color === "none") return {};
       const legacyMap: Record<string, React.CSSProperties> = {
@@ -271,13 +222,6 @@ export function backgroundToCss(bg: string | null | undefined): React.CSSPropert
 export function backgroundToClass(bg: string | null | undefined): string {
   if (!bg || bg === "none") return "";
   if (bg.startsWith("bg-")) return bg;
-  // #13: JSON format with bgValue holding a CSS class
-  if (bg.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(bg);
-      if (parsed.bgValue && parsed.bgValue.startsWith("bg-")) return parsed.bgValue;
-    } catch { /* ignore */ }
-  }
   return "";
 }
 
@@ -306,7 +250,7 @@ function LivePreview({ state }: { state: BuilderState }) {
         <div style={{ padding: "1.25rem 1rem 2rem", background: "#fff" /* Always light preview */ }}>
           {/* Hero */}
           <div style={{ textAlign: "center", marginBottom: "1rem", padding: "1.25rem 0.75rem", background: `linear-gradient(135deg, ${accent}18, ${accent}06)`, borderRadius: "1rem", border: `1px solid ${accent}20` }}>
-            <div style={{ width: 40, height: 40, borderRadius: "50%", background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem", fontWeight: 800, margin: "0 auto 0.5rem", flexShrink: 0, border: "2px solid white", boxShadow: "0 2px 8px rgba(0,0,0,0.12)", overflow: "hidden" }}>
+            <div style={{ width: 52, height: 52, borderRadius: "50%", background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.25rem", fontWeight: 800, margin: "0 auto 0.625rem", border: "2px solid white", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}>
               {(state.name || "Y").charAt(0).toUpperCase()}
             </div>
             <div style={{ fontSize: 14, fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", color: "#1a1917" }}>{state.name || "Your Name"}</div>
@@ -335,106 +279,19 @@ function LivePreview({ state }: { state: BuilderState }) {
             </div>
           ))}
 
-          {/* #2: All block types preview */}
-          {state.blocks.slice(0, 5).map((block) => {
-            if (block.type === "text") return (
-              <div key={block.id} style={{ fontSize: 11, color: "#6b6966", lineHeight: 1.6, marginBottom: "0.5rem", padding: "0.5rem 0.75rem", background: "#f7f6f4", borderRadius: 8 }}>
-                {(block.content || "Text block").slice(0, 80)}
-              </div>
-            );
-            if (block.type === "lead-form") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.75rem", background: "#f7f6f4", borderRadius: 8, border: "1px solid #e2e1de" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#6b6966", marginBottom: "0.375rem" }}>{block.title || "Send a message"}</div>
-                <div style={{ height: 20, background: "white", borderRadius: 4, border: "1px solid #d8d7d4", marginBottom: "0.25rem" }} />
-                <div style={{ height: 20, background: "white", borderRadius: 4, border: "1px solid #d8d7d4", marginBottom: "0.375rem" }} />
-                <div style={{ height: 22, background: accent, borderRadius: 4 }} />
-              </div>
-            );
-            if (block.type === "poll") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.5rem 0.75rem", background: "#f7f6f4", borderRadius: 8, border: `1px solid ${accent}40` }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: accent, marginBottom: "0.375rem" }}>{block.question || "Poll"}</div>
-                {(block.options || ["",""]).slice(0, 3).map((opt: string, oi: number) => (
-                  <div key={oi} style={{ fontSize: 10, padding: "0.25rem 0.5rem", background: "white", borderRadius: 4, border: "1px solid #e2e1de", marginBottom: "0.25rem" }}>{opt || `Option ${oi + 1}`}</div>
-                ))}
-              </div>
-            );
-            if (block.type === "social-links") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", display: "flex", gap: 4, justifyContent: "center", flexWrap: "wrap" }}>
-                {((block.socials as any[]) || [{ platform: "twitter", url: "" }, { platform: "instagram", url: "" }]).slice(0, 5).map((s: any, si: number) => (
-                  <div key={si} style={{ width: 24, height: 24, borderRadius: "50%", background: accent, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700 }}>{(s.platform || "?").charAt(0).toUpperCase()}</div>
-                ))}
-              </div>
-            );
-            if (block.type === "countdown") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.5rem", background: `${accent}10`, border: `1px solid ${accent}30`, borderRadius: 8, textAlign: "center" }}>
-                <div style={{ fontSize: 9, color: accent, fontWeight: 700, marginBottom: 4 }}>{block.title || "Countdown"}</div>
-                <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
-                  {["00d", "00h", "00m"].map(t => (
-                    <div key={t} style={{ background: accent, color: "#fff", borderRadius: 4, padding: "2px 5px", fontSize: 10, fontWeight: 800 }}>{t}</div>
-                  ))}
-                </div>
-              </div>
-            );
-            if (block.type === "button") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.5rem 1rem", background: accent, color: "#fff", borderRadius: 8, textAlign: "center", fontSize: 11, fontWeight: 700 }}>
-                {block.buttonLabel || block.title || "Button"} →
-              </div>
-            );
-            if (block.type === "testimonial") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.625rem 0.75rem", background: "#f7f6f4", borderRadius: 8, border: `1px solid ${accent}20` }}>
-                <div style={{ fontSize: 10, color: "#6b6966", fontStyle: "italic", marginBottom: 3 }}>"{(block.quote || "Great testimonial").slice(0, 60)}"</div>
-                <div style={{ fontSize: 9, fontWeight: 700, color: accent }}>— {(block.author as string) || "Author"}</div>
-              </div>
-            );
-            if (block.type === "faq") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.5rem 0.75rem", background: "#f7f6f4", borderRadius: 8 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#1a1917" }}>FAQ block</div>
-                <div style={{ fontSize: 9, color: "#6b6966" }}>{((block.faqs as unknown as any[]) || []).length} questions</div>
-              </div>
-            );
-            if (block.type === "image") {
-              const src = (block.imageUrl as string) || undefined;
-              return src ? (
-                <img key={block.id} src={src} alt={(block.alt as string) || ""} style={{ width: "100%", borderRadius: 8, marginBottom: "0.5rem", display: "block" }} />
-              ) : (
-                <div key={block.id} style={{ height: 60, background: "#e2e1de", borderRadius: 8, marginBottom: "0.5rem", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#6b6966" }}>Image</div>
-              );
-            }
-            if (block.type === "divider") return (
-              <hr key={block.id} style={{ border: "none", borderTop: `1px solid ${accent}30`, margin: "0.5rem 0" }} />
-            );
-            if (block.type === "vcard") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.75rem", background: `${accent}08`, borderRadius: 8, border: `1px solid ${accent}25`, display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <div style={{ width: 28, height: 28, borderRadius: "50%", background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>👤</div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#1a1917", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(block as any).vcName || "Contact"}</div>
-                  {(block as any).vcJobTitle && <div style={{ fontSize: 9, color: "#6b6966", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(block as any).vcJobTitle}</div>}
-                </div>
-                <div style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: accent, flexShrink: 0, background: `${accent}15`, padding: "2px 6px", borderRadius: 4 }}>Save contact</div>
-              </div>
-            );
-            if (block.type === "booking") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.75rem", background: `${accent}08`, borderRadius: 8, border: `1px solid ${accent}25`, textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#1a1917", marginBottom: 4 }}>📅 {(block as any).title || "Book a call"}</div>
-                <div style={{ fontSize: 9, color: "#6b6966", marginBottom: 6 }}>{(block as any).platform ? `via ${(block as any).platform}` : "Calendar embed"}</div>
-                <div style={{ height: 22, background: accent, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#fff" }}>Book now →</div>
-              </div>
-            );
-            if (block.type === "video") return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", height: 60, background: "#1a1917", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>▶️</div>
-            );
-            return (
-              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.4rem 0.75rem", background: "#f7f6f4", borderRadius: 8, fontSize: 10, color: "#6b6966" }}>
-                {block.type} block
-              </div>
-            );
-          })}
-
-          {state.links.length === 0 && state.blocks.length === 0 && (
+          {state.links.length === 0 && (
             <div style={{ textAlign: "center", padding: "1rem", color: "#b0aeab", fontSize: 11 }}>
-              Add links &amp; blocks in step 3
+              Add links in step 3
             </div>
           )}
+
+          {/* Lead form preview */}
+          <div style={{ marginTop: "0.75rem", padding: "0.75rem", background: "#f7f6f4", borderRadius: 8, border: "1px solid #e2e1de" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#6b6966", marginBottom: "0.375rem" }}>Send a message</div>
+            <div style={{ height: 22, background: "white", borderRadius: 4, border: "1px solid #d8d7d4", marginBottom: "0.375rem" }} />
+            <div style={{ height: 22, background: "white", borderRadius: 4, border: "1px solid #d8d7d4", marginBottom: "0.5rem" }} />
+            <div style={{ height: 26, background: accent, borderRadius: 4 }} />
+          </div>
 
           {/* Powered by */}
           <div style={{ textAlign: "center", marginTop: "0.75rem", fontSize: 9, color: "#b0aeab" }}>
@@ -629,62 +486,6 @@ function mapAiBlocks(aiBlocks: any[]): { links: PageLink[]; blocks: Block[] } {
   return { links, blocks };
 }
 
-// ─── AI Q&A wizard questions ─────────────────────────────────────────────────
-const AI_WIZARD_QUESTIONS = [
-  {
-    key: "tagline",
-    label: (name: string) => `What does ${name || "your brand"} do?`,
-    sublabel: "In one sentence — be specific.",
-    type: "text" as const,
-    placeholder: "e.g. I help startups raise their first £1M through pitch deck coaching",
-  },
-  {
-    key: "goal",
-    label: () => "What's the main goal of this page?",
-    sublabel: "Pick the one that matters most right now.",
-    type: "pills" as const,
-    options: [
-      { value: "Get clients or customers",    icon: "💼" },
-      { value: "Grow my audience",            icon: "📈" },
-      { value: "Capture leads & emails",      icon: "📬" },
-      { value: "Promote a launch or event",   icon: "🚀" },
-      { value: "Share my content",            icon: "🎥" },
-      { value: "Connect my socials",          icon: "🔗" },
-    ],
-  },
-  {
-    key: "fontStyle",
-    label: () => "How should your text feel?",
-    sublabel: "Sets the font across your whole page.",
-    type: "font-pills" as const,
-    options: [
-      { value: "Clean & modern",     icon: "Aa", fontFamily: "'Cabinet Grotesk', 'General Sans', sans-serif" },
-      { value: "Bold & editorial",   icon: "AB", fontFamily: "'Playfair Display', Georgia, serif" },
-      { value: "Friendly & rounded", icon: "Oo", fontFamily: "'Nunito', 'DM Sans', sans-serif" },
-      { value: "Elegant & serif",    icon: "\u1b0a", fontFamily: "'Cormorant Garamond', 'Lora', serif" },
-      { value: "Technical & sharp",  icon: "{}", fontFamily: "'IBM Plex Mono', 'JetBrains Mono', monospace" },
-    ],
-  },
-  {
-    key: "colorMood",
-    label: () => "What vibe should your page have?",
-    sublabel: "This sets your background and accent colour.",
-    type: "color-pills" as const,
-    options: [
-      { value: "Warm & energetic",    preview: "linear-gradient(135deg,#b5451b,#e06b1a)",  text: "#fff" },
-      { value: "Cool & professional", preview: "linear-gradient(135deg,#2d6a8a,#c8e6f5)",  text: "#fff" },
-      { value: "Dark & dramatic",     preview: "linear-gradient(135deg,#1a1a2e,#7c3aed)",  text: "#fff" },
-      { value: "Light & minimal",     preview: "linear-gradient(135deg,#f5f0e8,#e2d9cc)",  text: "#334155" },
-      { value: "Natural & earthy",    preview: "linear-gradient(135deg,#d4c4a0,#059669)",  text: "#fff" },
-      { value: "Bold & creative",     preview: "linear-gradient(135deg,#4a0000,#e11d48)",  text: "#fff" },
-      { value: "Bold & Energetic",    preview: "linear-gradient(135deg,#f97316,#ef4444)",  text: "#fff" },
-      { value: "Soft & Minimal",      preview: "linear-gradient(135deg,#f8fafc,#e2e8f0)",  text: "#334155" },
-      { value: "Playful & Fun",       preview: "linear-gradient(135deg,#a855f7,#ec4899)",  text: "#fff" },
-      { value: "Luxe & Premium",      preview: "linear-gradient(135deg,#1c1917,#d4af37)",  text: "#fff" },
-    ],
-  },
-];
-
 function AISuggestionsStep({
   state,
   update,
@@ -695,54 +496,45 @@ function AISuggestionsStep({
   onContinue: () => void;
 }) {
   const roleLabel = USE_CASE_LABELS[state.useCase] || "Professional";
-  // qa = collecting answers | loading = waiting for AI | done = show results | error = show error
-  const [phase, setPhase] = useState<"qa" | "loading" | "done" | "error">("qa");
-  const [qaStep, setQaStep] = useState(0);
-  const [answers, setAnswers] = useState({ tagline: "", goal: "", colorMood: "", fontStyle: "" });
+  const [aiStatus, setAiStatus] = useState<"loading" | "done" | "error">("loading");
   const [aiResult, setAiResult] = useState<{ links: PageLink[]; blocks: Block[]; background?: string; accentColor?: string } | null>(null);
   const [aiError, setAiError] = useState("");
 
-  const questions = AI_WIZARD_QUESTIONS;
-  const currentQ = questions[qaStep];
-  const currentVal = answers[currentQ.key as keyof typeof answers];
-  const canAdvance = currentVal.trim().length > 0;
-
-  const handleGenerate = () => {
-    setPhase("loading");
+  // Fetch AI suggestions on mount
+  useEffect(() => {
+    let cancelled = false;
     const useCaseGoals: Record<string, string> = {
-      consultant: "Consulting / Coaching",
-      creator: "Content creator / Influencer",
-      recruiter: "Recruiter / HR professional",
-      founder: "Startup founder",
-      agency: "Agency",
-      other: "Professional",
+      consultant: "Get consulting clients and showcase expertise",
+      creator: "Grow audience and share content",
+      recruiter: "Connect with candidates and share job opportunities",
+      founder: "Attract investors and early users",
+      coach: "Book coaching sessions and share resources",
+      agency: "Showcase services and get leads",
+      other: "Share links and connect with people",
     };
-    fetch("/api/ai/generate-page", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        answers: {
-          name: state.name,
-          tagline: answers.tagline,
-          goal: answers.goal,
-          industry: useCaseGoals[state.useCase] || roleLabel,
-          style: answers.fontStyle || "clean, modern",
-          colorMood: answers.colorMood,
-          fontStyle: answers.fontStyle,
-        },
-      }),
+    apiRequest("POST", "/api/ai/generate-page", {
+      answers: {
+        name: state.name,
+        tagline: `${roleLabel} — ${useCaseGoals[state.useCase] || "Professional"}`,
+        goal: useCaseGoals[state.useCase] || "Share links and connect",
+        industry: roleLabel,
+        style: "clean, modern, professional",
+      },
     })
-      .then(async res => {
-        let data: any;
-        try { data = await res.json(); } catch { setAiError(`AI service error (HTTP ${res.status}). Please try again.`); setPhase("error"); return; }
-        if (!res.ok || data.error) { setAiError(data.error || `AI service error (${res.status}). Please try again.`); setPhase("error"); return; }
+      .then(res => res.json())
+      .then((data: any) => {
+        if (cancelled) return;
+        if (data.error) { setAiError(data.error); setAiStatus("error"); return; }
         const { links, blocks } = mapAiBlocks(data.blocks || []);
         setAiResult({ links, blocks, background: data.background, accentColor: data.accentColor });
-        setPhase("done");
+        setAiStatus("done");
       })
-      .catch(err => { setAiError(`Could not reach AI service: ${err?.message || "network error"}. Please try again.`); setPhase("error"); });
-  };
+      .catch(() => {
+        if (!cancelled) { setAiError("Could not reach AI service."); setAiStatus("error"); }
+      });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const applyAndContinue = () => {
     if (!aiResult) return;
@@ -755,154 +547,69 @@ function AISuggestionsStep({
     onContinue();
   };
 
-  // ── Phase: Q&A ────────────────────────────────────────────────────────────
-  if (phase === "qa") {
-    const progress = ((qaStep + 1) / questions.length) * 100;
-    return (
-      <div>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
-          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>✨</div>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>AI Page Builder · {qaStep + 1} of {questions.length}</div>
-            <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", margin: 0 }}>
-              {currentQ.label(state.name)}
-            </h2>
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.5rem" }}>
-          <div style={{ height: "100%", width: `${progress}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.3s" }} />
-        </div>
-
-        {currentQ.sublabel && (
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem", marginTop: "-0.5rem" }}>{currentQ.sublabel}</p>
-        )}
-
-        {/* Text input */}
-        {currentQ.type === "text" && (
-          <textarea
-            rows={3}
-            value={currentVal}
-            onChange={e => setAnswers(a => ({ ...a, [currentQ.key]: e.target.value }))}
-            placeholder={currentQ.placeholder}
-            style={{ width: "100%", padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: "var(--text-sm)", resize: "none", boxSizing: "border-box" as const, marginBottom: "1.25rem", fontFamily: "inherit", lineHeight: 1.5 }}
-          />
-        )}
-
-        {/* Standard pills */}
-        {currentQ.type === "pills" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.25rem" }}>
-            {(currentQ.options as { value: string; icon: string }[]).map(opt => {
-              const active = currentVal === opt.value;
-              return (
-                <button key={opt.value} type="button" onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt.value }))} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.625rem 0.875rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary-highlight)" : "var(--color-surface)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const, transition: "all 0.15s" }}>
-                  <span style={{ fontSize: 14, minWidth: 20 }}>{opt.icon}</span>
-                  {opt.value}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Font pills — each button label rendered in the actual font (#30b) */}
-        {currentQ.type === "font-pills" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.25rem" }}>
-            {(currentQ.options as { value: string; icon: string; fontFamily: string }[]).map(opt => {
-              const active = currentVal === opt.value;
-              return (
-                <button key={opt.value} type="button" onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt.value }))} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.625rem 0.875rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary-highlight)" : "var(--color-surface)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const, transition: "all 0.15s", fontFamily: opt.fontFamily }}>
-                  <span style={{ fontSize: 14, minWidth: 20, fontFamily: "inherit" }}>{opt.icon}</span>
-                  {opt.value}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Colour mood pills */}
-        {currentQ.type === "color-pills" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.25rem" }}>
-            {(currentQ.options as { value: string; preview: string; text: string }[]).map(opt => {
-              const active = currentVal === opt.value;
-              return (
-                <button key={opt.value} type="button" onClick={() => setAnswers(a => ({ ...a, [currentQ.key]: opt.value }))} style={{ padding: "0.75rem", borderRadius: "var(--radius-md)", border: `2.5px solid ${active ? "var(--color-primary)" : "transparent"}`, background: opt.preview, cursor: "pointer", boxShadow: active ? "0 0 0 2px var(--color-primary)" : "0 1px 4px rgba(0,0,0,0.15)", transition: "all 0.15s", position: "relative" as const, overflow: "hidden" as const }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: opt.text, textShadow: "0 1px 3px rgba(0,0,0,0.3)", position: "relative" as const, zIndex: 1 }}>{opt.value}</div>
-                  {active && <div style={{ position: "absolute" as const, top: 4, right: 4, width: 16, height: 16, borderRadius: "50%", background: "var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "#fff", fontSize: 9, fontWeight: 800 }}>✓</span></div>}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Nav */}
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          {qaStep === 0 ? (
-            <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }} data-testid="button-skip-suggestions">Skip AI</button>
-          ) : (
-            <button type="button" onClick={() => setQaStep(s => s - 1)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>← Back</button>
-          )}
-          {qaStep < questions.length - 1 ? (
-            <button type="button" onClick={() => setQaStep(s => s + 1)} disabled={!canAdvance} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-ai-next">Next →</button>
-          ) : (
-            <button type="button" onClick={handleGenerate} disabled={!canAdvance} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-ai-generate">✨ Build my page</button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ── Phase: Loading ────────────────────────────────────────────────────────
-  if (phase === "loading") {
+  // Loading state
+  if (aiStatus === "loading") {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 300, gap: "1.25rem", textAlign: "center" }}>
-        <div style={{ width: 52, height: 52, borderRadius: "50%", border: "3px solid var(--color-primary)", borderTopColor: "transparent", animation: "spin 0.9s linear infinite" }} />
+        <div style={{
+          width: 52, height: 52, borderRadius: "50%",
+          border: "3px solid var(--color-primary)",
+          borderTopColor: "transparent",
+          animation: "spin 0.9s linear infinite",
+        }} />
         <div>
-          <div style={{ fontSize: "var(--text-lg)", fontWeight: 700, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: 4 }}>Building your page…</div>
-          <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>GPT-4o is crafting {state.name}'s personalised page</div>
+          <div style={{ fontSize: "var(--text-lg)", fontWeight: 700, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: 4 }}>
+            Building your AI page...
+          </div>
+          <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
+            GPT-4o is personalising your {roleLabel} page
+          </div>
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
-  // ── Phase: Error ──────────────────────────────────────────────────────────
-  if (phase === "error") {
+  // Error fallback
+  if (aiStatus === "error") {
     return (
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
           <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>🤖</div>
           <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>AI unavailable</h2>
         </div>
-        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>{aiError || "AI generation failed."} You can continue without AI suggestions.</p>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>
+          {aiError || "AI generation failed."} You can continue without AI suggestions.
+        </p>
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} data-testid="button-skip-suggestions">Start blank</button>
-          <button type="button" onClick={() => { setPhase("loading"); handleGenerate(); }} className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }}>Retry</button>
+          <button type="button" onClick={() => { setAiStatus("loading"); setAiError(""); }} className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }}>Retry</button>
         </div>
       </div>
     );
   }
 
-  // ── Phase: Done ───────────────────────────────────────────────────────────
+  // Done — show AI results
   const totalItems = (aiResult?.links.length ?? 0) + (aiResult?.blocks.length ?? 0);
   return (
     <div>
+      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
         <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>🤖</div>
         <div>
-          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>Your AI-generated page</h2>
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: 2 }}>Personalised for <strong>{state.name}</strong> by GPT-4o</p>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>
+            Your AI-generated page
+          </h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: 2 }}>
+            Personalised for a <strong>{roleLabel}</strong> by GPT-4o
+          </p>
         </div>
       </div>
-      <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>
-        {totalItems} item{totalItems !== 1 ? "s" : ""} generated — blocks, links, colours and fonts.
+      <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)", marginBottom: "1.25rem" }}>
+        GPT-4o has generated {totalItems} item{totalItems !== 1 ? "s" : ""} for your page — links, blocks, and a colour theme. You can edit everything in step 3.
       </p>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-md)", background: "var(--color-primary-highlight)", border: "1px solid var(--color-primary)", marginBottom: "1.25rem" }}>
-        <span style={{ fontSize: 14 }}>✏️</span>
-        <span style={{ fontSize: "var(--text-sm)", color: "var(--color-primary)", fontWeight: 600 }}>These blocks can be edited with your info in step 3</span>
-      </div>
 
+      {/* Summary cards */}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
         {(aiResult?.links || []).map((l, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)", background: "var(--color-primary-highlight)" }}>
@@ -932,9 +639,14 @@ function AISuggestionsStep({
         )}
       </div>
 
+      {/* Actions */}
       <div style={{ display: "flex", gap: "0.75rem" }}>
-        <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }} data-testid="button-skip-suggestions">Start blank</button>
-        <button type="button" onClick={applyAndContinue} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }} data-testid="button-apply-suggestions">Apply AI suggestions →</button>
+        <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }} data-testid="button-skip-suggestions">
+          Start blank
+        </button>
+        <button type="button" onClick={applyAndContinue} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-apply-suggestions">
+          Apply AI suggestions →
+        </button>
       </div>
     </div>
   );
@@ -944,6 +656,12 @@ function AISuggestionsStep({
 function Step2({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
   const [customColor, setCustomColor] = useState(state.accentColor);
+  const [aiThemeStatus, setAiThemeStatus] = useState<"idle" | "loading" | "done" | "error">(
+    state.font ? "done" : "idle"
+  );
+  const [aiTheme, setAiTheme] = useState<{ background: string; blockStyle: string; font: string } | null>(
+    state.font ? { background: state.background, blockStyle: state.blockStyle || "default", font: state.font } : null
+  );
 
   // Auto-fill username from name
   useEffect(() => {
@@ -962,6 +680,42 @@ function Step2({ state, update }: { state: BuilderState; update: (v: Partial<Bui
     } catch { setUsernameStatus("idle"); }
   };
 
+  const fetchAiTheme = async (accentColor: string) => {
+    setAiThemeStatus("loading");
+    setAiTheme(null);
+    try {
+      const res = await fetch("/api/ai/builder-setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accentColor, useCase: state.useCase }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) { setAiThemeStatus("error"); return; }
+      setAiTheme(data);
+      update({ background: data.background, blockStyle: data.blockStyle, font: data.font });
+      setAiThemeStatus("done");
+    } catch { setAiThemeStatus("error"); }
+  };
+
+  const FONT_LABELS: Record<string, string> = {
+    "general-sans": "General Sans",
+    "cabinet-grotesk": "Cabinet Grotesk",
+    "inter": "Inter",
+    "merriweather": "Merriweather",
+    "playfair": "Playfair Display",
+    "mono": "Monospace",
+  };
+
+  const BG_LABELS: Record<string, string> = {
+    "none": "Clean white", "bg-warm-white": "Warm white", "bg-warm-sand": "Warm sand",
+    "bg-stone": "Stone", "bg-charcoal": "Charcoal", "bg-midnight": "Midnight",
+    "bg-espresso": "Espresso", "bg-deep-purple": "Deep purple", "bg-mint": "Mint",
+    "bg-lavender": "Lavender", "bg-butter": "Butter", "bg-powder": "Powder blue",
+    "bg-blush": "Blush", "bg-aurora": "Aurora", "bg-blush-gradient": "Blush gradient",
+    "bg-tropical": "Tropical", "bg-forest": "Forest", "bg-peach-cream": "Peach cream",
+    "bg-slate-mist": "Slate mist",
+  };
+
   return (
     <div>
       <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>
@@ -975,13 +729,13 @@ function Step2({ state, update }: { state: BuilderState; update: (v: Partial<Bui
           <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>
             Your page URL *
           </label>
-          <div style={{ display: "flex", alignItems: "center", gap: "0", background: "var(--color-surface)", border: `1.5px solid ${usernameStatus === "available" ? "var(--color-success)" : usernameStatus === "taken" ? "var(--color-error)" : "var(--color-border)"}`, borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-            <span style={{ padding: "0 0.75rem", fontSize: "var(--text-sm)", color: "var(--color-text-faint)", background: "var(--color-surface-offset)", borderRight: "1px solid var(--color-border)", height: 44, display: "flex", alignItems: "center", whiteSpace: "nowrap" }}>
+          <div style={{ display: "flex", alignItems: "center", background: "var(--color-surface)", border: `1.5px solid ${usernameStatus === "available" ? "var(--color-success)" : usernameStatus === "taken" ? "var(--color-error)" : "var(--color-border)"}`, borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+            <span style={{ padding: "0 0.625rem", fontSize: "var(--text-sm)", color: "var(--color-text-faint)", background: "var(--color-surface-offset)", borderRight: "1px solid var(--color-border)", height: 44, display: "flex", alignItems: "center", whiteSpace: "nowrap", flexShrink: 0 }}>
               linkbay.ai/
             </span>
             <input
               className="input"
-              style={{ border: "none", borderRadius: 0, flex: 1, background: "transparent", outline: "none", boxShadow: "none" }}
+              style={{ border: "none", borderRadius: 0, flex: 1, background: "transparent", outline: "none", boxShadow: "none", fontSize: 16, minWidth: 0 }}
               placeholder="your-name"
               value={state.username}
               onChange={e => {
@@ -992,7 +746,7 @@ function Step2({ state, update }: { state: BuilderState; update: (v: Partial<Bui
               required
               data-testid="input-username"
             />
-            <span style={{ padding: "0 0.75rem", fontSize: 16 }}>
+            <span style={{ padding: "0 0.625rem", fontSize: 16, flexShrink: 0 }}>
               {usernameStatus === "checking" && "⏳"}
               {usernameStatus === "available" && "✅"}
               {usernameStatus === "taken" && "❌"}
@@ -1008,7 +762,7 @@ function Step2({ state, update }: { state: BuilderState; update: (v: Partial<Bui
           <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>
             Your headline / title *
           </label>
-          <input className="input" placeholder="Business Strategy Consultant" value={state.title} onChange={e => update({ title: e.target.value })} required data-testid="input-title" />
+          <input className="input" style={{ fontSize: 16 }} placeholder="Business Strategy Consultant" value={state.title} onChange={e => update({ title: e.target.value })} required data-testid="input-title" />
           <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 4 }}>What you do, in 5–8 words.</p>
         </div>
 
@@ -1017,138 +771,88 @@ function Step2({ state, update }: { state: BuilderState; update: (v: Partial<Bui
           <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>
             Short bio
           </label>
-          <textarea
-            className="input"
-            placeholder="I help founders and SMEs build the systems they need to scale. 10+ years. 200+ clients."
-            value={state.bio}
-            onChange={e => update({ bio: e.target.value })}
-            rows={3}
-            style={{ resize: "none" }}
-            data-testid="input-bio"
-          />
-          <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 4 }}>
-            {state.bio.length}/180 chars
-          </p>
+          <textarea className="input" placeholder="I help founders and SMEs build the systems they need to scale. 10+ years. 200+ clients." value={state.bio} onChange={e => update({ bio: e.target.value })} rows={3} style={{ resize: "none", fontSize: 16 }} data-testid="input-bio" />
+          <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: 4 }}>{state.bio.length}/180 chars</p>
         </div>
 
         {/* Location */}
         <div>
-          <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>
-            Location (optional)
-          </label>
-          <input className="input" placeholder="London, UK" value={state.location} onChange={e => update({ location: e.target.value })} data-testid="input-location" />
+          <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Location (optional)</label>
+          <input className="input" style={{ fontSize: 16 }} placeholder="London, UK" value={state.location} onChange={e => update({ location: e.target.value })} data-testid="input-location" />
         </div>
 
         {/* Contact details */}
         <div className="contact-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
           <div>
-            <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>
-              Phone (optional)
-            </label>
-            <input
-              type="tel"
-              className="input"
-              placeholder="+44 7700 900000"
-              value={state.phone}
-              onChange={e => update({ phone: e.target.value })}
-              data-testid="input-phone"
-            />
+            <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Phone (optional)</label>
+            <input type="tel" className="input" style={{ fontSize: 16 }} placeholder="+44 7700 900000" value={state.phone} onChange={e => update({ phone: e.target.value })} data-testid="input-phone" />
           </div>
           <div>
-            <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>
-              Contact email (optional)
-            </label>
-            <input
-              type="email"
-              className="input"
-              placeholder="hi@example.com"
-              value={state.contactEmail}
-              onChange={e => update({ contactEmail: e.target.value })}
-              data-testid="input-contact-email"
-            />
+            <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Contact email (optional)</label>
+            <input type="email" className="input" style={{ fontSize: 16 }} placeholder="hi@example.com" value={state.contactEmail} onChange={e => update({ contactEmail: e.target.value })} data-testid="input-contact-email" />
           </div>
         </div>
-        <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: -8 }}>
-          These appear on your public profile as clickable contact links.
-        </p>
+        <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: -8 }}>These appear on your public profile as clickable contact links.</p>
 
-        {/* ─── Background picker — 20 CSS gradient swatches ─── */}
+        {/* Accent colour + AI theme */}
         <div>
-          <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.75rem" }}>
-            Background
-          </label>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))", gap: "0.5rem" }}>
-            {BACKGROUND_OPTIONS.map(opt => {
-              const isActive = state.background === opt.value || (!state.background && opt.value === "none");
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => update({ background: opt.value })}
-                  title={opt.label}
-                  data-testid={`button-bg-${opt.value}`}
-                  style={{
-                    height: 52,
-                    borderRadius: "var(--radius-md)",
-                    border: `2.5px solid ${isActive ? "var(--color-primary)" : "var(--color-border)"}`,
-                    cursor: "pointer",
-                    overflow: "hidden",
-                    background: opt.preview,
-                    backgroundSize: "cover",
-                    display: "flex",
-                    alignItems: "flex-end",
-                    justifyContent: "center",
-                    padding: "0.25rem",
-                    position: "relative",
-                    outline: isActive ? "2px solid var(--color-primary)" : "none",
-                    outlineOffset: 1,
-                    boxShadow: isActive ? "0 0 0 3px var(--amber-subtle, rgba(224,107,26,0.18))" : undefined,
-                  }}
-                >
-                  <span style={{ fontSize: 8, fontWeight: 700, background: "rgba(0,0,0,0.55)", color: "#fff", padding: "1px 4px", borderRadius: 3, lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
-                    {opt.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Accent colour */}
-        <div>
-          <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.75rem" }}>
-            Accent colour
-          </label>
-          <div style={{ display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
+          <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.75rem" }}>Accent colour</label>
+          <div style={{ display: "flex", gap: "0.625rem", flexWrap: "wrap", marginBottom: "1rem" }}>
             {ACCENT_COLORS.filter(c => c.value !== "custom").map(color => (
               <button
                 key={color.value}
                 type="button"
-                onClick={() => update({ accentColor: color.value })}
+                onClick={() => { update({ accentColor: color.value }); fetchAiTheme(color.value); }}
                 title={color.label}
-                style={{
-                  width: 32, height: 32, borderRadius: "50%",
-                  background: color.value, border: `3px solid ${state.accentColor === color.value ? "var(--color-text)" : "transparent"}`,
-                  cursor: "pointer", transition: "transform var(--transition-interactive)",
-                  transform: state.accentColor === color.value ? "scale(1.2)" : "scale(1)"
-                }}
+                style={{ width: 36, height: 36, borderRadius: "50%", background: color.value, border: `3px solid ${state.accentColor === color.value ? "var(--color-text)" : "transparent"}`, cursor: "pointer", transition: "transform var(--transition-interactive)", transform: state.accentColor === color.value ? "scale(1.2)" : "scale(1)", flexShrink: 0 }}
                 data-testid={`button-color-${color.label.toLowerCase()}`}
               />
             ))}
-            {/* Custom color */}
-            <div style={{ position: "relative" }}>
+            <div style={{ position: "relative", flexShrink: 0 }}>
               <input
                 type="color"
                 value={customColor}
-                onChange={e => {
-                  setCustomColor(e.target.value);
-                  update({ accentColor: e.target.value });
-                }}
-                style={{ width: 32, height: 32, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0, background: "none" }}
+                onChange={e => { setCustomColor(e.target.value); update({ accentColor: e.target.value }); }}
+                onBlur={e => fetchAiTheme(e.target.value)}
+                style={{ width: 36, height: 36, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0, background: "none" }}
                 title="Custom colour"
               />
             </div>
           </div>
+
+          {/* AI theme loading */}
+          {aiThemeStatus === "loading" && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-md)", background: "var(--color-primary-highlight)", border: "1px solid var(--color-primary)" }}>
+              <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid var(--color-primary)", borderTopColor: "transparent", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+              <span style={{ fontSize: "var(--text-sm)", color: "var(--color-primary)", fontWeight: 600 }}>AI is picking your theme…</span>
+            </div>
+          )}
+
+          {/* AI theme result */}
+          {aiThemeStatus === "done" && aiTheme && (
+            <div style={{ padding: "0.875rem 1rem", borderRadius: "var(--radius-md)", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.625rem" }}>
+                <span style={{ fontSize: 16 }}>✨</span>
+                <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>AI picked this theme for you</span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "0.25rem 0.625rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
+                  🎨 {BG_LABELS[aiTheme.background] || aiTheme.background}
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "0.25rem 0.625rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
+                  📝 {FONT_LABELS[aiTheme.font] || aiTheme.font}
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "0.25rem 0.625rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
+                  🧩 {aiTheme.blockStyle} blocks
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Error fallback */}
+          {aiThemeStatus === "error" && (
+            <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 4 }}>Couldn't reach AI — a clean default theme will be used.</p>
+          )}
         </div>
       </div>
     </div>
@@ -1184,108 +888,9 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 // ─── Step 3: Add links & blocks ──────────────────────────────
-const FREE_BLOCK_LIMIT = 5;
-
-// #11: Social platform inputs for Step 3
-const SOCIAL_PLATFORMS = [
-  { key: "instagram", label: "Instagram", icon: "📷", placeholder: "https://instagram.com/yourhandle" },
-  { key: "twitter", label: "X / Twitter", icon: "𝕏", placeholder: "https://x.com/yourhandle" },
-  { key: "tiktok", label: "TikTok", icon: "🎵", placeholder: "https://tiktok.com/@yourhandle" },
-  { key: "linkedin", label: "LinkedIn", icon: "💼", placeholder: "https://linkedin.com/in/yourprofile" },
-  { key: "youtube", label: "YouTube", icon: "▶️", placeholder: "https://youtube.com/@yourchannel" },
-];
-
-function SocialLinksSection({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const [urls, setUrls] = useState<Record<string, string>>({});
-
-  // Find existing social-links block
-  const existingIdx = state.blocks.findIndex(b => b.type === "social-links");
-  const existing = existingIdx >= 0 ? state.blocks[existingIdx] : null;
-  const currentSocials: Array<{ platform: string; url: string }> = (existing as any)?.socials || [];
-
-  const getSocialUrl = (key: string) => {
-    const found = currentSocials.find(s => s.platform === key || s.platform === key.charAt(0).toUpperCase() + key.slice(1));
-    return found?.url || urls[key] || "";
-  };
-
-  const handleChange = (key: string, val: string) => {
-    const newUrls = { ...urls, [key]: val };
-    setUrls(newUrls);
-    // Build new socials array from all platforms with non-empty URLs
-    const newSocials = SOCIAL_PLATFORMS
-      .map(p => ({ platform: p.key, url: getSocialUrl(p.key) }))
-      .map(s => s.platform === key ? { ...s, url: val } : s)
-      .filter(s => s.url.trim());
-    if (newSocials.length === 0) {
-      // Remove block if no socials
-      if (existingIdx >= 0) {
-        update({ blocks: state.blocks.filter((_, i) => i !== existingIdx) });
-      }
-    } else {
-      const genId = () => Math.random().toString(36).slice(2, 10);
-      if (existingIdx >= 0) {
-        const updated = state.blocks.map((b, i) => i === existingIdx ? { ...b, socials: newSocials } : b);
-        update({ blocks: updated });
-      } else {
-        update({ blocks: [...state.blocks, { id: genId(), type: "social-links" as any, socials: newSocials }] });
-      }
-    }
-  };
-
-  const filledCount = SOCIAL_PLATFORMS.filter(p => getSocialUrl(p.key)).length;
-
-  return (
-    <div style={{ marginBottom: "1rem", background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-      <button
-        type="button"
-        onClick={() => setExpanded(e => !e)}
-        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", background: "none", border: "none", cursor: "pointer" }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-          <span style={{ fontSize: 17 }}>🌐</span>
-          <div style={{ textAlign: "left" as const }}>
-            <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>Social profiles</div>
-            <div style={{ fontSize: 11, color: "var(--color-text-faint)" }}>
-              {filledCount > 0 ? `${filledCount} platform${filledCount !== 1 ? "s" : ""} added` : "Instagram, X, TikTok, LinkedIn, YouTube"}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          {filledCount > 0 && <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 999, background: "rgba(34,197,94,0.15)", color: "#16a34a", fontWeight: 700 }}>{filledCount} added</span>}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points={expanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}/></svg>
-        </div>
-      </button>
-      {expanded && (
-        <div style={{ padding: "0.875rem 1rem", borderTop: "1px solid var(--color-divider)", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-          {SOCIAL_PLATFORMS.map(p => (
-            <div key={p.key} style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-              <span style={{ fontSize: 16, flexShrink: 0, minWidth: 22, textAlign: "center" as const }}>{p.icon}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text-muted)", marginBottom: 2 }}>{p.label}</div>
-                <input
-                  className="input"
-                  placeholder={p.placeholder}
-                  value={getSocialUrl(p.key)}
-                  onChange={e => handleChange(p.key, e.target.value)}
-                  style={{ fontSize: 12, width: "100%" }}
-                />
-              </div>
-            </div>
-          ))}
-          <p style={{ fontSize: 11, color: "var(--color-text-faint)", margin: 0 }}>Leave blank to skip. You can edit these anytime in your dashboard.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Step3({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
   const [addMode, setAddMode] = useState<BlockType | null>(null);
-
-  const totalItems = state.links.length + state.blocks.length;
-  const atLimit = totalItems >= FREE_BLOCK_LIMIT;
 
   // New link form state
   const [newLink, setNewLink] = useState<Partial<PageLink>>({ label: "", url: "", icon: "", style: "default", description: "" });
@@ -1365,42 +970,38 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
       <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>
         Build your page
       </h2>
-      <p style={{ color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>Add and edit your links and content blocks below.</p>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-md)", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", marginBottom: "1.25rem" }}>
-        <span style={{ fontSize: 13 }}>✏️</span>
-        <span style={{ fontSize: 12, color: "var(--color-text-muted)", flex: 1 }}>Click any block to edit its content. Use the ↑ ↓ arrows to reorder. Everything can be changed again in your dashboard.</span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: atLimit ? "var(--color-primary)" : "var(--color-text-faint)", flexShrink: 0, background: atLimit ? "rgba(224,107,26,0.1)" : "var(--color-surface)", padding: "0.15rem 0.5rem", borderRadius: 999, border: `1px solid ${atLimit ? "rgba(224,107,26,0.3)" : "var(--color-border)"}` }}>
-          {totalItems}/{FREE_BLOCK_LIMIT} blocks
-        </span>
-      </div>
+      <p style={{ color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Add links, free text blocks, and polls. You can edit them later in your dashboard.</p>
 
-      {/* Existing links — with reorder (#30g) and inline edit (#30f) */}
+      {/* Existing links */}
       {state.links.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1rem" }}>
           {state.links.map((link, idx) => (
             <div key={idx} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => setEditing(editing === `link-${idx}` ? null : `link-${idx}`)}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
-                  <button type="button" onClick={e => { e.stopPropagation(); if (idx > 0) { const arr = [...state.links]; [arr[idx-1],arr[idx]] = [arr[idx],arr[idx-1]]; update({ links: arr }); }}} style={{ background: "none", border: "none", cursor: idx > 0 ? "pointer" : "default", color: idx > 0 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9650;</button>
-                  <button type="button" onClick={e => { e.stopPropagation(); if (idx < state.links.length-1) { const arr = [...state.links]; [arr[idx],arr[idx+1]] = [arr[idx+1],arr[idx]]; update({ links: arr }); }}} style={{ background: "none", border: "none", cursor: idx < state.links.length-1 ? "pointer" : "default", color: idx < state.links.length-1 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9660;</button>
-                </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => setEditing(editing === idx ? null : idx)}>
                 <span style={{ fontSize: 18, minWidth: 24, textAlign: "center" }}>{link.icon || "—"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.label}</div>
                   <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.url}</div>
                 </div>
-                <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: link.style === "featured" ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: link.style === "featured" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>link</span>
+                <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: link.style === "featured" ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: link.style === "featured" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>
+                  link
+                </span>
                 <button onClick={e => { e.stopPropagation(); removeLink(idx); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove link">×</button>
               </div>
-              {editing === `link-${idx}` && (
+              {editing === idx && (
                 <div style={{ padding: "0.875rem 1rem", borderTop: "1px solid var(--color-divider)", background: "var(--color-surface-offset)", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
                   <input className="input" placeholder="Label" value={link.label} onChange={e => updateLink(idx, "label", e.target.value)} style={{ fontSize: 13 }} />
                   <input className="input" placeholder="URL (https://...)" value={link.url} onChange={e => updateLink(idx, "url", e.target.value)} style={{ fontSize: 13 }} />
                   <input className="input" placeholder="Short description (optional)" value={link.description || ""} onChange={e => updateLink(idx, "description", e.target.value)} style={{ fontSize: 13 }} />
-                  <div><div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.375rem" }}>Icon:</div><IconPicker value={link.icon} onChange={v => updateLink(idx, "icon", v)} /></div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.375rem" }}>Icon (none by default):</div>
+                    <IconPicker value={link.icon} onChange={v => updateLink(idx, "icon", v)} />
+                  </div>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
                     {["default", "featured", "outline"].map(style => (
-                      <button key={style} type="button" onClick={() => updateLink(idx, "style", style)} style={{ flex: 1, padding: "0.375rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${link.style === style ? "var(--color-primary)" : "var(--color-border)"}`, background: link.style === style ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 11, fontWeight: 600, color: link.style === style ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>{style}</button>
+                      <button key={style} type="button" onClick={() => updateLink(idx, "style", style)} style={{ flex: 1, padding: "0.375rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${link.style === style ? "var(--color-primary)" : "var(--color-border)"}`, background: link.style === style ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 11, fontWeight: 600, color: link.style === style ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>
+                        {style}
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1410,142 +1011,58 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
         </div>
       )}
 
-      {/* Existing blocks — reorder + full inline editing (#30f/#30g) */}
+      {/* Existing blocks */}
       {state.blocks.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1rem" }}>
-          {state.blocks.map((block, bIdx) => (
-            <div key={block.id} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => setEditing(editing === `block-${block.id}` ? null : `block-${block.id}`)}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
-                  <button type="button" onClick={e => { e.stopPropagation(); if (bIdx > 0) { const arr = [...state.blocks]; [arr[bIdx-1],arr[bIdx]] = [arr[bIdx],arr[bIdx-1]]; update({ blocks: arr }); }}} style={{ background: "none", border: "none", cursor: bIdx > 0 ? "pointer" : "default", color: bIdx > 0 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9650;</button>
-                  <button type="button" onClick={e => { e.stopPropagation(); if (bIdx < state.blocks.length-1) { const arr = [...state.blocks]; [arr[bIdx],arr[bIdx+1]] = [arr[bIdx+1],arr[bIdx]]; update({ blocks: arr }); }}} style={{ background: "none", border: "none", cursor: bIdx < state.blocks.length-1 ? "pointer" : "default", color: bIdx < state.blocks.length-1 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9660;</button>
-                </div>
-                <span style={{ fontSize: 18, marginTop: 2 }}>{block.type === "text" ? "📝" : block.type === "poll" ? "🗳️" : block.type === "lead-form" ? "📧" : block.type === "social-links" ? "🔗" : block.type === "image" ? "🖼️" : block.type === "video" ? "🎥" : block.type === "countdown" ? "⏳" : block.type === "button" ? "🔘" : block.type === "testimonial" ? "💬" : block.type === "faq" ? "❓" : block.type === "divider" ? "━" : block.type === "vcard" ? "💾" : block.type === "booking" ? "📅" : block.type === "link" ? "🔗" : "📦"}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {block.type === "text" && <div style={{ fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.content}</div>}
-                  {block.type === "poll" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.question}</div>}
-                  {block.type === "lead-form" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.title || "Lead Capture Form"}</div>}
-                  {block.type === "social-links" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>Social links block</div>}
-                  {block.type === "image" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{block.imageUrl ? "Image added" : "Image block"}</div>}
-                  {block.type === "video" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{block.videoUrl || "Video block"}</div>}
-                  {block.type === "countdown" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>Countdown to {block.targetDate || "set date"}</div>}
-                  {block.type === "button" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{block.buttonLabel || "Button"}</div>}
-                  {block.type === "testimonial" && <div style={{ fontSize: "var(--text-sm)", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{block.quote || "Testimonial"}"</div>}
-                  {block.type === "faq" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>FAQ block</div>}
-                  {block.type === "divider" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)" }}>Divider</div>}
-                  {block.type === "vcard" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{(block as any).vcName || "vCard"} {(block as any).vcJobTitle ? `— ${(block as any).vcJobTitle}` : ""}</div>}
-                  {block.type === "booking" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{(block as any).title || "Booking"} {(block as any).platform ? `(${(block as any).platform})` : ""}</div>}
-                  {block.type === "link" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{(block as any).label || "Link"}</div>}
-                </div>
-                <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: block.type === "lead-form" ? "rgba(224,107,26,0.1)" : "var(--color-surface-offset)", color: block.type === "lead-form" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>{block.type}</span>
-                <button onClick={e => { e.stopPropagation(); removeBlock(block.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove block">×</button>
+          {state.blocks.map(block => (
+            <div key={block.id} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "0.75rem 1rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+              <span style={{ fontSize: 18, marginTop: 2 }}>{block.type === "text" ? "📝" : block.type === "poll" ? "🗳️" : "📧"}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {block.type === "text" && (
+                  <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } as any}>
+                    {block.content}
+                  </div>
+                )}
+                {block.type === "poll" && (
+                  <div>
+                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.question}</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 2 }}>{block.options?.join(" / ")}</div>
+                  </div>
+                )}
+                {block.type === "lead-form" && (
+                  <div>
+                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.title || "Lead Capture Form"}</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 2 }}>{block.buttonText || "Send message"}</div>
+                  </div>
+                )}
               </div>
-              {editing === `block-${block.id}` && (
-                <div style={{ padding: "0.875rem 1rem", borderTop: "1px solid var(--color-divider)", background: "var(--color-surface-offset)", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-                  {block.type === "text" && <textarea className="input" rows={4} placeholder="Block content" value={block.content || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, content: e.target.value } : b) })} style={{ resize: "vertical", fontSize: 13 }} />}
-                  {block.type === "poll" && (<>
-                    <input className="input" placeholder="Poll question" value={block.question || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, question: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    {(block.options || ["",""]).map((opt: string, oi: number) => (
-                      <input key={oi} className="input" placeholder={`Option ${oi+1}`} value={opt} onChange={e => { const opts = [...(block.options || ["",""])]; opts[oi] = e.target.value; update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, options: opts } : b) }); }} style={{ fontSize: 13 }} />
-                    ))}
-                  </>)}
-                  {block.type === "lead-form" && (<>
-                    <input className="input" placeholder="Form title" value={block.title || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, title: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Description" value={block.formDescription || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, formDescription: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Button text" value={block.buttonText || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, buttonText: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                  </>)}
-                  {block.type === "image" && (<>
-                    <input className="input" placeholder="Image URL (https://...)" value={block.imageUrl || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, imageUrl: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Alt text" value={block.alt || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, alt: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Caption (optional)" value={block.caption || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, caption: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                  </>)}
-                  {block.type === "video" && <input className="input" placeholder="YouTube / Vimeo URL" value={block.videoUrl || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, videoUrl: e.target.value } : b) })} style={{ fontSize: 13 }} />}
-                  {block.type === "countdown" && (<>
-                    <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)" }}>Target date &amp; time</label>
-                    <input className="input" type="datetime-local" value={block.targetDate || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, targetDate: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Countdown title (optional)" value={block.title || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, title: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                  </>)}
-                  {block.type === "button" && (<>
-                    <input className="input" placeholder="Button label" value={block.buttonLabel || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, buttonLabel: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Button URL (https://...)" value={block.buttonUrl || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, buttonUrl: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                  </>)}
-                  {block.type === "testimonial" && (<>
-                    <textarea className="input" rows={3} placeholder="Quote" value={block.quote || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, quote: e.target.value } : b) })} style={{ resize: "vertical", fontSize: 13 }} />
-                    <input className="input" placeholder="Author name" value={block.author || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, author: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Role / company (optional)" value={block.role || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, role: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                  </>)}
-                  {block.type === "vcard" && (<>
-                    <input className="input" placeholder="Full name" value={(block as any).vcName || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcName: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Job title" value={(block as any).vcJobTitle || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcJobTitle: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Company" value={(block as any).vcCompany || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcCompany: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Phone" value={(block as any).vcPhone || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcPhone: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Email" value={(block as any).vcEmail || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcEmail: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Website" value={(block as any).vcWebsite || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcWebsite: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                  </>)}
-                  {block.type === "booking" && (<>
-                    <select className="input" value={(block as any).platform || "calendly"} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, platform: e.target.value as "calendly"|"cal"|"google"|"tidycal"|"other" } : b) })} style={{ fontSize: 13 }}>
-                      <option value="calendly">Calendly</option>
-                      <option value="cal">Cal.com</option>
-                      <option value="google">Google Calendar</option>
-                      <option value="tidycal">TidyCal</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <input className="input" placeholder="Booking URL (https://...)" value={(block as any).embedUrl || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, embedUrl: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                    <input className="input" placeholder="Label (e.g. Book a call with me)" value={(block as any).title || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, title: e.target.value } : b) })} style={{ fontSize: 13 }} />
-                  </>)}
-                  {(block.type === "faq" || block.type === "social-links" || block.type === "divider") && (
-                    <p style={{ fontSize: 12, color: "var(--color-text-faint)" }}>Edit this block from your dashboard after publishing.</p>
-                  )}
-                </div>
-              )}
+              <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: block.type === "lead-form" ? "rgba(224,107,26,0.1)" : "var(--color-surface-offset)", color: block.type === "lead-form" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>
+                {block.type}
+              </span>
+              <button onClick={() => removeBlock(block.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove block">×</button>
             </div>
           ))}
         </div>
       )}
 
-      {/* #11: Social platform quick-add — always shown at top of Step 3 */}
-      <SocialLinksSection state={state} update={update} />
-
-      {/* Free tier limit banner */}
-      {atLimit && addMode === null && (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", padding: "1rem 1.125rem", borderRadius: "var(--radius-lg)", background: "rgba(224,107,26,0.08)", border: "1.5px solid rgba(224,107,26,0.35)", marginBottom: "1rem" }}>
-          <span style={{ fontSize: 20, flexShrink: 0 }}>🔒</span>
-          <div>
-            <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)", marginBottom: "0.25rem" }}>Free plan limit reached ({FREE_BLOCK_LIMIT} blocks)</div>
-            <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.5rem" }}>You've added {totalItems} of {FREE_BLOCK_LIMIT} blocks. Upgrade to Pro to add unlimited blocks and access premium features.</div>
-            <a href="/pricing" className="btn btn-primary btn-sm" style={{ display: "inline-flex", textDecoration: "none" }}>Upgrade to Pro →</a>
-          </div>
-        </div>
-      )}
-
-      {/* Add block type selector — all types (#30h) */}
+      {/* Add block type selector */}
       {addMode === null && (
-        <div className="block-type-picker-grid" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", opacity: atLimit ? 0.4 : 1, pointerEvents: atLimit ? "none" : "auto" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           {[
             { type: "link" as BlockType, icon: "🔗", label: "Link" },
             { type: "text" as BlockType, icon: "📝", label: "Free text" },
             { type: "poll" as BlockType, icon: "🗳️", label: "Poll" },
             { type: "lead-form" as BlockType, icon: "📧", label: "Lead form" },
-            { type: "social-links" as BlockType, icon: "🌐", label: "Social links" },
-            { type: "image" as BlockType, icon: "🖼️", label: "Image" },
-            { type: "video" as BlockType, icon: "🎥", label: "Video" },
-            { type: "countdown" as BlockType, icon: "⏳", label: "Countdown" },
-            { type: "button" as BlockType, icon: "🔘", label: "Button" },
-            { type: "testimonial" as BlockType, icon: "💬", label: "Testimonial" },
-            { type: "faq" as BlockType, icon: "❓", label: "FAQ" },
-            { type: "divider" as BlockType, icon: "━", label: "Divider" },
-            { type: "vcard" as BlockType, icon: "💾", label: "vCard" },
-            { type: "booking" as BlockType, icon: "📅", label: "Booking" },
           ].map(opt => (
             <button
               key={opt.type}
               type="button"
               onClick={() => setAddMode(opt.type)}
-              className="btn btn-secondary btn-sm block-type-picker-item"
-              style={{ gap: "0.375rem", fontSize: 12 }}
+              className="btn btn-secondary"
+              style={{ gap: "0.375rem" }}
               data-testid={`button-add-${opt.type}`}
             >
-              {opt.icon} {opt.label}
+              {opt.icon} Add {opt.label}
             </button>
           ))}
         </div>
@@ -1688,142 +1205,6 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
           </div>
         </div>
       )}
-
-      {/* Quick-add for simple block types that just need to exist (#30h) */}
-      {["social-links", "divider", "faq"].includes(addMode || "") && (
-        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>
-            {addMode === "social-links" ? "🌐 Social links block" : addMode === "faq" ? "❓ FAQ block" : "━ Divider"}
-          </div>
-          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.875rem" }}>
-            {addMode === "social-links" ? "Add your social profile URLs from the dashboard after publishing." : addMode === "faq" ? "Add FAQ questions and answers from the dashboard after publishing." : "A horizontal rule to separate sections."}
-          </p>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-            <button type="button" onClick={() => { const block: Block = { id: genId(), type: addMode as BlockType }; update({ blocks: [...state.blocks, block] }); setAddMode(null); }} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add block</button>
-          </div>
-        </div>
-      )}
-
-      {/* Add image form */}
-      {addMode === "image" && (
-        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🖼️ Image block</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <input className="input" placeholder="Image URL (https://...)" value={(newLeadForm as any).imageUrl || ""} onChange={e => setNewLeadForm(f => ({ ...f, imageUrl: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Alt text / description" value={(newLeadForm as any).alt || ""} onChange={e => setNewLeadForm(f => ({ ...f, alt: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Caption (optional)" value={(newLeadForm as any).caption || ""} onChange={e => setNewLeadForm(f => ({ ...f, caption: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "image", imageUrl: (newLeadForm as any).imageUrl, alt: (newLeadForm as any).alt, caption: (newLeadForm as any).caption }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add image</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add video form */}
-      {addMode === "video" && (
-        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🎥 Video block</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <input className="input" placeholder="YouTube or Vimeo URL" value={(newLeadForm as any).videoUrl || ""} onChange={e => setNewLeadForm(f => ({ ...f, videoUrl: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "video", videoUrl: (newLeadForm as any).videoUrl }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).videoUrl} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add video</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add countdown form */}
-      {addMode === "countdown" && (
-        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>⏳ Countdown block</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)" }}>Target date &amp; time</label>
-            <input className="input" type="datetime-local" value={(newLeadForm as any).targetDate || ""} onChange={e => setNewLeadForm(f => ({ ...f, targetDate: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Countdown title (e.g. Big launch!)" value={(newLeadForm as any).cdTitle || ""} onChange={e => setNewLeadForm(f => ({ ...f, cdTitle: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "countdown", targetDate: (newLeadForm as any).targetDate, title: (newLeadForm as any).cdTitle }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).targetDate} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add countdown</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add button form */}
-      {addMode === "button" && (
-        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🔘 Button block</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <input className="input" placeholder="Button label (e.g. Book a call)" value={(newLeadForm as any).buttonLabel || ""} onChange={e => setNewLeadForm(f => ({ ...f, buttonLabel: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Button URL (https://...)" value={(newLeadForm as any).buttonUrl || ""} onChange={e => setNewLeadForm(f => ({ ...f, buttonUrl: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "button", buttonLabel: (newLeadForm as any).buttonLabel, buttonUrl: (newLeadForm as any).buttonUrl }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).buttonLabel || !(newLeadForm as any).buttonUrl} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add button</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add testimonial form */}
-      {addMode === "testimonial" && (
-        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>💬 Testimonial block</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <textarea className="input" rows={3} placeholder="Quote text" value={(newLeadForm as any).quote || ""} onChange={e => setNewLeadForm(f => ({ ...f, quote: e.target.value } as any))} style={{ resize: "vertical", fontSize: 13 }} />
-            <input className="input" placeholder="Author name" value={(newLeadForm as any).author || ""} onChange={e => setNewLeadForm(f => ({ ...f, author: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Role / company (optional)" value={(newLeadForm as any).role || ""} onChange={e => setNewLeadForm(f => ({ ...f, role: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "testimonial", quote: (newLeadForm as any).quote, author: (newLeadForm as any).author, role: (newLeadForm as any).role }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).quote} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add testimonial</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add vCard form */}
-      {addMode === "vcard" && (
-        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.5rem" }}>💾 vCard / Contact download</div>
-          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.875rem" }}>Visitors can tap to save your contact details to their phone.</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <input className="input" placeholder="Full name" value={(newLeadForm as any).vcName || state.name || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcName: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Job title" value={(newLeadForm as any).vcJobTitle || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcJobTitle: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Company" value={(newLeadForm as any).vcCompany || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcCompany: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Phone number" value={(newLeadForm as any).vcPhone || state.phone || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcPhone: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Email address" value={(newLeadForm as any).vcEmail || state.contactEmail || state.email || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcEmail: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Website (pre-filled with your Linkbay URL)" value={(newLeadForm as any).vcWebsite || ""} onChange={e => setNewLeadForm(f => ({ ...f, vcWebsite: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "vcard", vcName: (newLeadForm as any).vcName || state.name, vcJobTitle: (newLeadForm as any).vcJobTitle, vcCompany: (newLeadForm as any).vcCompany, vcPhone: (newLeadForm as any).vcPhone || state.phone, vcEmail: (newLeadForm as any).vcEmail || state.contactEmail || state.email, vcWebsite: (newLeadForm as any).vcWebsite }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).vcName && !state.name} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>💾 Add vCard block</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add booking form */}
-      {addMode === "booking" && (
-        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.5rem" }}>📅 Booking / Calendar embed</div>
-          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.875rem" }}>Embed Calendly, Cal.com or any booking tool directly on your page.</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <select className="input" value={(newLeadForm as any).bookingPlatform || "calendly"} onChange={e => setNewLeadForm(f => ({ ...f, bookingPlatform: e.target.value } as any))} style={{ fontSize: 13 }}>
-              <option value="calendly">Calendly</option>
-              <option value="cal">Cal.com</option>
-              <option value="google">Google Calendar</option>
-              <option value="tidycal">TidyCal</option>
-              <option value="other">Other</option>
-            </select>
-            <input className="input" placeholder="Booking URL (e.g. https://calendly.com/yourname)" value={(newLeadForm as any).bookingUrl || ""} onChange={e => setNewLeadForm(f => ({ ...f, bookingUrl: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <input className="input" placeholder="Label (e.g. Book a call with me)" value={(newLeadForm as any).bookingLabel || "Book a call"} onChange={e => setNewLeadForm(f => ({ ...f, bookingLabel: e.target.value } as any))} style={{ fontSize: 13 }} />
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-              <button type="button" onClick={() => { const block: Block = { id: genId(), type: "booking", platform: (newLeadForm as any).bookingPlatform || "calendly", embedUrl: (newLeadForm as any).bookingUrl, title: (newLeadForm as any).bookingLabel || "Book a call", embedHeight: 650 }; update({ blocks: [...state.blocks, block] }); setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null); }} disabled={!(newLeadForm as any).bookingUrl} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>📅 Add booking block</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1843,7 +1224,7 @@ function StepLaunch({ state, pageUrl, onStartOver }: { state: BuilderState; page
       </p>
 
       {/* Page URL */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", background: "var(--color-surface-offset)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "0.875rem 1rem", alignItems: "center" }}>
+      <div className="launch-url-row" style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", background: "var(--color-surface-offset)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "0.875rem 1rem", alignItems: "center" }}>
         <span style={{ flex: 1, fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           linkbay.ai/{state.username}
         </span>
@@ -1895,7 +1276,7 @@ export default function BuilderPage() {
     name: "", email: "", password: "", useCase: "",
     username: "", title: "", bio: "", location: "", accentColor: "#e06b1a",
     phone: "", contactEmail: "",
-    links: [], blocks: [], background: "none",
+    links: [], blocks: [], background: "none", font: undefined, blockStyle: undefined,
   });
 
   const update = (val: Partial<BuilderState>) => setState(s => ({ ...s, ...val }));
@@ -1922,7 +1303,11 @@ export default function BuilderPage() {
         contactEmail: state.contactEmail,
         blocks: JSON.stringify(state.blocks),
         links: state.links.map((l, i) => ({ ...l, position: i })),
-        background: state.background,
+        // Encode bg + blockStyle together so the page editor can read both fields
+        background: state.font
+          ? JSON.stringify({ bgValue: state.background, blockStyle: state.blockStyle || "default" })
+          : state.background,
+        font: state.font,
       });
       if (!res.ok) {
         const d = await res.json();
@@ -1957,7 +1342,7 @@ export default function BuilderPage() {
   return (
     <div style={{ minHeight: "100dvh", background: "var(--color-bg)" }}>
       {/* Top bar */}
-      <div className="builder-top-bar" style={{ height: 56, background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", padding: "0 1.5rem", gap: "1rem", position: "sticky", top: 0, zIndex: 100 }}>
+      <div style={{ height: 56, background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)", display: "flex", alignItems: "center", padding: "0 1.5rem", gap: "1rem", position: "sticky", top: 0, zIndex: 100 }}>
         <Link href="/" style={{ color: "var(--color-text)", textDecoration: "none" }}>
           <svg width="100" height="26" viewBox="0 0 120 32" fill="none">
             <rect x="0" y="4" width="10" height="24" rx="3" fill="currentColor" opacity="0.9"/>
@@ -1968,7 +1353,7 @@ export default function BuilderPage() {
         </Link>
         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "center" }}>
           {step < 4 && Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-            <div key={i} className="builder-step-pill" style={{ height: 4, width: 48, borderRadius: 999, background: i < step ? "var(--color-primary)" : "var(--color-surface-dynamic)", transition: "background 0.3s ease" }} />
+            <div key={i} style={{ height: 4, width: 48, borderRadius: 999, background: i < step ? "var(--color-primary)" : "var(--color-surface-dynamic)", transition: "background 0.3s ease" }} />
           ))}
         </div>
         {step < 4 && (
@@ -1980,7 +1365,7 @@ export default function BuilderPage() {
 
       <div className="builder-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, minHeight: "calc(100dvh - 56px)" }}>
         {/* Left — form */}
-        <div className="builder-form-col" style={{ padding: "3rem 2.5rem", maxWidth: 560, overflowY: "auto" }}>
+        <div style={{ padding: "3rem 2.5rem", maxWidth: 560, overflowY: "auto" }}>
           {step === 1 && !showSuggestions && <Step1 state={state} update={update} />}
           {step === 1 && showSuggestions && (
             <AISuggestionsStep
@@ -1991,7 +1376,7 @@ export default function BuilderPage() {
           )}
           {step === 2 && <Step2 state={state} update={update} />}
           {step === 3 && <Step3 state={state} update={update} />}
-          {step === 4 && <StepLaunch state={state} pageUrl={pageUrl} onStartOver={() => { setState({ name: "", email: "", password: "", useCase: "", username: "", title: "", bio: "", location: "", accentColor: "#e06b1a", phone: "", contactEmail: "", links: [], blocks: [], background: "none" }); setStep(1); setShowSuggestions(false); }} />}
+          {step === 4 && <StepLaunch state={state} pageUrl={pageUrl} onStartOver={() => { setState({ name: "", email: "", password: "", useCase: "", username: "", title: "", bio: "", location: "", accentColor: "#e06b1a", phone: "", contactEmail: "", links: [], blocks: [], background: "none", font: undefined, blockStyle: undefined }); setStep(1); setShowSuggestions(false); }} />}
 
           {/* Duplicate email notice */}
           {isDuplicateEmail && (
@@ -2072,14 +1457,24 @@ export default function BuilderPage() {
       </div>
 
       <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
         @media (max-width: 820px) {
           .builder-grid { grid-template-columns: 1fr !important; }
           .builder-preview { display: none !important; }
-          .builder-grid > div:first-child { padding: 1.75rem 1.25rem !important; max-width: 100% !important; }
+          .builder-grid > div:first-child { padding: 1.5rem 1.25rem !important; max-width: 100% !important; }
+          .builder-nav-btns { margin-top: 1.5rem !important; }
+          .builder-nav-btns .btn { min-height: 2.75rem !important; font-size: 0.9375rem !important; }
         }
         @media (max-width: 480px) {
           .usecase-grid { grid-template-columns: 1fr !important; }
           .contact-grid { grid-template-columns: 1fr !important; }
+          /* iOS: prevent zoom on input focus */
+          .builder-grid input, .builder-grid textarea, .builder-grid select { font-size: 16px !important; }
+          /* Step 3 block type buttons — larger touch targets */
+          .block-type-btn { min-height: 2.75rem !important; padding: 0.625rem 0.75rem !important; }
+          /* StepLaunch copy row */
+          .launch-url-row { flex-direction: column !important; }
+          .launch-url-row .btn { width: 100% !important; justify-content: center !important; }
         }
       `}</style>
     </div>

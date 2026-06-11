@@ -19,6 +19,7 @@ import AuthPage from "./pages/AuthPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import AccountSettingsPage from "./pages/AccountSettingsPage";
+import OnboardingWizardPage from "./pages/OnboardingWizardPage";
 import NotFound from "./pages/not-found";
 
 // ─── Theme context ─────────────────────────────────────────────
@@ -131,6 +132,7 @@ export default function App() {
               <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/reset-password" component={ResetPasswordPage} />
               <Route path="/account" component={AccountSettingsPage} />
+              <Route path="/onboarding" component={OnboardingWizardPage} />
               <Route path="/dashboard" component={DashboardPage} />
               <Route path="/:username" component={ProfilePage} />
               <Route component={NotFound} />

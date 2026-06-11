@@ -2470,8 +2470,12 @@ Rules:
 - Include at minimum: one text block (bio/tagline with their actual name/brand), 2-3 link blocks, one socials block
 - If goal includes lead generation or getting clients, include a lead_form block with their specific service in the title
 - If goal includes content, community or audience, include a poll block
-- If goal mentions an event or launch, include a countdown block
+- If goal mentions an event or launch, include a countdown block AND a lead_form block (e.g. waitlist or notify-me signup) — both are required for launch pages (Issue 4)
+- If the specific block goal mentions beta, pre-launch, or MVP, include BOTH a countdown AND a lead_form with a waitlist-focused title
 - If recommending a single block (blockGoal provided), return exactly 1 block that best achieves that goal, plus a socials block if not already on page
+- BLOCK ORDERING (Issue 8): If goal includes getting clients or capturing leads, place the lead_form or primary CTA link FIRST in the blocks array, then text bio, then secondary links, then socials last
+- URL placeholders (Issue 5): When a real URL is not known, use a clearly annotated placeholder like https://[your-calendly-link].com or https://[your-website].com/services — NEVER use example.com, placeholder.com, or generic filler domains
+- TEXT OPENERS (Issue 9): NEVER begin a text block content with "Welcome to my page", "Hello!", "Welcome!", or any generic greeting. Always open with the person's name and a specific, confident claim about what they do or what they offer
 - Output ONLY the JSON object, nothing else`;
 
       const userPrompt = `Build a Linkbay page for:
@@ -2570,11 +2574,54 @@ ${ fontHint   ? `- Font: ${fontHint} (use exactly this)` : `- Font style: ${font
       ? LIGHT_BACKGROUNDS  // light accent → must use light background
       : [...LIGHT_BACKGROUNDS, ...DARK_BACKGROUNDS]; // dark accent → any bg
 
+    // Use-case→background preference hints (Issue 2: bg diversity)
+    const BG_HINTS: Record<string, string> = {
+      consultant: "bg-warm-sand, bg-stone, bg-slate-mist, or bg-powder — clean and trustworthy",
+      recruiter:  "bg-powder, bg-slate-mist, bg-lavender, or bg-stone — professional and approachable",
+      founder:    "bg-aurora, bg-midnight, bg-deep-purple, or bg-mint — bold and forward-looking",
+      agency:     "bg-stone, bg-charcoal, bg-espresso, or bg-warm-sand — confident and editorial",
+      creator:    "bg-mint, bg-aurora, bg-blush, bg-tropical, or bg-butter — vibrant and expressive",
+      other:      "bg-warm-sand, bg-stone, or bg-lavender",
+    };
+    // Use-case→blockStyle preference hints (Issue 3: style diversity)
+    const STYLE_HINTS: Record<string, string> = {
+      consultant: "refined-border or elevated — polished and trustworthy",
+      recruiter:  "bordered or outlined — structured and clear",
+      founder:    "frosted or floating — modern and startup-forward",
+      agency:     "sharp or stripe — bold editorial feel",
+      creator:    "ghost or compact-row — lightweight and visual",
+      other:      "elevated or outlined",
+    };
+    // Use-case→font preferences (Issue 7: creator/founder font)
+    const FONT_HINTS: Record<string, string> = {
+      consultant: "general-sans or cabinet-grotesk — professional and readable",
+      recruiter:  "cabinet-grotesk or inter — structured and direct",
+      founder:    "cabinet-grotesk or inter — modern and technical",
+      agency:     "cabinet-grotesk or general-sans — bold editorial",
+      creator:    "general-sans or cabinet-grotesk — friendly and informal — NEVER pick merriweather or mono for creator",
+      other:      "general-sans or cabinet-grotesk",
+    };
+    const ucKey = useCase in BG_HINTS ? useCase : "other";
+
+    // Approximate luminance lookup for backgrounds (for post-selection contrast check)
+    const BG_LUM_MAP: Record<string, number> = {
+      "bg-warm-white":0.92,"bg-warm-sand":0.82,"bg-stone":0.75,"bg-mint":0.79,
+      "bg-lavender":0.78,"bg-butter":0.88,"bg-powder":0.80,"bg-blush":0.82,
+      "bg-peach-cream":0.85,"bg-slate-mist":0.73,"bg-aurora":0.76,
+      "bg-blush-gradient":0.80,"bg-tropical":0.72,"bg-forest":0.68,
+      "bg-charcoal":0.08,"bg-midnight":0.04,"bg-espresso":0.06,"bg-deep-purple":0.05,
+    };
+    const contrastRatio = (l1: number, l2: number) => {
+      const L1 = Math.max(l1,l2), L2 = Math.min(l1,l2);
+      return (L1+0.05)/(L2+0.05);
+    };
+    const accentLum = hexToLuminance(accentColor);
+
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        temperature: 0.7,
+        temperature: 0.85,  // raised from 0.7 for more bg/style variety (Issue 2)
         max_tokens: 150,
         response_format: { type: "json_object" },
         messages: [{
@@ -2583,10 +2630,11 @@ ${ fontHint   ? `- Font: ${fontHint} (use exactly this)` : `- Font style: ${font
 Output ONLY valid JSON: { "background": "...", "blockStyle": "...", "font": "..." }
 RULES (strictly enforce):
 1. background MUST be one of: ${allowedBackgrounds.join(", ")}
-2. blockStyle MUST be one of: frosted, sharp, bordered, outlined, elevated, ghost, floating, underline, shadow-depth, refined-border, compact-row, stripe — do NOT use "default"
-3. font MUST be one of: general-sans, cabinet-grotesk, inter, merriweather, playfair, mono — do NOT use "inter" unless the use case is clearly technical
+2. blockStyle MUST be one of: frosted, sharp, bordered, outlined, elevated, ghost, floating, underline, shadow-depth, refined-border, compact-row, stripe — do NOT use "default" or "shadow-depth" unless specifically appropriate
+3. font MUST be one of: general-sans, cabinet-grotesk, inter, merriweather, playfair, mono — do NOT use "inter" unless use case is clearly technical; do NOT use merriweather or mono for creator or social-media use cases
 4. The background MUST ensure text is readable — pick light/neutral backgrounds for light accents, darker backgrounds only for dark/vivid accents
-5. Choices must feel cohesive, professional, and suited to the use case and brand
+5. Choices must feel cohesive, professional, and distinctly suited to the use case — avoid generic defaults
+6. AVOID bg-warm-white unless it is clearly the best choice — prefer more distinctive backgrounds from the list
 `,
         }, {
           role: "user",
@@ -2594,7 +2642,10 @@ RULES (strictly enforce):
 Use case: ${useCase || "general professional"}
 What they do: ${tagline || "professional services"}
 Page goal: ${goal || "share links and connect"}
-Accent is ${accentIsLight ? "LIGHT — you MUST pick a light background from the list" : "DARK/VIVID — you may pick light or dark backgrounds"}`,
+Accent is ${accentIsLight ? "LIGHT — you MUST pick a light background from the list" : "DARK/VIVID — you may pick light or dark backgrounds"}
+Suggested backgrounds for this use case: ${BG_HINTS[ucKey]}
+Suggested block style for this use case: ${STYLE_HINTS[ucKey]}
+Suggested font for this use case: ${FONT_HINTS[ucKey]}`,
         }],
       });
       const text = (completion.choices[0]?.message?.content || "{}").trim();
@@ -2608,9 +2659,26 @@ Accent is ${accentIsLight ? "LIGHT — you MUST pick a light background from the
       const VALID_STYLE = new Set(["frosted","sharp","bordered","outlined","elevated","ghost","floating","underline","shadow-depth","refined-border","compact-row","stripe"]);
       const VALID_FONT = new Set(["general-sans","cabinet-grotesk","inter","merriweather","playfair","mono"]);
 
-      const bg = VALID_BG.has(result.background) && allowedBackgrounds.includes(result.background)
+      // Pick AI's bg if valid, else fallback
+      let bg = (VALID_BG.has(result.background) && allowedBackgrounds.includes(result.background))
         ? result.background
         : (allowedBackgrounds[0] ?? "bg-warm-white");
+
+      // Issues 1 & 6: Post-selection contrast check — ensure accent vs bg ≥ 4.5:1
+      // If the AI picked a background where the accent is unreadable, walk through
+      // allowed backgrounds sorted by contrast (best first) until we find one that passes.
+      const bgLum = BG_LUM_MAP[bg] ?? 0.5;
+      if (contrastRatio(accentLum, bgLum) < 4.5) {
+        // Sort allowed bgs by contrast ratio descending and pick best passing one
+        const sorted = [...allowedBackgrounds].sort((a, b) => {
+          const la = BG_LUM_MAP[a] ?? 0.5, lb = BG_LUM_MAP[b] ?? 0.5;
+          return contrastRatio(accentLum, lb) - contrastRatio(accentLum, la);
+        });
+        const passing = sorted.find(b => contrastRatio(accentLum, BG_LUM_MAP[b] ?? 0.5) >= 4.5);
+        if (passing) bg = passing;
+        // If nothing passes 4.5 (very rare edge case), use best available
+        else bg = sorted[0] ?? bg;
+      }
 
       return res.json({
         background: bg,

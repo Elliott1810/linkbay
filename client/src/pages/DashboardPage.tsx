@@ -6457,7 +6457,7 @@ export default function DashboardPage() {
         </div>
       )}
       {/* Main shell: sidebar + content — fills remaining height */}
-      <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
+      <div className="dashboard-inner" style={{ display: "flex", flex: 1, minHeight: 0 }}>
       {/* Sidebar */}
       <nav className={`dashboard-sidebar${sidebarCollapsed ? " collapsed" : ""}`} style={{
         width: sidebarCollapsed ? 64 : 220, flexShrink: 0,

@@ -2123,3 +2123,22 @@ img.avatar-img {
 .booking-embed__link:hover {
   opacity: 0.88;
 }
+
+/* ─── Block Analysis Charts — mobile responsive ────────────────── */
+@media (max-width: 700px) {
+  .block-analysis-charts-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ─── Accent Colour Row — mobile tidy ──────────────────────────── */
+@media (max-width: 480px) {
+  .accent-colour-row {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 0.625rem !important;
+  }
+  .accent-custom-label {
+    flex-wrap: wrap;
+  }
+}

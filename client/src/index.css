@@ -1983,6 +1983,28 @@ img.avatar-img {
   border-top: 1px solid color-mix(in srgb, var(--color-primary, #e06b1a) 20%, rgba(0,0,0,0.08)) !important;
 }
 
+/* Stripe — bold 4px accent left-stripe, clean white/surface background */
+.block-style-stripe .block-card {
+  border-radius: 0 0 var(--radius-md) var(--radius-md) !important;
+  overflow: hidden !important;
+  background: var(--color-surface, #fff) !important;
+  border: 1px solid var(--color-border, rgba(0,0,0,0.08)) !important;
+  border-left: 4px solid var(--color-primary, #e06b1a) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+  transition: box-shadow 0.2s ease, border-left-color 0.2s ease;
+  border-radius: var(--radius-md) !important;
+}
+.block-style-stripe .block-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1) !important;
+  border-left-color: color-mix(in srgb, var(--color-primary, #e06b1a) 80%, #000) !important;
+}
+.block-style-stripe .block-card > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0 !important;
+}
+
 /* #5: Glass info card — applied to profile main card + bio block */
 .block-style-glass-info {
   backdrop-filter: blur(12px) !important;
@@ -2131,15 +2153,164 @@ img.avatar-img {
   }
 }
 
-/* ─── Accent Colour Row — mobile tidy ──────────────────────────── */
+/* ─── Page Settings Colour + Background Sections ─────────────────────────── */
+
+.page-settings-section-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.625rem;
+}
+
+.page-settings-colour-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Accent swatches row */
+.accent-colour-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+.accent-swatches {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.accent-swatch-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  min-height: unset !important;
+}
+.accent-custom-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  position: relative;
+}
+.accent-custom-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.accent-hidden-color-input {
+  position: absolute !important;
+  opacity: 0 !important;
+  width: 30px !important;
+  height: 30px !important;
+  cursor: pointer !important;
+  top: 0 !important;
+  left: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  min-height: unset !important;
+}
+.accent-hex-input {
+  font-size: 11px !important;
+  width: 82px;
+  font-family: monospace;
+  padding: 0.25rem 0.4rem !important;
+}
+
+/* Background custom colour row */
+.bg-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface-offset);
+  margin-bottom: 0.5rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.bg-custom-row--active {
+  border-color: var(--color-primary) !important;
+  background: var(--color-primary-highlight) !important;
+}
+.bg-custom-picker {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+.bg-custom-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 2px solid rgba(0,0,0,0.12);
+  flex-shrink: 0;
+}
+
+/* Background swatches grid */
+.bg-swatches-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 0.375rem;
+}
+
+/* ─── Mobile overrides for colour/bg sections ─────── */
 @media (max-width: 480px) {
   .accent-colour-row {
-    flex-direction: column;
-    align-items: flex-start !important;
-    gap: 0.625rem !important;
+    gap: 0.5rem;
   }
-  .accent-custom-label {
-    flex-wrap: wrap;
+  .accent-swatches {
+    gap: 0.3rem;
+  }
+  .accent-swatch-btn {
+    width: 28px;
+    height: 28px;
+  }
+  .accent-custom-swatch {
+    width: 28px;
+    height: 28px;
+  }
+  .accent-hex-input {
+    width: 72px !important;
+  }
+  .bg-swatches-grid {
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 0.3rem;
+  }
+  .bg-custom-row {
+    padding: 0.4rem 0.5rem;
+  }
+  .bg-custom-swatch {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* ─── Leads header actions — mobile layout ─────────────────── */
+@media (max-width: 520px) {
+  .leads-header-actions {
+    width: 100%;
+    flex-wrap: nowrap !important;
+  }
+  .leads-action-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center !important;
+    text-align: center !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 

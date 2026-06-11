@@ -6411,46 +6411,48 @@ export default function DashboardPage() {
     <div className="dashboard-shell" style={{ display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden", background: "var(--color-bg)" }}>
       {/* ── Admin Impersonation Banner ── */}
       {isImpersonating && (
-        <div style={{
-          position: "relative",
+        <div className="impersonation-banner" style={{
           zIndex: 9999,
           background: "#1d4ed8",
           color: "#fff",
-          padding: "0.5rem 1rem",
+          padding: "0.4rem 0.875rem",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: "1rem",
+          gap: "0.625rem",
           flexShrink: 0,
-          fontSize: 13,
+          fontSize: 12,
           fontFamily: "Cabinet Grotesk, sans-serif",
           fontWeight: 600,
-          boxShadow: "0 2px 8px rgba(29,78,216,0.35)",
+          boxShadow: "0 2px 6px rgba(29,78,216,0.3)",
+          minHeight: 0,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-            <span style={{ fontSize: 16 }}>&#128100;</span>
-            <span>You are viewing as <strong style={{ color: "#bfdbfe" }}>{user?.email}</strong></span>
-            <span style={{ opacity: 0.65, fontSize: 11, fontWeight: 400 }}>Admin impersonation mode — all actions affect this user’s real data</span>
+          {/* Left: icon + email only — no long warning text on one line */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0, overflow: "hidden" }}>
+            <span style={{ fontSize: 14, flexShrink: 0 }}>&#128100;</span>
+            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+              Viewing as <strong style={{ color: "#bfdbfe" }}>{user?.email}</strong>
+            </span>
           </div>
+          {/* Right: stop button — never wraps */}
           <button
             onClick={stopImpersonating}
             style={{
               background: "rgba(255,255,255,0.18)",
-              border: "1.5px solid rgba(255,255,255,0.45)",
+              border: "1.5px solid rgba(255,255,255,0.4)",
               color: "#fff",
-              borderRadius: 6,
-              padding: "0.3rem 0.875rem",
-              fontSize: 12,
+              borderRadius: 5,
+              padding: "0.25rem 0.625rem",
+              fontSize: 11,
               fontWeight: 700,
               cursor: "pointer",
               fontFamily: "inherit",
               whiteSpace: "nowrap",
-              transition: "background 0.15s ease",
+              flexShrink: 0,
+              minHeight: 0,
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.28)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.18)")}
           >
-            ✕ Stop impersonating
+            ✕ Stop
           </button>
         </div>
       )}
@@ -6462,7 +6464,7 @@ export default function DashboardPage() {
         background: "var(--color-surface)",
         borderRight: "1px solid var(--color-border)",
         display: "flex", flexDirection: "column",
-        height: "100dvh", overflow: "hidden",
+        height: "100%", overflow: "hidden",
         transition: "width 0.18s ease"
       }}>
         {/* Logo */}

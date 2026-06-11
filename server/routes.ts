@@ -1261,14 +1261,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         published: true,
       });
 
-      // Create starter links — validate URLs (allow http/https/mailto, block javascript:)
-      // Also still create page_links rows for backward compat with legacy link rendering
-      const defaultLinks = rawLinks && rawLinks.length > 0 ? rawLinks : [
-        { label: "Contact me", url: "https://" + username + ".linkbay.ai", icon: "✉️", style: "featured", position: 0 },
-      ];
-      for (const lnk of defaultLinks) {
-        if (lnk.url && !safeUrlRegex.test(lnk.url)) continue; // skip unsafe URLs silently
-        await storage.createLink({ pageId: page.id, ...lnk });
+      // AI-builder links are stored as type:"link" blocks in blocksJson above.
+      // Only insert a fallback page_link if NO rawLinks were provided — prevents duplicate rendering.
+      if (!rawLinks || rawLinks.length === 0) {
+        await storage.createLink({ pageId: page.id, label: "Contact me", url: "https://" + username + ".linkbay.ai", icon: "✉️", style: "featured", position: 0 });
       }
 
       const links = await storage.getLinksByPage(page.id);

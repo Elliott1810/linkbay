@@ -397,57 +397,12 @@ function Step1({ state, update }: { state: BuilderState; update: (v: Partial<Bui
 }
 
 
-// ─── AI Suggestions (between Step 1 and Step 2) ───────────────────────────
-const AI_SUGGESTIONS: Record<string, Array<{ type: "link" | "text" | "poll"; label: string; icon: string; description: string; url?: string; question?: string; options?: string[]; content?: string; style?: "default" | "featured" | "outline" }>> = {
-  consultant: [
-    { type: "link", label: "Book a call", icon: "📅", description: "Let people book time with you directly", url: "https://calendly.com", style: "featured" },
-    { type: "link", label: "My services", icon: "💼", description: "Outline what you offer", url: "", style: "default" },
-    { type: "text", label: "Testimonial block", icon: "⭐", description: "Add a short quote from a happy client", content: "\"Working with me transformed the way we operate. Book a call to find out how I can help you.\"" },
-    { type: "link", label: "Lead enquiry form", icon: "📧", description: "Capture new client enquiries", url: "", style: "outline" },
-  ],
-  creator: [
-    { type: "link", label: "Latest video / content", icon: "🎥", description: "Link to your newest YouTube or podcast", url: "", style: "featured" },
-    { type: "link", label: "Newsletter / subscribe", icon: "📧", description: "Grow your email list", url: "", style: "default" },
-    { type: "link", label: "Shop / merch", icon: "🛒", description: "Send fans to your store", url: "", style: "default" },
-    { type: "poll", label: "Audience poll", icon: "🗳️", description: "Ask what content they want more of", question: "What content do you want more of?", options: ["Tutorials", "Vlogs", "Q&As"] },
-  ],
-  recruiter: [
-    { type: "link", label: "View open roles", icon: "🔗", description: "Direct candidates to your current vacancies", url: "", style: "featured" },
-    { type: "link", label: "LinkedIn profile", icon: "💼", description: "Let candidates connect with you", url: "", style: "default" },
-    { type: "link", label: "Contact / apply", icon: "📧", description: "Make it easy to reach you", url: "", style: "default" },
-    { type: "text", label: "Candidate FAQ", icon: "📝", description: "Answer common candidate questions", content: "Looking for your next opportunity? I specialise in [your niche]. Drop me a message or click an open role above to apply." },
-  ],
-  founder: [
-    { type: "link", label: "Join the waitlist", icon: "🚀", description: "Capture early interest in your product", url: "", style: "featured" },
-    { type: "link", label: "Investor deck", icon: "📊", description: "Share your pitch deck", url: "", style: "default" },
-    { type: "link", label: "Build in public updates", icon: "🌐", description: "Share your progress thread or blog", url: "", style: "default" },
-    { type: "poll", label: "Feature priority poll", icon: "🗳️", description: "Get feedback on what to build next", question: "Which feature matters most to you?", options: ["Speed", "Integrations", "Design", "Analytics"] },
-  ],
-  coach: [
-    { type: "link", label: "Book a session", icon: "📅", description: "Let clients book with you", url: "https://calendly.com", style: "featured" },
-    { type: "link", label: "Free resource / guide", icon: "⬇️", description: "Give away a lead magnet", url: "", style: "default" },
-    { type: "text", label: "Client testimonial", icon: "⭐", description: "Social proof that builds trust", content: "\"The coaching sessions completely changed my perspective. I\u2019d recommend it to anyone serious about growth.\"" },
-    { type: "link", label: "Instagram / social", icon: "📱", description: "Connect on social media", url: "", style: "default" },
-  ],
-  agency: [
-    { type: "link", label: "Our portfolio", icon: "🏆", description: "Showcase your best work", url: "", style: "featured" },
-    { type: "link", label: "Book a discovery call", icon: "📅", description: "Start new client conversations", url: "https://calendly.com", style: "default" },
-    { type: "link", label: "Services deck", icon: "📄", description: "Download our services overview", url: "", style: "default" },
-    { type: "link", label: "Partner / referral enquiry", icon: "🤝", description: "For partnership opportunities", url: "", style: "outline" },
-  ],
-  other: [
-    { type: "link", label: "My main link", icon: "🔗", description: "Your most important destination", url: "", style: "featured" },
-    { type: "link", label: "Contact me", icon: "📧", description: "Make it easy to reach you", url: "", style: "default" },
-    { type: "text", label: "About me", icon: "📝", description: "A short intro about who you are", content: "Hi! I'm here to help with [your focus area]. Reach out or browse the links below." },
-  ],
-};
-
+// ─── AI Q&A Wizard ───────────────────────────────────────────
 const USE_CASE_LABELS: Record<string, string> = {
   consultant: "Consultant / Coach",
   creator: "Creator / Influencer",
   recruiter: "Recruiter / HR",
   founder: "Founder / Startup",
-  coach: "Coach",
   agency: "Agency",
   other: "Professional",
 };
@@ -486,6 +441,70 @@ function mapAiBlocks(aiBlocks: any[]): { links: PageLink[]; blocks: Block[] } {
   return { links, blocks };
 }
 
+// Use-case-specific follow-up questions
+const USE_CASE_FOLLOWUP: Record<string, { question: string; sublabel: string; options: Array<{ value: string; icon: string }> }> = {
+  consultant: {
+    question: "How do clients typically work with you?",
+    sublabel: "This helps AI add the right call-to-action blocks.",
+    options: [
+      { value: "1:1 calls or sessions", icon: "📅" },
+      { value: "Project-based engagements", icon: "📋" },
+      { value: "Online courses or programmes", icon: "🎓" },
+      { value: "Retainer / ongoing work", icon: "🔄" },
+    ],
+  },
+  creator: {
+    question: "Where is your main audience?",
+    sublabel: "AI will add links and social blocks that fit your platform.",
+    options: [
+      { value: "YouTube / video", icon: "▶️" },
+      { value: "Instagram / TikTok", icon: "📸" },
+      { value: "Newsletter / blog", icon: "✉️" },
+      { value: "Podcast / audio", icon: "🎙️" },
+    ],
+  },
+  recruiter: {
+    question: "What's your primary focus?",
+    sublabel: "Helps AI tailor the page for the right audience.",
+    options: [
+      { value: "Attracting candidates", icon: "🔍" },
+      { value: "Building client pipeline", icon: "💼" },
+      { value: "Both candidates & clients", icon: "🤝" },
+      { value: "Internal talent / HR", icon: "🏢" },
+    ],
+  },
+  founder: {
+    question: "What stage is your startup at?",
+    sublabel: "Helps AI create the right blocks (waitlist vs investors etc.).",
+    options: [
+      { value: "Idea / pre-launch", icon: "💡" },
+      { value: "MVP / beta testing", icon: "🔧" },
+      { value: "Fundraising", icon: "💰" },
+      { value: "Live and growing", icon: "🚀" },
+    ],
+  },
+  agency: {
+    question: "What's your main service area?",
+    sublabel: "AI will build a portfolio and lead-gen focused page.",
+    options: [
+      { value: "Marketing & advertising", icon: "📣" },
+      { value: "Design & branding", icon: "🎨" },
+      { value: "Web & tech development", icon: "💻" },
+      { value: "PR & communications", icon: "📰" },
+    ],
+  },
+  other: {
+    question: "What do you mainly want visitors to do?",
+    sublabel: "Shapes the blocks and calls to action AI picks.",
+    options: [
+      { value: "Contact or hire me", icon: "📧" },
+      { value: "Follow my work", icon: "👁️" },
+      { value: "Buy a product or service", icon: "🛒" },
+      { value: "Learn about me", icon: "📖" },
+    ],
+  },
+};
+
 function AISuggestionsStep({
   state,
   update,
@@ -496,73 +515,313 @@ function AISuggestionsStep({
   onContinue: () => void;
 }) {
   const roleLabel = USE_CASE_LABELS[state.useCase] || "Professional";
-  const [aiStatus, setAiStatus] = useState<"loading" | "done" | "error">("loading");
-  const [aiResult, setAiResult] = useState<{ links: PageLink[]; blocks: Block[]; background?: string; accentColor?: string } | null>(null);
+  type Phase = "qa" | "generating" | "done" | "error";
+  const [phase, setPhase] = useState<Phase>("qa");
+  const [qaStep, setQaStep] = useState(0);
+  const [answers, setAnswers] = useState({
+    tagline: "",
+    goal: "",
+    followup: "",
+    accentColor: state.accentColor || "#e06b1a",
+  });
+  const [customAccent, setCustomAccent] = useState(state.accentColor || "#e06b1a");
+  const [aiBlocks, setAiBlocks] = useState<{ links: PageLink[]; blocks: Block[] } | null>(null);
+  const [aiTheme, setAiTheme] = useState<{ background: string; blockStyle: string; font: string } | null>(null);
   const [aiError, setAiError] = useState("");
 
-  // Fetch AI suggestions on mount
-  useEffect(() => {
-    let cancelled = false;
-    const useCaseGoals: Record<string, string> = {
-      consultant: "Get consulting clients and showcase expertise",
-      creator: "Grow audience and share content",
-      recruiter: "Connect with candidates and share job opportunities",
-      founder: "Attract investors and early users",
-      coach: "Book coaching sessions and share resources",
-      agency: "Showcase services and get leads",
-      other: "Share links and connect with people",
-    };
-    apiRequest("POST", "/api/ai/generate-page", {
-      answers: {
-        name: state.name,
-        tagline: `${roleLabel} — ${useCaseGoals[state.useCase] || "Professional"}`,
-        goal: useCaseGoals[state.useCase] || "Share links and connect",
-        industry: roleLabel,
-        style: "clean, modern, professional",
-      },
-    })
-      .then(res => res.json())
-      .then((data: any) => {
-        if (cancelled) return;
-        if (data.error) { setAiError(data.error); setAiStatus("error"); return; }
-        const { links, blocks } = mapAiBlocks(data.blocks || []);
-        setAiResult({ links, blocks, background: data.background, accentColor: data.accentColor });
-        setAiStatus("done");
+  const followupQ = USE_CASE_FOLLOWUP[state.useCase] || USE_CASE_FOLLOWUP.other;
+
+  // 4 steps: tagline → goal → followup → accent
+  const TOTAL_QA = 4;
+
+  const canAdvance = () => {
+    if (qaStep === 0) return answers.tagline.trim().length >= 5;
+    if (qaStep === 1) return answers.goal.trim().length > 0;
+    if (qaStep === 2) return answers.followup.trim().length > 0;
+    if (qaStep === 3) return true; // accent always has a value
+    return true;
+  };
+
+  const handleGenerate = () => {
+    setPhase("generating");
+    const selectedAccent = answers.accentColor;
+    update({ accentColor: selectedAccent });
+
+    // Fire both APIs in parallel
+    const blocksPromise = fetch("/api/ai/generate-page", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        answers: {
+          name: state.name,
+          tagline: answers.tagline,
+          goal: answers.goal,
+          industry: roleLabel,
+          style: "clean, modern, professional",
+          blockGoal: answers.followup,
+        },
+      }),
+    }).then(r => r.json());
+
+    const themePromise = fetch("/api/ai/builder-setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accentColor: selectedAccent,
+        useCase: state.useCase,
+        tagline: answers.tagline,
+        goal: answers.goal,
+      }),
+    }).then(r => r.json());
+
+    Promise.all([blocksPromise, themePromise])
+      .then(([blocksData, themeData]) => {
+        if (blocksData?.error) {
+          setAiError(blocksData.error);
+          setPhase("error");
+          return;
+        }
+        const mapped = mapAiBlocks(blocksData.blocks || []);
+        setAiBlocks(mapped);
+        setAiTheme(themeData);
+        // Pre-apply accent from AI blocks if provided, else keep user's choice
+        if (blocksData.accentColor) update({ accentColor: blocksData.accentColor });
+        setPhase("done");
       })
       .catch(() => {
-        if (!cancelled) { setAiError("Could not reach AI service."); setAiStatus("error"); }
+        setAiError("Could not reach the AI service. Check your connection and try again.");
+        setPhase("error");
       });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  };
 
   const applyAndContinue = () => {
-    if (!aiResult) return;
+    if (!aiBlocks) return;
     update({
-      links: aiResult.links,
-      blocks: aiResult.blocks,
-      ...(aiResult.background && aiResult.background !== "none" ? { background: aiResult.background } : {}),
-      ...(aiResult.accentColor ? { accentColor: aiResult.accentColor } : {}),
+      accentColor: answers.accentColor,
+      links: aiBlocks.links,
+      blocks: aiBlocks.blocks,
+      ...(aiTheme?.background ? { background: aiTheme.background } : {}),
+      ...(aiTheme?.blockStyle ? { blockStyle: aiTheme.blockStyle } : {}),
+      ...(aiTheme?.font ? { font: aiTheme.font } : {}),
     });
     onContinue();
   };
 
-  // Loading state
-  if (aiStatus === "loading") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 300, gap: "1.25rem", textAlign: "center" }}>
-        <div style={{
-          width: 52, height: 52, borderRadius: "50%",
-          border: "3px solid var(--color-primary)",
-          borderTopColor: "transparent",
-          animation: "spin 0.9s linear infinite",
-        }} />
+  const FONT_LABELS: Record<string, string> = {
+    "general-sans": "General Sans", "cabinet-grotesk": "Cabinet Grotesk",
+    "inter": "Inter", "merriweather": "Merriweather",
+    "playfair": "Playfair Display", "mono": "Monospace",
+  };
+  const BG_LABELS: Record<string, string> = {
+    "bg-warm-white": "Warm white", "bg-warm-sand": "Warm sand", "bg-stone": "Stone",
+    "bg-charcoal": "Charcoal", "bg-midnight": "Midnight", "bg-espresso": "Espresso",
+    "bg-deep-purple": "Deep purple", "bg-mint": "Mint", "bg-lavender": "Lavender",
+    "bg-butter": "Butter", "bg-powder": "Powder blue", "bg-blush": "Blush",
+    "bg-aurora": "Aurora", "bg-blush-gradient": "Blush gradient", "bg-tropical": "Tropical",
+    "bg-forest": "Forest", "bg-peach-cream": "Peach cream", "bg-slate-mist": "Slate mist",
+    "none": "Clean white",
+  };
+
+  // ── Phase: Q&A ──────────────────────────────────────────────
+  if (phase === "qa") {
+    const progress = ((qaStep + 1) / TOTAL_QA) * 100;
+
+    const renderQuestion = () => {
+      // Q1 — tagline
+      if (qaStep === 0) return (
         <div>
-          <div style={{ fontSize: "var(--text-lg)", fontWeight: 700, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: 4 }}>
-            Building your AI page...
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.375rem" }}>
+            What do you do?
+          </h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.25rem" }}>
+            One sentence — be specific. AI uses this to write your blocks.
+          </p>
+          <textarea
+            autoFocus
+            rows={3}
+            value={answers.tagline}
+            onChange={e => setAnswers(a => ({ ...a, tagline: e.target.value }))}
+            placeholder={
+              state.useCase === "consultant" ? "e.g. I help SMEs build sales systems that generate leads without cold calling" :
+              state.useCase === "creator" ? "e.g. I make weekly videos on sustainable living and zero-waste cooking" :
+              state.useCase === "founder" ? "e.g. I'm building a no-code tool that lets non-developers launch AI agents" :
+              state.useCase === "recruiter" ? "e.g. I connect top marketing talent with scale-up companies in London" :
+              state.useCase === "agency" ? "e.g. We help e-commerce brands grow through paid social and email marketing" :
+              "e.g. I help people learn guitar from absolute beginner to playing full songs"
+            }
+            style={{ width: "100%", boxSizing: "border-box" as const, padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1.5px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: 16, resize: "none", fontFamily: "inherit", lineHeight: 1.5, outline: "none" }}
+            onFocus={e => (e.target.style.borderColor = "var(--color-primary)")}
+            onBlur={e => (e.target.style.borderColor = "var(--color-border)")}
+          />
+          {answers.tagline.length > 0 && answers.tagline.length < 5 && (
+            <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 4 }}>Keep going — a bit more detail helps AI.</p>
+          )}
+        </div>
+      );
+
+      // Q2 — goal
+      if (qaStep === 1) return (
+        <div>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.375rem" }}>
+            What's the main goal of this page?
+          </h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.25rem" }}>
+            Pick the one that matters most right now.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+            {[
+              { value: "Get clients or customers", icon: "💼" },
+              { value: "Grow my audience", icon: "📈" },
+              { value: "Capture leads & emails", icon: "📬" },
+              { value: "Promote a launch or event", icon: "🚀" },
+              { value: "Share my content", icon: "🎥" },
+              { value: "Connect my socials", icon: "🔗" },
+            ].map(opt => {
+              const active = answers.goal === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setAnswers(a => ({ ...a, goal: opt.value }))}
+                  style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 0.875rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary-highlight)" : "var(--color-surface)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const, minHeight: "2.75rem" }}
+                >
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{opt.icon}</span>
+                  <span>{opt.value}</span>
+                </button>
+              );
+            })}
           </div>
-          <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
-            GPT-4o is personalising your {roleLabel} page
+        </div>
+      );
+
+      // Q3 — use-case followup
+      if (qaStep === 2) return (
+        <div>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.375rem" }}>
+            {followupQ.question}
+          </h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.25rem" }}>
+            {followupQ.sublabel}
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {followupQ.options.map(opt => {
+              const active = answers.followup === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setAnswers(a => ({ ...a, followup: opt.value }))}
+                  style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.875rem 1rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-primary-highlight)" : "var(--color-surface)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: "var(--text-sm)", fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const, minHeight: "3rem" }}
+                >
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>{opt.icon}</span>
+                  <span>{opt.value}</span>
+                  {active && <span style={{ marginLeft: "auto", fontSize: 14 }}>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+
+      // Q4 — accent colour
+      if (qaStep === 3) return (
+        <div>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.375rem" }}>
+            Pick your accent colour
+          </h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.25rem" }}>
+            AI will pick a background, font and block style that complement it.
+          </p>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+            {ACCENT_COLORS.filter(c => c.value !== "custom").map(color => {
+              const active = answers.accentColor === color.value;
+              return (
+                <button
+                  key={color.value}
+                  type="button"
+                  onClick={() => { setAnswers(a => ({ ...a, accentColor: color.value })); setCustomAccent(color.value); }}
+                  title={color.label}
+                  style={{ width: 40, height: 40, borderRadius: "50%", background: color.value, border: `3px solid ${active ? "var(--color-text)" : "rgba(0,0,0,0.08)"}`, cursor: "pointer", transition: "transform 0.15s", transform: active ? "scale(1.2)" : "scale(1)", flexShrink: 0, outline: active ? "2px solid var(--color-text)" : "none", outlineOffset: 2 }}
+                  data-testid={`button-color-${color.label.toLowerCase()}`}
+                />
+              );
+            })}
+            {/* Custom colour picker */}
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <input
+                type="color"
+                value={customAccent}
+                onChange={e => { setCustomAccent(e.target.value); setAnswers(a => ({ ...a, accentColor: e.target.value })); }}
+                style={{ width: 40, height: 40, borderRadius: "50%", border: "2px solid var(--color-border)", cursor: "pointer", padding: 2, background: "none" }}
+                title="Custom colour"
+              />
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.625rem 0.875rem", borderRadius: "var(--radius-md)", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)" }}>
+            <div style={{ width: 20, height: 20, borderRadius: "50%", background: answers.accentColor, border: "1.5px solid rgba(0,0,0,0.1)", flexShrink: 0 }} />
+            <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-text)" }}>{answers.accentColor}</span>
+            <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-faint)", marginLeft: "auto" }}>selected</span>
+          </div>
+        </div>
+      );
+      return null;
+    };
+
+    return (
+      <div>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>✨</div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-faint)", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>AI Page Builder · {qaStep + 1} of {TOTAL_QA}</div>
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Personalising for {state.name.split(" ")[0] || "you"}</div>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.75rem" }}>
+          <div style={{ height: "100%", width: `${progress}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.3s" }} />
+        </div>
+
+        {renderQuestion()}
+
+        {/* Nav */}
+        <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.75rem" }}>
+          {qaStep === 0 ? (
+            <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)", minHeight: "2.75rem" }} data-testid="button-skip-suggestions">
+              Skip AI
+            </button>
+          ) : (
+            <button type="button" onClick={() => setQaStep(s => s - 1)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", minHeight: "2.75rem" }}>
+              ← Back
+            </button>
+          )}
+          {qaStep < TOTAL_QA - 1 ? (
+            <button type="button" onClick={() => setQaStep(s => s + 1)} disabled={!canAdvance()} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }} data-testid="button-ai-next">
+              Next →
+            </button>
+          ) : (
+            <button type="button" onClick={handleGenerate} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }} data-testid="button-ai-generate">
+              ✨ Build my page
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Phase: Generating ────────────────────────────────────────
+  if (phase === "generating") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 320, gap: "1.5rem", textAlign: "center", padding: "1rem" }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", border: "3px solid var(--color-primary)", borderTopColor: "transparent", animation: "spin 0.9s linear infinite" }} />
+        <div>
+          <div style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.375rem" }}>
+            Building your page…
+          </div>
+          <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", maxWidth: 280 }}>
+            AI is writing your blocks and picking a theme that works with your accent colour
           </div>
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -570,98 +829,106 @@ function AISuggestionsStep({
     );
   }
 
-  // Error fallback
-  if (aiStatus === "error") {
+  // ── Phase: Error ─────────────────────────────────────────────
+  if (phase === "error") {
     return (
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>🤖</div>
-          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>AI unavailable</h2>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#fef2f2", border: "1.5px solid var(--color-error)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>⚠️</div>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>AI unavailable</h2>
         </div>
         <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>
-          {aiError || "AI generation failed."} You can continue without AI suggestions.
+          {aiError || "Something went wrong."} You can continue without AI — you'll be able to add blocks manually in step 3.
         </p>
         <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} data-testid="button-skip-suggestions">Start blank</button>
-          <button type="button" onClick={() => { setAiStatus("loading"); setAiError(""); }} className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }}>Retry</button>
+          <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", minHeight: "2.75rem" }}>
+            Continue without AI
+          </button>
+          <button type="button" onClick={() => { setPhase("qa"); setQaStep(3); setAiError(""); }} className="btn btn-primary" style={{ flex: 1, justifyContent: "center", minHeight: "2.75rem" }}>
+            Try again
+          </button>
         </div>
       </div>
     );
   }
 
-  // Done — show AI results
-  const totalItems = (aiResult?.links.length ?? 0) + (aiResult?.blocks.length ?? 0);
+  // ── Phase: Done ───────────────────────────────────────────────
+  const totalItems = (aiBlocks?.links.length ?? 0) + (aiBlocks?.blocks.length ?? 0);
+  const blockTypeIcon: Record<string, string> = {
+    text: "📝", poll: "📊", "lead-form": "📬", "social-links": "🔗",
+    video: "🎥", countdown: "⏳", link: "🔗",
+  };
+
   return (
     <div>
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
         <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>🤖</div>
         <div>
-          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>
-            Your AI-generated page
-          </h2>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", lineHeight: 1.2 }}>Your page is ready</h2>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: 2 }}>
-            Personalised for a <strong>{roleLabel}</strong> by GPT-4o
+            {totalItems} item{totalItems !== 1 ? "s" : ""} generated — edit anything in step 3
           </p>
         </div>
       </div>
-      <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)", marginBottom: "1.25rem" }}>
-        GPT-4o has generated {totalItems} item{totalItems !== 1 ? "s" : ""} for your page — links, blocks, and a colour theme. You can edit everything in step 3.
-      </p>
 
-      {/* Summary cards */}
+      {/* Theme summary strip */}
+      {aiTheme && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-md)", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", marginBottom: "1rem", marginTop: "0.75rem" }}>
+          <div style={{ width: 18, height: 18, borderRadius: "50%", background: answers.accentColor, border: "1.5px solid rgba(0,0,0,0.12)", flexShrink: 0, alignSelf: "center" }} />
+          <span style={{ fontSize: 11, fontWeight: 600, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
+            🎨 {BG_LABELS[aiTheme.background] || aiTheme.background}
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 600, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
+            📝 {FONT_LABELS[aiTheme.font] || aiTheme.font}
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 600, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
+            🧩 {aiTheme.blockStyle}
+          </span>
+        </div>
+      )}
+
+      {/* Block list */}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
-        {(aiResult?.links || []).map((l, i) => (
+        {(aiBlocks?.links || []).map((l, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)", background: "var(--color-primary-highlight)" }}>
-            <span style={{ fontSize: 18 }}>🔗</span>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>🔗</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>{l.label}</div>
-              <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.url}</div>
+              {l.url && <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.url}</div>}
             </div>
-            <span style={{ fontSize: 10, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", fontWeight: 600, textTransform: "uppercase" as const }}>link</span>
+            <span style={{ fontSize: 10, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", fontWeight: 600, textTransform: "uppercase" as const, flexShrink: 0 }}>link</span>
           </div>
         ))}
-        {(aiResult?.blocks || []).map((b, i) => (
+        {(aiBlocks?.blocks || []).map((b, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1.5px solid var(--color-primary)", background: "var(--color-primary-highlight)" }}>
-            <span style={{ fontSize: 18 }}>{(b as any).type === "text" ? "📝" : (b as any).type === "poll" ? "📊" : (b as any).type === "lead-form" ? "📬" : (b as any).type === "social-links" ? "🔗" : (b as any).type === "video" ? "🎥" : (b as any).type === "countdown" ? "⏳" : "🧩"}</span>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>{blockTypeIcon[(b as any).type] || "🧩"}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)", textTransform: "capitalize" as const }}>{b.type} block</div>
-              <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(b as any).content || (b as any).question || (b as any).title || ""}</div>
+              <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)", textTransform: "capitalize" as const }}>{(b as any).type} block</div>
+              <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {(b as any).content || (b as any).question || (b as any).title || ""}
+              </div>
             </div>
-            <span style={{ fontSize: 10, padding: "0.2rem 0.5rem", borderRadius: 999, background: "#f0fdf4", color: "#166534", fontWeight: 600, textTransform: "uppercase" as const }}>{(b as any).type}</span>
+            <span style={{ fontSize: 10, padding: "0.2rem 0.5rem", borderRadius: 999, background: "#f0fdf4", color: "#166534", fontWeight: 600, textTransform: "uppercase" as const, flexShrink: 0 }}>{(b as any).type}</span>
           </div>
         ))}
-        {aiResult?.accentColor && (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)", background: "var(--color-surface)" }}>
-            <div style={{ width: 24, height: 24, borderRadius: 6, background: aiResult.accentColor, flexShrink: 0, border: "1px solid rgba(0,0,0,0.1)" }} />
-            <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>Accent colour: <span style={{ color: aiResult.accentColor }}>{aiResult.accentColor}</span></div>
-          </div>
-        )}
       </div>
 
-      {/* Actions */}
       <div style={{ display: "flex", gap: "0.75rem" }}>
-        <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)" }} data-testid="button-skip-suggestions">
+        <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)", minHeight: "2.75rem" }} data-testid="button-skip-suggestions">
           Start blank
         </button>
-        <button type="button" onClick={applyAndContinue} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-apply-suggestions">
-          Apply AI suggestions →
+        <button type="button" onClick={applyAndContinue} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }} data-testid="button-apply-suggestions">
+          Use this page →
         </button>
       </div>
     </div>
   );
 }
 
+
 // ─── Step 2: Page design ──────────────────────────────────────
 function Step2({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
-  const [customColor, setCustomColor] = useState(state.accentColor);
-  const [aiThemeStatus, setAiThemeStatus] = useState<"idle" | "loading" | "done" | "error">(
-    state.font ? "done" : "idle"
-  );
-  const [aiTheme, setAiTheme] = useState<{ background: string; blockStyle: string; font: string } | null>(
-    state.font ? { background: state.background, blockStyle: state.blockStyle || "default", font: state.font } : null
-  );
 
   // Auto-fill username from name
   useEffect(() => {
@@ -680,48 +947,12 @@ function Step2({ state, update }: { state: BuilderState; update: (v: Partial<Bui
     } catch { setUsernameStatus("idle"); }
   };
 
-  const fetchAiTheme = async (accentColor: string) => {
-    setAiThemeStatus("loading");
-    setAiTheme(null);
-    try {
-      const res = await fetch("/api/ai/builder-setup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accentColor, useCase: state.useCase }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) { setAiThemeStatus("error"); return; }
-      setAiTheme(data);
-      update({ background: data.background, blockStyle: data.blockStyle, font: data.font });
-      setAiThemeStatus("done");
-    } catch { setAiThemeStatus("error"); }
-  };
-
-  const FONT_LABELS: Record<string, string> = {
-    "general-sans": "General Sans",
-    "cabinet-grotesk": "Cabinet Grotesk",
-    "inter": "Inter",
-    "merriweather": "Merriweather",
-    "playfair": "Playfair Display",
-    "mono": "Monospace",
-  };
-
-  const BG_LABELS: Record<string, string> = {
-    "none": "Clean white", "bg-warm-white": "Warm white", "bg-warm-sand": "Warm sand",
-    "bg-stone": "Stone", "bg-charcoal": "Charcoal", "bg-midnight": "Midnight",
-    "bg-espresso": "Espresso", "bg-deep-purple": "Deep purple", "bg-mint": "Mint",
-    "bg-lavender": "Lavender", "bg-butter": "Butter", "bg-powder": "Powder blue",
-    "bg-blush": "Blush", "bg-aurora": "Aurora", "bg-blush-gradient": "Blush gradient",
-    "bg-tropical": "Tropical", "bg-forest": "Forest", "bg-peach-cream": "Peach cream",
-    "bg-slate-mist": "Slate mist",
-  };
-
   return (
     <div>
       <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>
         Design your page
       </h2>
-      <p style={{ color: "var(--color-text-muted)", marginBottom: "2rem" }}>Choose your URL, headline, and accent colour.</p>
+      <p style={{ color: "var(--color-text-muted)", marginBottom: "2rem" }}>Fill in your page details below.</p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
         {/* Username */}
@@ -794,66 +1025,6 @@ function Step2({ state, update }: { state: BuilderState; update: (v: Partial<Bui
         </div>
         <p style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: -8 }}>These appear on your public profile as clickable contact links.</p>
 
-        {/* Accent colour + AI theme */}
-        <div>
-          <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.75rem" }}>Accent colour</label>
-          <div style={{ display: "flex", gap: "0.625rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-            {ACCENT_COLORS.filter(c => c.value !== "custom").map(color => (
-              <button
-                key={color.value}
-                type="button"
-                onClick={() => { update({ accentColor: color.value }); fetchAiTheme(color.value); }}
-                title={color.label}
-                style={{ width: 36, height: 36, borderRadius: "50%", background: color.value, border: `3px solid ${state.accentColor === color.value ? "var(--color-text)" : "transparent"}`, cursor: "pointer", transition: "transform var(--transition-interactive)", transform: state.accentColor === color.value ? "scale(1.2)" : "scale(1)", flexShrink: 0 }}
-                data-testid={`button-color-${color.label.toLowerCase()}`}
-              />
-            ))}
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              <input
-                type="color"
-                value={customColor}
-                onChange={e => { setCustomColor(e.target.value); update({ accentColor: e.target.value }); }}
-                onBlur={e => fetchAiTheme(e.target.value)}
-                style={{ width: 36, height: 36, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0, background: "none" }}
-                title="Custom colour"
-              />
-            </div>
-          </div>
-
-          {/* AI theme loading */}
-          {aiThemeStatus === "loading" && (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-md)", background: "var(--color-primary-highlight)", border: "1px solid var(--color-primary)" }}>
-              <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid var(--color-primary)", borderTopColor: "transparent", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-              <span style={{ fontSize: "var(--text-sm)", color: "var(--color-primary)", fontWeight: 600 }}>AI is picking your theme…</span>
-            </div>
-          )}
-
-          {/* AI theme result */}
-          {aiThemeStatus === "done" && aiTheme && (
-            <div style={{ padding: "0.875rem 1rem", borderRadius: "var(--radius-md)", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.625rem" }}>
-                <span style={{ fontSize: 16 }}>✨</span>
-                <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>AI picked this theme for you</span>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: "0.25rem 0.625rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
-                  🎨 {BG_LABELS[aiTheme.background] || aiTheme.background}
-                </span>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: "0.25rem 0.625rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
-                  📝 {FONT_LABELS[aiTheme.font] || aiTheme.font}
-                </span>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: "0.25rem 0.625rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
-                  🧩 {aiTheme.blockStyle} blocks
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Error fallback */}
-          {aiThemeStatus === "error" && (
-            <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 4 }}>Couldn't reach AI — a clean default theme will be used.</p>
-          )}
-        </div>
       </div>
     </div>
   );

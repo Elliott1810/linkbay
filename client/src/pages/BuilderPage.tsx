@@ -403,6 +403,26 @@ function LivePreview({ state }: { state: BuilderState }) {
             if (block.type === "divider") return (
               <hr key={block.id} style={{ border: "none", borderTop: `1px solid ${accent}30`, margin: "0.5rem 0" }} />
             );
+            if (block.type === "vcard") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.75rem", background: `${accent}08`, borderRadius: 8, border: `1px solid ${accent}25`, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>👤</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#1a1917", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(block as any).vcName || "Contact"}</div>
+                  {(block as any).vcJobTitle && <div style={{ fontSize: 9, color: "#6b6966", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(block as any).vcJobTitle}</div>}
+                </div>
+                <div style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: accent, flexShrink: 0, background: `${accent}15`, padding: "2px 6px", borderRadius: 4 }}>Save contact</div>
+              </div>
+            );
+            if (block.type === "booking") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.75rem", background: `${accent}08`, borderRadius: 8, border: `1px solid ${accent}25`, textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#1a1917", marginBottom: 4 }}>📅 {(block as any).title || "Book a call"}</div>
+                <div style={{ fontSize: 9, color: "#6b6966", marginBottom: 6 }}>{(block as any).platform ? `via ${(block as any).platform}` : "Calendar embed"}</div>
+                <div style={{ height: 22, background: accent, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#fff" }}>Book now →</div>
+              </div>
+            );
+            if (block.type === "video") return (
+              <div key={block.id} style={{ marginBottom: "0.5rem", height: 60, background: "#1a1917", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>▶️</div>
+            );
             return (
               <div key={block.id} style={{ marginBottom: "0.5rem", padding: "0.4rem 0.75rem", background: "#f7f6f4", borderRadius: 8, fontSize: 10, color: "#6b6966" }}>
                 {block.type} block
@@ -1400,7 +1420,7 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
                   <button type="button" onClick={e => { e.stopPropagation(); if (bIdx > 0) { const arr = [...state.blocks]; [arr[bIdx-1],arr[bIdx]] = [arr[bIdx],arr[bIdx-1]]; update({ blocks: arr }); }}} style={{ background: "none", border: "none", cursor: bIdx > 0 ? "pointer" : "default", color: bIdx > 0 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9650;</button>
                   <button type="button" onClick={e => { e.stopPropagation(); if (bIdx < state.blocks.length-1) { const arr = [...state.blocks]; [arr[bIdx],arr[bIdx+1]] = [arr[bIdx+1],arr[bIdx]]; update({ blocks: arr }); }}} style={{ background: "none", border: "none", cursor: bIdx < state.blocks.length-1 ? "pointer" : "default", color: bIdx < state.blocks.length-1 ? "var(--color-text-faint)" : "transparent", fontSize: 10, lineHeight: 1, padding: "0 2px" }}>&#9660;</button>
                 </div>
-                <span style={{ fontSize: 18, marginTop: 2 }}>{block.type === "text" ? "📝" : block.type === "poll" ? "🗳️" : block.type === "lead-form" ? "📧" : block.type === "social-links" ? "🔗" : block.type === "image" ? "🖼️" : block.type === "video" ? "🎥" : block.type === "countdown" ? "⏳" : block.type === "button" ? "🔘" : block.type === "testimonial" ? "💬" : block.type === "faq" ? "❓" : block.type === "divider" ? "━" : "🧩"}</span>
+                <span style={{ fontSize: 18, marginTop: 2 }}>{block.type === "text" ? "📝" : block.type === "poll" ? "🗳️" : block.type === "lead-form" ? "📧" : block.type === "social-links" ? "🔗" : block.type === "image" ? "🖼️" : block.type === "video" ? "🎥" : block.type === "countdown" ? "⏳" : block.type === "button" ? "🔘" : block.type === "testimonial" ? "💬" : block.type === "faq" ? "❓" : block.type === "divider" ? "━" : block.type === "vcard" ? "💾" : block.type === "booking" ? "📅" : block.type === "link" ? "🔗" : "📦"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {block.type === "text" && <div style={{ fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.content}</div>}
                   {block.type === "poll" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.question}</div>}
@@ -1413,6 +1433,9 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
                   {block.type === "testimonial" && <div style={{ fontSize: "var(--text-sm)", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{block.quote || "Testimonial"}"</div>}
                   {block.type === "faq" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>FAQ block</div>}
                   {block.type === "divider" && <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-faint)" }}>Divider</div>}
+                  {block.type === "vcard" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{(block as any).vcName || "vCard"} {(block as any).vcJobTitle ? `— ${(block as any).vcJobTitle}` : ""}</div>}
+                  {block.type === "booking" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{(block as any).title || "Booking"} {(block as any).platform ? `(${(block as any).platform})` : ""}</div>}
+                  {block.type === "link" && <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{(block as any).label || "Link"}</div>}
                 </div>
                 <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: block.type === "lead-form" ? "rgba(224,107,26,0.1)" : "var(--color-surface-offset)", color: block.type === "lead-form" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>{block.type}</span>
                 <button onClick={e => { e.stopPropagation(); removeBlock(block.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove block">×</button>
@@ -1450,6 +1473,25 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
                     <textarea className="input" rows={3} placeholder="Quote" value={block.quote || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, quote: e.target.value } : b) })} style={{ resize: "vertical", fontSize: 13 }} />
                     <input className="input" placeholder="Author name" value={block.author || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, author: e.target.value } : b) })} style={{ fontSize: 13 }} />
                     <input className="input" placeholder="Role / company (optional)" value={block.role || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, role: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                  </>)}
+                  {block.type === "vcard" && (<>
+                    <input className="input" placeholder="Full name" value={(block as any).vcName || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcName: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Job title" value={(block as any).vcJobTitle || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcJobTitle: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Company" value={(block as any).vcCompany || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcCompany: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Phone" value={(block as any).vcPhone || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcPhone: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Email" value={(block as any).vcEmail || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcEmail: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Website" value={(block as any).vcWebsite || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, vcWebsite: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                  </>)}
+                  {block.type === "booking" && (<>
+                    <select className="input" value={(block as any).platform || "calendly"} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, platform: e.target.value as "calendly"|"cal"|"google"|"tidycal"|"other" } : b) })} style={{ fontSize: 13 }}>
+                      <option value="calendly">Calendly</option>
+                      <option value="cal">Cal.com</option>
+                      <option value="google">Google Calendar</option>
+                      <option value="tidycal">TidyCal</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <input className="input" placeholder="Booking URL (https://...)" value={(block as any).embedUrl || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, embedUrl: e.target.value } : b) })} style={{ fontSize: 13 }} />
+                    <input className="input" placeholder="Label (e.g. Book a call with me)" value={(block as any).title || ""} onChange={e => update({ blocks: state.blocks.map(b => b.id === block.id ? { ...b, title: e.target.value } : b) })} style={{ fontSize: 13 }} />
                   </>)}
                   {(block.type === "faq" || block.type === "social-links" || block.type === "divider") && (
                     <p style={{ fontSize: 12, color: "var(--color-text-faint)" }}>Edit this block from your dashboard after publishing.</p>

@@ -718,6 +718,21 @@ export function migrateLinksToBlocks(): void {
   if (migrated > 0) console.log(`[Sprint 8] Migrated links→blocks for ${migrated} pages`);
 }
 
+// ─── Password reset tokens table ───────────────────────────────────────────────
+try {
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+} catch {}
+try { sqlite.exec("CREATE INDEX IF NOT EXISTS idx_prt_token ON password_reset_tokens(token_hash)"); } catch {}
+
 // ─── Sprint 8: Trial helpers ─────────────────────────────────────────────────
 export function setUserTrial(userId: number, tier: string, trialExpiry: string): void {
   sqlite.prepare("UPDATE users SET trial_tier = ?, trial_expiry = ? WHERE id = ?").run(tier, trialExpiry, userId);
@@ -736,4 +751,43 @@ export function getUserEffectiveTier(userId: number): { tier: string; isTrial: b
     }
   }
   return { tier: row.licence || "free", isTrial: false, trialExpiry: null };
+}
+
+// ─── Password reset helpers ───────────────────────────────────────────────────
+/**
+ * Store a hashed reset token for a user. Expires in 1 hour.
+ * The raw token is never persisted — only its SHA-256 hash.
+ */
+export function createPasswordResetToken(userId: number, tokenHash: string): void {
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+  // Invalidate any previous unused tokens for this user
+  sqlite.prepare("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0").run(userId);
+  sqlite.prepare(
+    "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used) VALUES (?, ?, ?, 0)"
+  ).run(userId, tokenHash, expiresAt);
+}
+
+/**
+ * Look up a valid (unused, not expired) reset token by its hash.
+ * Returns { userId } or null.
+ */
+export function consumePasswordResetToken(tokenHash: string): { userId: number } | null {
+  const row = sqlite.prepare(
+    "SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token_hash = ?"
+  ).get(tokenHash) as { id: number; user_id: number; expires_at: string; used: number } | undefined;
+
+  if (!row) return null;
+  if (row.used) return null;
+  if (new Date(row.expires_at) < new Date()) return null;
+
+  // Mark as used (single-use token)
+  sqlite.prepare("UPDATE password_reset_tokens SET used = 1 WHERE id = ?").run(row.id);
+  return { userId: row.user_id };
+}
+
+/**
+ * Update a user's display name (the `name` column).
+ */
+export function updateUserName(userId: number, name: string): void {
+  sqlite.prepare("UPDATE users SET name = ? WHERE id = ?").run(name.trim(), userId);
 }

@@ -1124,6 +1124,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           });
           return Array.from(interMap.values()).sort((a: any, b: any) => b.total - a.total).slice(0, 10);
         })(),
+        // Sum of all block event totals across ALL blocks (not capped at top-10)
+        // Used by Overview and Analytics panels for the "Block interactions" stat card
+        totalBlockInteractions: (() => {
+          let sum = 0;
+          for (const e of events) {
+            const bid = (e as any).blockId ?? (e as any).block_id;
+            if (!bid) continue;
+            sum++;
+          }
+          // Also add link clicks (legacy links)
+          for (const link of links) {
+            sum += link.clickCount || 0;
+          }
+          return sum;
+        })(),
         events: events.slice(-200),
         // Previous period comparison (for % change cards) — omitted when days=0 (all-time)
         prevPeriod: days < 3650 ? (() => {

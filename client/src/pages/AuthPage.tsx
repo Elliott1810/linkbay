@@ -192,7 +192,7 @@ export default function AuthPage({ mode: initialMode = "login" }: { mode?: "logi
               {mode === "login" && (
                 <div style={{ textAlign: "right", marginTop: "-0.75rem" }}>
                   <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-faint)" }}>
-                    Forgot password? <Link href="/waitlist" style={{ color: "var(--color-primary)" }}>Contact support →</Link>
+                    Forgot password? <Link href="/forgot-password" style={{ color: "var(--color-primary)" }}>Reset it here →</Link>
                   </span>
                 </div>
               )}

@@ -16,7 +16,7 @@ interface PageLink {
 }
 
 // Block types stored in pages.blocks JSON column
-type BlockType = "link" | "text" | "poll" | "lead-form";
+type BlockType = "link" | "text" | "poll" | "lead-form" | "video" | "countdown" | "social-links" | "vcard";
 
 interface Block {
   id: string;          // client-side UUID
@@ -37,6 +37,19 @@ interface Block {
   title?: string;        // Form heading
   formDescription?: string;  // Form subtitle
   buttonText?: string;   // Submit button label
+  // video block
+  videoUrl?: string;
+  // countdown block
+  targetDate?: string;
+  // social-links block
+  links?: { platform: string; url: string }[];
+  // vcard block
+  vcName?: string;
+  vcJobTitle?: string;
+  vcCompany?: string;
+  vcPhone?: string;
+  vcEmail?: string;
+  vcWebsite?: string;
 }
 
 interface BuilderState {
@@ -424,16 +437,16 @@ function mapAiBlocks(aiBlocks: any[]): { links: PageLink[]; blocks: Block[] } {
         blocks.push({ id: genId(), type: "poll", question: b.question || "Quick question", options: b.options || ["Option A", "Option B"] });
         break;
       case "lead_form":
-        blocks.push({ id: genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || "", buttonText: b.buttonText || "Send" } as any);
+        blocks.push({ id: genId(), type: "lead-form", title: b.title || "Get in touch", formDescription: b.description || "", buttonText: b.buttonText || "Send" });
         break;
       case "socials":
-        blocks.push({ id: genId(), type: "social-links", links: b.links || [] } as any);
+        blocks.push({ id: genId(), type: "social-links", links: (b.links || []).map((l: any) => ({ platform: l.platform || "", url: l.url || "" })) });
         break;
       case "video":
-        blocks.push({ id: genId(), type: "video", url: b.url || "", title: b.title || "" } as any);
+        blocks.push({ id: genId(), type: "video", videoUrl: b.url || "", title: b.title || "" });
         break;
       case "countdown":
-        blocks.push({ id: genId(), type: "countdown", title: b.title || "Launching soon", targetDate: b.targetDate || "2026-01-01" } as any);
+        blocks.push({ id: genId(), type: "countdown", title: b.title || "Launching soon", targetDate: b.targetDate || "2026-12-31" });
         break;
       default: break;
     }
@@ -1081,186 +1094,294 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
 
 // ─── Step 3: Add links & blocks ──────────────────────────────
 function Step3({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
-  const [editing, setEditing] = useState<number | null>(null);
+  // Editing state: links use index, blocks use block id
+  const [editingLinkIdx, setEditingLinkIdx] = useState<number | null>(null);
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [addMode, setAddMode] = useState<BlockType | null>(null);
-
-  // New link form state
-  const [newLink, setNewLink] = useState<Partial<PageLink>>({ label: "", url: "", icon: "", style: "default", description: "" });
-  // New text block form state
-  const [newText, setNewText] = useState("");
-  // New poll form state
-  const [newPoll, setNewPoll] = useState({ question: "", options: ["", ""] });
 
   const genId = () => Math.random().toString(36).slice(2, 10);
 
-  // ─ Link helpers ─
+  // ─── New-item form state ─────────────────────────────────────
+  const [newLink, setNewLink] = useState<Partial<PageLink>>({ label: "", url: "", icon: "", style: "default", description: "" });
+  const [newText, setNewText] = useState("");
+  const [newPoll, setNewPoll] = useState({ question: "", options: ["", ""] });
+  const [newLeadForm, setNewLeadForm] = useState({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" });
+  const [newVideo, setNewVideo] = useState({ videoUrl: "", title: "" });
+  const [newCountdown, setNewCountdown] = useState({ title: "", targetDate: "" });
+  const [newSocials, setNewSocials] = useState<{ platform: string; url: string }[]>([{ platform: "instagram", url: "" }]);
+  const [newVcard, setNewVcard] = useState({ vcName: "", vcJobTitle: "", vcCompany: "", vcPhone: "", vcEmail: "", vcWebsite: "" });
+
+  // ─── Link helpers ────────────────────────────────────────────
   const addLink = () => {
     if (!newLink.label || !newLink.url) return;
-    update({ links: [...state.links, {
-      label: newLink.label!,
-      url: newLink.url!,
-      icon: newLink.icon ?? "",
-      style: (newLink.style as any) || "default",
-      description: newLink.description || "",
-      position: state.links.length,
-    }] });
+    update({ links: [...state.links, { label: newLink.label!, url: newLink.url!, icon: newLink.icon ?? "", style: (newLink.style as any) || "default", description: newLink.description || "", position: state.links.length }] });
     setNewLink({ label: "", url: "", icon: "", style: "default", description: "" });
     setAddMode(null);
   };
-
-  const removeLink = (idx: number) => update({ links: state.links.filter((_, i) => i !== idx) });
+  const removeLink = (idx: number) => { update({ links: state.links.filter((_, i) => i !== idx) }); setEditingLinkIdx(null); };
   const updateLink = (idx: number, field: string, val: string) =>
     update({ links: state.links.map((l, i) => i === idx ? { ...l, [field]: val } : l) });
 
-  // Lead form state
-  const [newLeadForm, setNewLeadForm] = useState({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" });
+  // ─── Block helpers ───────────────────────────────────────────
+  const removeBlock = (id: string) => { update({ blocks: state.blocks.filter(b => b.id !== id) }); setEditingBlockId(null); };
+  const updateBlock = (id: string, patch: Partial<Block>) =>
+    update({ blocks: state.blocks.map(b => b.id === id ? { ...b, ...patch } : b) });
 
-  // ─ Block helpers ─
   const addTextBlock = () => {
     if (!newText.trim()) return;
-    const block: Block = { id: genId(), type: "text", content: newText };
-    update({ blocks: [...state.blocks, block] });
-    setNewText("");
-    setAddMode(null);
+    update({ blocks: [...state.blocks, { id: genId(), type: "text", content: newText }] });
+    setNewText(""); setAddMode(null);
   };
-
   const addPollBlock = () => {
     if (!newPoll.question.trim() || newPoll.options.filter(o => o.trim()).length < 2) return;
-    const block: Block = {
-      id: genId(),
-      type: "poll",
-      question: newPoll.question,
-      options: newPoll.options.filter(o => o.trim()),
-    };
-    update({ blocks: [...state.blocks, block] });
-    setNewPoll({ question: "", options: ["", ""] });
-    setAddMode(null);
+    update({ blocks: [...state.blocks, { id: genId(), type: "poll", question: newPoll.question, options: newPoll.options.filter(o => o.trim()) }] });
+    setNewPoll({ question: "", options: ["", ""] }); setAddMode(null);
   };
-
   const addLeadFormBlock = () => {
-    const block: Block = {
-      id: genId(),
-      type: "lead-form",
-      title: newLeadForm.title || "Get in touch",
-      formDescription: newLeadForm.formDescription || "I'd love to hear from you",
-      buttonText: newLeadForm.buttonText || "Send message",
-    };
-    update({ blocks: [...state.blocks, block] });
-    setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" });
-    setAddMode(null);
+    update({ blocks: [...state.blocks, { id: genId(), type: "lead-form", title: newLeadForm.title || "Get in touch", formDescription: newLeadForm.formDescription, buttonText: newLeadForm.buttonText || "Send message" }] });
+    setNewLeadForm({ title: "Get in touch", formDescription: "I'd love to hear from you", buttonText: "Send message" }); setAddMode(null);
+  };
+  const addVideoBlock = () => {
+    if (!newVideo.videoUrl.trim()) return;
+    update({ blocks: [...state.blocks, { id: genId(), type: "video", videoUrl: newVideo.videoUrl, title: newVideo.title }] });
+    setNewVideo({ videoUrl: "", title: "" }); setAddMode(null);
+  };
+  const addCountdownBlock = () => {
+    if (!newCountdown.targetDate) return;
+    update({ blocks: [...state.blocks, { id: genId(), type: "countdown", title: newCountdown.title || "Coming soon", targetDate: newCountdown.targetDate }] });
+    setNewCountdown({ title: "", targetDate: "" }); setAddMode(null);
+  };
+  const addSocialsBlock = () => {
+    const filled = newSocials.filter(s => s.url.trim());
+    if (!filled.length) return;
+    update({ blocks: [...state.blocks, { id: genId(), type: "social-links", links: filled }] });
+    setNewSocials([{ platform: "instagram", url: "" }]); setAddMode(null);
+  };
+  const addVcardBlock = () => {
+    if (!newVcard.vcName.trim()) return;
+    update({ blocks: [...state.blocks, { id: genId(), type: "vcard", ...newVcard }] });
+    setNewVcard({ vcName: "", vcJobTitle: "", vcCompany: "", vcPhone: "", vcEmail: "", vcWebsite: "" }); setAddMode(null);
   };
 
-  const removeBlock = (id: string) => update({ blocks: state.blocks.filter(b => b.id !== id) });
+  // ─── Icon + label maps ───────────────────────────────────────
+  const BLOCK_ICON: Record<string, string> = {
+    text: "📝", poll: "🗳️", "lead-form": "📧", video: "🎥",
+    countdown: "⏳", "social-links": "🌐", vcard: "💾",
+  };
+  const BLOCK_TAG_COLOR: Record<string, { bg: string; color: string }> = {
+    "lead-form":    { bg: "rgba(224,107,26,0.12)", color: "var(--color-primary)" },
+    countdown:      { bg: "rgba(99,102,241,0.12)", color: "#4f46e5" },
+    vcard:          { bg: "rgba(16,185,129,0.12)", color: "#059669" },
+    video:          { bg: "rgba(239,68,68,0.12)",  color: "#dc2626" },
+    "social-links": { bg: "rgba(59,130,246,0.12)", color: "#2563eb" },
+    poll:           { bg: "rgba(245,158,11,0.12)", color: "#d97706" },
+    text:           { bg: "var(--color-surface-offset)", color: "var(--color-text-faint)" },
+  };
 
-  const allItems = [
-    ...state.links.map((l, i) => ({ kind: "link" as const, idx: i, l })),
-    ...state.blocks.map(b => ({ kind: "block" as const, b })),
-  ];
+  // ─── Block summary for display card ─────────────────────────
+  const blockSummary = (block: Block): string => {
+    if (block.type === "text") return block.content?.slice(0, 60) + (block.content && block.content.length > 60 ? "…" : "") || "";
+    if (block.type === "poll") return block.question || "";
+    if (block.type === "lead-form") return block.title || "Lead form";
+    if (block.type === "video") return block.videoUrl || block.title || "Video embed";
+    if (block.type === "countdown") return `${block.title || "Countdown"} · ${block.targetDate || ""}`;
+    if (block.type === "social-links") return (block.links || []).map(l => l.platform).join(", ") || "Social links";
+    if (block.type === "vcard") return [block.vcName, block.vcJobTitle, block.vcCompany].filter(Boolean).join(" · ") || "vCard";
+    return "";
+  };
+
+  const SOCIAL_PLATFORMS = ["instagram","tiktok","youtube","twitter","linkedin","facebook","github","website","other"];
 
   return (
     <div>
       <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>
         Build your page
       </h2>
-      <p style={{ color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Add links, free text blocks, and polls. You can edit them later in your dashboard.</p>
+      <p style={{ color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Add and edit your links and content blocks. All changes are saved when you publish.</p>
 
-      {/* Existing links */}
-      {state.links.length > 0 && (
+      {/* ── Combined item list ── */}
+      {(state.links.length > 0 || state.blocks.length > 0) && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1rem" }}>
+
+          {/* Links */}
           {state.links.map((link, idx) => (
-            <div key={idx} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => setEditing(editing === idx ? null : idx)}>
-                <span style={{ fontSize: 18, minWidth: 24, textAlign: "center" }}>{link.icon || "—"}</span>
+            <div key={idx} style={{ background: "var(--color-surface)", border: `1.5px solid ${editingLinkIdx === idx ? "var(--color-primary)" : "var(--color-border)"}`, borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => setEditingLinkIdx(editingLinkIdx === idx ? null : idx)}>
+                <span style={{ fontSize: 18, minWidth: 24, textAlign: "center" as const, flexShrink: 0 }}>{link.icon || "🔗"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.label}</div>
                   <div style={{ fontSize: 11, color: "var(--color-text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link.url}</div>
                 </div>
-                <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: link.style === "featured" ? "var(--color-primary-highlight)" : "var(--color-surface-offset)", color: link.style === "featured" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>
-                  link
-                </span>
-                <button onClick={e => { e.stopPropagation(); removeLink(idx); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove link">×</button>
+                <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>link</span>
+                <button onClick={e => { e.stopPropagation(); removeLink(idx); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove">×</button>
               </div>
-              {editing === idx && (
+              {editingLinkIdx === idx && (
                 <div style={{ padding: "0.875rem 1rem", borderTop: "1px solid var(--color-divider)", background: "var(--color-surface-offset)", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
                   <input className="input" placeholder="Label" value={link.label} onChange={e => updateLink(idx, "label", e.target.value)} style={{ fontSize: 13 }} />
                   <input className="input" placeholder="URL (https://...)" value={link.url} onChange={e => updateLink(idx, "url", e.target.value)} style={{ fontSize: 13 }} />
                   <input className="input" placeholder="Short description (optional)" value={link.description || ""} onChange={e => updateLink(idx, "description", e.target.value)} style={{ fontSize: 13 }} />
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.375rem" }}>Icon (none by default):</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.375rem" }}>Icon:</div>
                     <IconPicker value={link.icon} onChange={v => updateLink(idx, "icon", v)} />
                   </div>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
-                    {["default", "featured", "outline"].map(style => (
-                      <button key={style} type="button" onClick={() => updateLink(idx, "style", style)} style={{ flex: 1, padding: "0.375rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${link.style === style ? "var(--color-primary)" : "var(--color-border)"}`, background: link.style === style ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 11, fontWeight: 600, color: link.style === style ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>
-                        {style}
-                      </button>
+                    {["default","featured","outline"].map(s => (
+                      <button key={s} type="button" onClick={() => updateLink(idx, "style", s)} style={{ flex: 1, padding: "0.375rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${link.style === s ? "var(--color-primary)" : "var(--color-border)"}`, background: link.style === s ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 11, fontWeight: 600, color: link.style === s ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>{s}</button>
                     ))}
                   </div>
+                  <button type="button" onClick={() => setEditingLinkIdx(null)} className="btn btn-secondary" style={{ justifyContent: "center", fontSize: 12 }}>Done</button>
                 </div>
               )}
             </div>
           ))}
-        </div>
-      )}
 
-      {/* Existing blocks */}
-      {state.blocks.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1rem" }}>
-          {state.blocks.map(block => (
-            <div key={block.id} style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "0.75rem 1rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-              <span style={{ fontSize: 18, marginTop: 2 }}>{block.type === "text" ? "📝" : block.type === "poll" ? "🗳️" : "📧"}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {block.type === "text" && (
-                  <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } as any}>
-                    {block.content}
+          {/* Blocks */}
+          {state.blocks.map(block => {
+            const isEditing = editingBlockId === block.id;
+            const tagColors = BLOCK_TAG_COLOR[block.type] || BLOCK_TAG_COLOR.text;
+            return (
+              <div key={block.id} style={{ background: "var(--color-surface)", border: `1.5px solid ${isEditing ? "var(--color-primary)" : "var(--color-border)"}`, borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+                {/* Summary row — always tappable */}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", cursor: "pointer" }} onClick={() => setEditingBlockId(isEditing ? null : block.id)}>
+                  <span style={{ fontSize: 18, minWidth: 24, textAlign: "center" as const, flexShrink: 0 }}>{BLOCK_ICON[block.type] || "🧩"}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {blockSummary(block) || <span style={{ color: "var(--color-text-faint)" }}>Tap to edit</span>}
+                    </div>
+                    {block.type === "poll" && block.options && (
+                      <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 1 }}>{block.options.join(" / ")}</div>
+                    )}
+                    {block.type === "lead-form" && (
+                      <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 1 }}>{block.buttonText || "Send message"}</div>
+                    )}
+                    {block.type === "social-links" && (
+                      <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 1 }}>{(block.links || []).length} network{(block.links || []).length !== 1 ? "s" : ""}</div>
+                    )}
                   </div>
-                )}
-                {block.type === "poll" && (
-                  <div>
-                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.question}</div>
-                    <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 2 }}>{block.options?.join(" / ")}</div>
-                  </div>
-                )}
-                {block.type === "lead-form" && (
-                  <div>
-                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{block.title || "Lead Capture Form"}</div>
-                    <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 2 }}>{block.buttonText || "Send message"}</div>
+                  <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: tagColors.bg, color: tagColors.color, fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" as const }}>{block.type}</span>
+                  <button onClick={e => { e.stopPropagation(); removeBlock(block.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove">×</button>
+                </div>
+
+                {/* Inline edit panel */}
+                {isEditing && (
+                  <div style={{ padding: "0.875rem 1rem", borderTop: "1px solid var(--color-divider)", background: "var(--color-surface-offset)", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+
+                    {block.type === "text" && (
+                      <textarea className="input" rows={4} value={block.content || ""} onChange={e => updateBlock(block.id, { content: e.target.value })} style={{ fontSize: 13, resize: "vertical" }} placeholder="Write anything…" />
+                    )}
+
+                    {block.type === "poll" && (
+                      <>
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Question" value={block.question || ""} onChange={e => updateBlock(block.id, { question: e.target.value })} />
+                        {(block.options || ["",""]).map((opt, i) => (
+                          <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                            <input className="input" style={{ fontSize: 13, flex: 1 }} placeholder={`Option ${i+1}`} value={opt} onChange={e => { const opts = [...(block.options || [])]; opts[i] = e.target.value; updateBlock(block.id, { options: opts }); }} />
+                            {(block.options || []).length > 2 && (
+                              <button type="button" onClick={() => updateBlock(block.id, { options: (block.options || []).filter((_,j) => j !== i) })} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16 }}>×</button>
+                            )}
+                          </div>
+                        ))}
+                        {(block.options || []).length < 6 && (
+                          <button type="button" onClick={() => updateBlock(block.id, { options: [...(block.options||[]), ""] })} className="btn btn-secondary" style={{ fontSize: 12, justifyContent: "center" }}>+ Add option</button>
+                        )}
+                      </>
+                    )}
+
+                    {block.type === "lead-form" && (
+                      <>
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Form title" value={block.title || ""} onChange={e => updateBlock(block.id, { title: e.target.value })} />
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Description" value={block.formDescription || ""} onChange={e => updateBlock(block.id, { formDescription: e.target.value })} />
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Button text" value={block.buttonText || ""} onChange={e => updateBlock(block.id, { buttonText: e.target.value })} />
+                      </>
+                    )}
+
+                    {block.type === "video" && (
+                      <>
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Video URL (YouTube, Vimeo…)" value={block.videoUrl || ""} onChange={e => updateBlock(block.id, { videoUrl: e.target.value })} />
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Title (optional)" value={block.title || ""} onChange={e => updateBlock(block.id, { title: e.target.value })} />
+                      </>
+                    )}
+
+                    {block.type === "countdown" && (
+                      <>
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Countdown title" value={block.title || ""} onChange={e => updateBlock(block.id, { title: e.target.value })} />
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>Target date</div>
+                          <input type="date" className="input" style={{ fontSize: 13 }} value={block.targetDate || ""} onChange={e => updateBlock(block.id, { targetDate: e.target.value })} />
+                        </div>
+                      </>
+                    )}
+
+                    {block.type === "social-links" && (
+                      <>
+                        {(block.links || []).map((s, i) => (
+                          <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                            <select
+                              className="input"
+                              style={{ fontSize: 13, flex: "0 0 120px" }}
+                              value={s.platform}
+                              onChange={e => { const ls = [...(block.links||[])]; ls[i] = { ...ls[i], platform: e.target.value }; updateBlock(block.id, { links: ls }); }}
+                            >
+                              {SOCIAL_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                            <input className="input" style={{ fontSize: 13, flex: 1 }} placeholder="Profile URL" value={s.url} onChange={e => { const ls = [...(block.links||[])]; ls[i] = { ...ls[i], url: e.target.value }; updateBlock(block.id, { links: ls }); }} />
+                            <button type="button" onClick={() => updateBlock(block.id, { links: (block.links||[]).filter((_,j) => j !== i) })} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16 }}>×</button>
+                          </div>
+                        ))}
+                        <button type="button" onClick={() => updateBlock(block.id, { links: [...(block.links||[]), { platform: "instagram", url: "" }] })} className="btn btn-secondary" style={{ fontSize: 12, justifyContent: "center" }}>+ Add network</button>
+                      </>
+                    )}
+
+                    {block.type === "vcard" && (
+                      <>
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Full name *" value={block.vcName || ""} onChange={e => updateBlock(block.id, { vcName: e.target.value })} />
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Job title" value={block.vcJobTitle || ""} onChange={e => updateBlock(block.id, { vcJobTitle: e.target.value })} />
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Company" value={block.vcCompany || ""} onChange={e => updateBlock(block.id, { vcCompany: e.target.value })} />
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Phone" value={block.vcPhone || ""} onChange={e => updateBlock(block.id, { vcPhone: e.target.value })} />
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Email" value={block.vcEmail || ""} onChange={e => updateBlock(block.id, { vcEmail: e.target.value })} />
+                        <input className="input" style={{ fontSize: 13 }} placeholder="Website" value={block.vcWebsite || ""} onChange={e => updateBlock(block.id, { vcWebsite: e.target.value })} />
+                      </>
+                    )}
+
+                    <button type="button" onClick={() => setEditingBlockId(null)} className="btn btn-secondary" style={{ justifyContent: "center", fontSize: 12 }}>Done</button>
                   </div>
                 )}
               </div>
-              <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: block.type === "lead-form" ? "rgba(224,107,26,0.1)" : "var(--color-surface-offset)", color: block.type === "lead-form" ? "var(--color-primary)" : "var(--color-text-faint)", fontWeight: 600, flexShrink: 0 }}>
-                {block.type}
-              </span>
-              <button onClick={() => removeBlock(block.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove block">×</button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Add block type selector */}
+      {/* ── Add block buttons ── */}
       {addMode === null && (
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          {[
-            { type: "link" as BlockType, icon: "🔗", label: "Link" },
-            { type: "text" as BlockType, icon: "📝", label: "Free text" },
-            { type: "poll" as BlockType, icon: "🗳️", label: "Poll" },
-            { type: "lead-form" as BlockType, icon: "📧", label: "Lead form" },
-          ].map(opt => (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+          {([
+            { type: "link",         icon: "🔗", label: "Link" },
+            { type: "text",         icon: "📝", label: "Free text" },
+            { type: "lead-form",    icon: "📧", label: "Lead form" },
+            { type: "poll",         icon: "🗳️", label: "Poll" },
+            { type: "video",        icon: "🎥", label: "Video" },
+            { type: "countdown",    icon: "⏳", label: "Countdown" },
+            { type: "social-links", icon: "🌐", label: "Socials" },
+            { type: "vcard",        icon: "💾", label: "vCard" },
+          ] as { type: BlockType; icon: string; label: string }[]).map(opt => (
             <button
               key={opt.type}
               type="button"
               onClick={() => setAddMode(opt.type)}
               className="btn btn-secondary"
-              style={{ gap: "0.375rem" }}
+              style={{ gap: "0.375rem", justifyContent: "center", fontSize: "var(--text-xs)", minHeight: "2.5rem" }}
               data-testid={`button-add-${opt.type}`}
             >
-              {opt.icon} Add {opt.label}
+              {opt.icon} {opt.label}
             </button>
           ))}
         </div>
       )}
 
-      {/* Add link form */}
+      {/* ── Add forms ── */}
+
+      {/* Link */}
       {addMode === "link" && (
         <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
           <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🔗 Add a link</div>
@@ -1269,13 +1390,13 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
             <input className="input" placeholder="URL (https://...)" value={newLink.url} onChange={e => setNewLink(l => ({ ...l, url: e.target.value }))} style={{ fontSize: 13 }} data-testid="input-new-link-url" />
             <input className="input" placeholder="Short description (optional)" value={newLink.description} onChange={e => setNewLink(l => ({ ...l, description: e.target.value }))} style={{ fontSize: 13 }} />
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.375rem" }}>Icon (none by default):</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.375rem" }}>Icon:</div>
               <IconPicker value={newLink.icon ?? ""} onChange={v => setNewLink(l => ({ ...l, icon: v }))} />
             </div>
             <div style={{ display: "flex", gap: "0.5rem" }}>
-              {["default", "featured"].map(style => (
-                <button key={style} type="button" onClick={() => setNewLink(l => ({ ...l, style: style as any }))} style={{ flex: 1, padding: "0.5rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${newLink.style === style ? "var(--color-primary)" : "var(--color-border)"}`, background: newLink.style === style ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 11, fontWeight: 600, color: newLink.style === style ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>
-                  {style === "featured" ? "⭐ Featured" : "Default"}
+              {["default","featured"].map(s => (
+                <button key={s} type="button" onClick={() => setNewLink(l => ({ ...l, style: s as any }))} style={{ flex: 1, padding: "0.5rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${newLink.style === s ? "var(--color-primary)" : "var(--color-border)"}`, background: newLink.style === s ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 11, fontWeight: 600, color: newLink.style === s ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>
+                  {s === "featured" ? "⭐ Featured" : "Default"}
                 </button>
               ))}
             </div>
@@ -1287,20 +1408,12 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
         </div>
       )}
 
-      {/* Add text block form */}
+      {/* Free text */}
       {addMode === "text" && (
         <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
           <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>📝 Free text block</div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <textarea
-              className="input"
-              placeholder="Write anything — a welcome note, your story, services, FAQs…"
-              value={newText}
-              onChange={e => setNewText(e.target.value)}
-              rows={5}
-              style={{ resize: "vertical", fontSize: 13 }}
-              data-testid="input-new-text-content"
-            />
+            <textarea className="input" placeholder="Write anything — a welcome note, your story, services, FAQs…" value={newText} onChange={e => setNewText(e.target.value)} rows={5} style={{ resize: "vertical", fontSize: 13 }} data-testid="input-new-text-content" />
             <p style={{ fontSize: 10, color: "var(--color-text-faint)" }}>{newText.length}/600 chars</p>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
@@ -1310,31 +1423,33 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
         </div>
       )}
 
-      {/* Add poll block form */}
+      {/* Lead form */}
+      {addMode === "lead-form" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>📧 Lead Capture Form</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <input className="input" placeholder="Form title" value={newLeadForm.title} onChange={e => setNewLeadForm(f => ({ ...f, title: e.target.value }))} style={{ fontSize: 13 }} data-testid="input-lead-form-title" />
+            <input className="input" placeholder="Description" value={newLeadForm.formDescription} onChange={e => setNewLeadForm(f => ({ ...f, formDescription: e.target.value }))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Button text" value={newLeadForm.buttonText} onChange={e => setNewLeadForm(f => ({ ...f, buttonText: e.target.value }))} style={{ fontSize: 13 }} />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={addLeadFormBlock} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-add-lead-form">Add lead form</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Poll */}
       {addMode === "poll" && (
         <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🗳️ Poll block</div>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🗳️ Poll</div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <input
-              className="input"
-              placeholder="Poll question (e.g. What brings you here?)"
-              value={newPoll.question}
-              onChange={e => setNewPoll(p => ({ ...p, question: e.target.value }))}
-              style={{ fontSize: 13 }}
-              data-testid="input-poll-question"
-            />
+            <input className="input" placeholder="Question" value={newPoll.question} onChange={e => setNewPoll(p => ({ ...p, question: e.target.value }))} style={{ fontSize: 13 }} data-testid="input-poll-question" />
             {newPoll.options.map((opt, i) => (
               <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <input
-                  className="input"
-                  placeholder={`Option ${i + 1}`}
-                  value={opt}
-                  onChange={e => setNewPoll(p => { const o = [...p.options]; o[i] = e.target.value; return { ...p, options: o }; })}
-                  style={{ fontSize: 13, flex: 1 }}
-                  data-testid={`input-poll-option-${i}`}
-                />
+                <input className="input" placeholder={`Option ${i+1}`} value={opt} onChange={e => setNewPoll(p => { const o = [...p.options]; o[i] = e.target.value; return { ...p, options: o }; })} style={{ fontSize: 13, flex: 1 }} data-testid={`input-poll-option-${i}`} />
                 {newPoll.options.length > 2 && (
-                  <button type="button" onClick={() => setNewPoll(p => ({ ...p, options: p.options.filter((_, j) => j !== i) }))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem" }}>×</button>
+                  <button type="button" onClick={() => setNewPoll(p => ({ ...p, options: p.options.filter((_,j) => j !== i) }))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16 }}>×</button>
                 )}
               </div>
             ))}
@@ -1349,50 +1464,79 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
         </div>
       )}
 
-      {/* Add lead-form block form */}
-      {addMode === "lead-form" && (
+      {/* Video */}
+      {addMode === "video" && (
         <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>📧 Lead Capture Form</div>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🎥 Video block</div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Form title</label>
-              <input
-                className="input"
-                placeholder="Get in touch"
-                value={newLeadForm.title}
-                onChange={e => setNewLeadForm(f => ({ ...f, title: e.target.value }))}
-                style={{ fontSize: 13 }}
-                data-testid="input-lead-form-title"
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Description</label>
-              <input
-                className="input"
-                placeholder="I'd love to hear from you"
-                value={newLeadForm.formDescription}
-                onChange={e => setNewLeadForm(f => ({ ...f, formDescription: e.target.value }))}
-                style={{ fontSize: 13 }}
-                data-testid="input-lead-form-description"
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.25rem" }}>Button text</label>
-              <input
-                className="input"
-                placeholder="Send message"
-                value={newLeadForm.buttonText}
-                onChange={e => setNewLeadForm(f => ({ ...f, buttonText: e.target.value }))}
-                style={{ fontSize: 13 }}
-                data-testid="input-lead-form-button"
-              />
-            </div>
-            <p style={{ fontSize: 10, color: "var(--color-text-faint)" }}>
-              This adds a contact form to your page that captures leads to your dashboard.
-            </p>
+            <input className="input" placeholder="Video URL (YouTube, Vimeo…)" value={newVideo.videoUrl} onChange={e => setNewVideo(v => ({ ...v, videoUrl: e.target.value }))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Title (optional)" value={newVideo.title} onChange={e => setNewVideo(v => ({ ...v, title: e.target.value }))} style={{ fontSize: 13 }} />
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
-              <button type="button" onClick={addLeadFormBlock} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }} data-testid="button-add-lead-form">Add lead form</button>
+              <button type="button" onClick={addVideoBlock} disabled={!newVideo.videoUrl.trim()} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add video</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Countdown */}
+      {addMode === "countdown" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>⏳ Countdown timer</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <input className="input" placeholder="Label (e.g. Launching in…)" value={newCountdown.title} onChange={e => setNewCountdown(c => ({ ...c, title: e.target.value }))} style={{ fontSize: 13 }} />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>Target date *</div>
+              <input type="date" className="input" value={newCountdown.targetDate} onChange={e => setNewCountdown(c => ({ ...c, targetDate: e.target.value }))} style={{ fontSize: 13 }} />
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={addCountdownBlock} disabled={!newCountdown.targetDate} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add countdown</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Social links */}
+      {addMode === "social-links" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem" }}>🌐 Social links block</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            {newSocials.map((s, i) => (
+              <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <select className="input" style={{ fontSize: 13, flex: "0 0 110px" }} value={s.platform} onChange={e => setNewSocials(arr => arr.map((x,j) => j===i ? {...x, platform: e.target.value} : x))}>
+                  {SOCIAL_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <input className="input" style={{ fontSize: 13, flex: 1 }} placeholder="Profile URL" value={s.url} onChange={e => setNewSocials(arr => arr.map((x,j) => j===i ? {...x, url: e.target.value} : x))} />
+                {newSocials.length > 1 && (
+                  <button type="button" onClick={() => setNewSocials(arr => arr.filter((_,j) => j!==i))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16 }}>×</button>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={() => setNewSocials(arr => [...arr, { platform: "instagram", url: "" }])} className="btn btn-secondary" style={{ fontSize: 12, justifyContent: "center" }}>+ Add network</button>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={addSocialsBlock} disabled={!newSocials.some(s => s.url.trim())} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add socials</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* vCard */}
+      {addMode === "vcard" && (
+        <div style={{ background: "var(--color-surface-offset)", border: "1.5px dashed var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
+          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.375rem" }}>💾 vCard block</div>
+          <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.875rem" }}>Adds a &ldquo;Save contact&rdquo; button so visitors can download your details.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+            <input className="input" placeholder="Full name *" value={newVcard.vcName} onChange={e => setNewVcard(v => ({ ...v, vcName: e.target.value }))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Job title" value={newVcard.vcJobTitle} onChange={e => setNewVcard(v => ({ ...v, vcJobTitle: e.target.value }))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Company" value={newVcard.vcCompany} onChange={e => setNewVcard(v => ({ ...v, vcCompany: e.target.value }))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Phone" value={newVcard.vcPhone} onChange={e => setNewVcard(v => ({ ...v, vcPhone: e.target.value }))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Email" value={newVcard.vcEmail} onChange={e => setNewVcard(v => ({ ...v, vcEmail: e.target.value }))} style={{ fontSize: 13 }} />
+            <input className="input" placeholder="Website" value={newVcard.vcWebsite} onChange={e => setNewVcard(v => ({ ...v, vcWebsite: e.target.value }))} style={{ fontSize: 13 }} />
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" onClick={() => setAddMode(null)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button type="button" onClick={addVcardBlock} disabled={!newVcard.vcName.trim()} className="btn btn-primary" style={{ flex: 2, justifyContent: "center" }}>Add vCard</button>
             </div>
           </div>
         </div>

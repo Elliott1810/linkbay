@@ -2187,6 +2187,44 @@ export function registerLicenceRoutes(app: Express) {
     return res.json({ received: true });
   });
 
+  // ── PATCH /api/admin/pages/:id — admin-only page field patcher ───────────────
+  app.patch("/api/admin/pages/:id", async (req: Request, res: Response) => {
+    const adminPassword = process.env.ADMIN_PASSWORD || "";
+    const authHeader = req.headers.authorization || "";
+    const sessionAdmin = (req.session as any).isAdmin;
+    const basicMatch = authHeader.startsWith("Basic ") && Buffer.from(authHeader.slice(6), "base64").toString().split(":")[1] === adminPassword;
+    const cookieAdmin = req.cookies?.adminAuth === adminPassword;
+    if (!sessionAdmin && !basicMatch && !cookieAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      const pageId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+      if (!pageId) return res.status(400).json({ error: "Invalid page id" });
+      // Only allow safe fields to be patched
+      const ALLOWED = new Set(["background","accent_color","page_font","title","bio","blocks","archived_block_ids","hidden_block_ids","published","seo_title","seo_description"]);
+      const patch: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(req.body || {})) {
+        if (ALLOWED.has(k)) patch[k] = v;
+      }
+      if (Object.keys(patch).length === 0) return res.status(400).json({ error: "No valid fields to patch" });
+      // Map camelCase aliases
+      const dbPatch: Record<string, unknown> = {};
+      if ("background" in patch)        dbPatch.background = patch.background;
+      if ("accent_color" in patch)      dbPatch.accentColor = patch.accent_color;
+      if ("page_font" in patch)         dbPatch.pageFont = patch.page_font;
+      if ("title" in patch)             dbPatch.title = patch.title;
+      if ("bio" in patch)               dbPatch.bio = patch.bio;
+      if ("blocks" in patch)            dbPatch.blocks = patch.blocks;
+      if ("archived_block_ids" in patch) dbPatch.archivedBlockIds = patch.archived_block_ids;
+      if ("hidden_block_ids" in patch)  dbPatch.hiddenBlockIds = patch.hidden_block_ids;
+      if ("published" in patch)         dbPatch.published = patch.published;
+      const updated = await storage.updatePage(pageId, dbPatch as any);
+      return res.json({ success: true, page: updated });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── PATCH /api/admin/users/:id/licence ──────────────────────────────────────
   app.patch("/api/admin/users/:id/licence", async (req: Request, res: Response) => {
     // Admin auth check
@@ -2843,7 +2881,7 @@ Return ONLY valid JSON with these fields:
   "background": "#hex or rgba(...) or 'gradient:...' ",
   "accentColor": "#hex",
   "fontFamily": "Cabinet Grotesk",
-  "blockStyle": "default|featured|outline|minimal",
+  "blockStyle": "default|elevated|frosted|bordered|outlined|ghost|floating|shadow-depth",
   "title": "Person or brand headline (under 80 chars)",
   "bio": "2-sentence bio (under 280 chars)",
   "blocks": [...]
@@ -2895,6 +2933,26 @@ Body text (truncated): ${bodyText}`;
       if (ogImage && !parsed.avatarUrl) parsed.avatarUrl = ogImage;
       parsed.importedFrom = url;
       parsed.importedPlatform = platform;
+
+      // Sanitise blockStyle — AI may return link-style names (featured, outline, minimal)
+      // which don't map to any .block-style-* CSS class. Remap to valid block styles.
+      const VALID_BLOCK_STYLES = new Set(["default","elevated","frosted","bordered","outlined","ghost","floating","underline","neon","dark-glass","minimal-hc","shadow-depth","refined-border","compact-row","stripe","sharp"]);
+      const BLOCK_STYLE_REMAP: Record<string, string> = { featured: "elevated", outline: "outlined", minimal: "ghost" };
+      if (typeof parsed.blockStyle === "string") {
+        if (!VALID_BLOCK_STYLES.has(parsed.blockStyle)) {
+          parsed.blockStyle = BLOCK_STYLE_REMAP[parsed.blockStyle] ?? "elevated";
+        }
+      } else {
+        parsed.blockStyle = "elevated";
+      }
+
+      // Sanitise background — if AI returns a raw hex, wrap it so the app can store it consistently
+      if (typeof parsed.background === "string" && parsed.background.startsWith("#")) {
+        // Keep as-is; backgroundToCss now handles raw hex. Wrap into bgValue JSON for consistency.
+        parsed.background = JSON.stringify({ bgValue: parsed.background, blockStyle: parsed.blockStyle });
+      } else if (!parsed.background) {
+        parsed.background = "bg-warm-white";
+      }
 
       return res.json(parsed);
     } catch (e: any) {

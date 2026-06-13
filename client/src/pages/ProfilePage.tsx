@@ -759,7 +759,7 @@ function TrackedLinkCard({ link, accentColor, featured, blockId, pageId: blockPa
           display: "block", width: "100%", padding: "1.125rem 1.25rem",
           background: accentColor, color: textColor,
           borderRadius: "var(--radius-lg)", border: "none", textAlign: "left",
-          cursor: "pointer", marginBottom: "1rem", transition: "all var(--transition-interactive)",
+          cursor: "pointer", transition: "all var(--transition-interactive)",
           "--featured-bg": accentColor, "--featured-color": textColor
         } as React.CSSProperties}
         data-testid={`link-featured-${link.id}`}

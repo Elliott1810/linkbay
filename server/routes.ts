@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { type Server } from "http";
-import { storage, getUserLicence, setUserLicence, getUserByStripeCustomerId, getUserByStripeSubscriptionId, migrateLinksToBlocks, setUserTrial, getUserEffectiveTier, createPasswordResetToken, consumePasswordResetToken, updateUserName } from "./storage";
+import { storage, getUserLicence, setUserLicence, getUserByStripeCustomerId, getUserByStripeSubscriptionId, setUserTrial, getUserEffectiveTier, createPasswordResetToken, consumePasswordResetToken, updateUserName } from "./storage";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import Database from "better-sqlite3";
@@ -28,13 +28,11 @@ function tierFromPriceId(priceId: string): { tier: "pro" | "business"; interval:
 const aiRateLimit = new Map<number | string, { count: number; resetAt: number }>();
 // ─── AI analysis cache (in-memory, keyed by pageId:date, invalidates daily) ────────
 const aiAnalysisCache = new Map<string, { result: string; date: string }>();
-// ─── Run links→blocks migration on startup ──────────────────────────────────────────
-migrateLinksToBlocks();
 
 const DB_PATH = process.env.DB_PATH || "data.db";
 import {
   insertWaitlistSchema, insertDemoRequestSchema,
-  insertPageSchema, insertPageLinkSchema,
+  insertPageSchema,
   insertLeadSchema, insertUserSchema,
   insertContactSchema, insertContactActivitySchema,
 } from "../shared/schema";
@@ -352,12 +350,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!page) return res.status(404).json({ error: "Page not found" });
       const isPreview = req.query.preview === "1";
       if (!page.published && !isPreview) return res.status(404).json({ error: "Page not found" });
-      const links = await storage.getLinksByPage(page.id);
       const owner = await storage.getUserByEmail(page.ownerEmail);
       const { ownerEmail: _redacted, ...publicPage } = page as any;
       // #6: include ownerTier so ProfilePage can hide Linkbay branding for Pro/Business users
       const ownerTier = owner?.id ? getUserEffectiveTier(owner.id).tier : "free";
-      res.json({ page: { ...publicPage, avatarUrl: owner?.avatarUrl ?? null, ownerTier }, links });
+      res.json({ page: { ...publicPage, avatarUrl: owner?.avatarUrl ?? null, ownerTier } });
     } catch { res.status(500).json({ error: "Server error" }); }
   });
 
@@ -430,24 +427,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
       res.status(500).json({ error: "Server error" });
     }
-  });
-
-  // POST track a link click (public) — also records a `link_click` page event for analytics (Goal 15)
-  app.post("/api/links/:linkId/click", async (req, res) => {
-    try {
-      const linkId = parseInt(req.params.linkId);
-      await storage.incrementLinkClick(linkId);
-      // Record analytics event
-      try {
-        const link = await storage.getLinkById(linkId);
-        if (link) {
-          const ua = String(req.headers["user-agent"] || "");
-          const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
-          await storage.recordEvent({ pageId: link.pageId, type: "link_click", linkId, device } as any);
-        }
-      } catch {}
-      res.json({ success: true });
-    } catch { res.json({ success: false }); }
   });
 
   // POST track a generic block interaction (button / social link) (Goal 15)
@@ -525,24 +504,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (e.type === "view") b.totalViews += e.count;
         else if (BLOCK_INTERACTION_EVENTS.has(e.type) || e.type.startsWith("block_interact")) b.totalInteractions += e.count;
         else b.totalInteractions += e.count;
-      }
-
-      // #1/#1a: Also inject page_links click_count for migrated link blocks so Block Analytics
-      // matches Top Interactions exactly. Migrated blocks have id pattern 'link-migrated-{linkId}'.
-      const pageLinks = sqliteLocal.prepare(
-        "SELECT id, click_count FROM page_links WHERE page_id = ? AND click_count > 0"
-      ).all(pageId) as Array<{ id: number; click_count: number }>;
-      for (const link of pageLinks) {
-        const migratedId = `link-migrated-${link.id}`;
-        // Inject as a synthetic periodEvent so blockStats aggregation picks it up
-        blockEvents.push({ block_id: migratedId, block_type: "link", type: "link_click", count: link.click_count });
-        // Also update allTime block map
-        if (!blockMap.has(migratedId)) {
-          blockMap.set(migratedId, { blockId: migratedId, blockType: "link", totalInteractions: 0, totalViews: 0, byEventType: {} });
-        }
-        const bm = blockMap.get(migratedId)!;
-        bm.byEventType["link_click"] = (bm.byEventType["link_click"] || 0) + link.click_count;
-        bm.totalInteractions += link.click_count;
       }
 
       sqliteLocal.close();
@@ -661,83 +622,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const pageId = parseInt(req.params.id);
       if (!await assertOwnsPage(req, res, pageId)) return;
       await storage.deletePage(pageId);
-      res.json({ success: true });
-    } catch { res.status(500).json({ error: "Server error" }); }
-  });
-
-  // ─────────────────────────────────────────────────
-  //  LINKS — CRUD (auth + ownership)
-  // ─────────────────────────────────────────────────
-
-  app.get("/api/pages/:pageId/links", requireAuth as any, async (req, res) => {
-    try {
-      const pageId = parseInt(req.params.pageId);
-      if (!await assertOwnsPage(req, res, pageId)) return;
-      const links = await storage.getLinksByPage(pageId);
-      res.json(links);
-    } catch { res.status(500).json({ error: "Server error" }); }
-  });
-
-  app.post("/api/pages/:pageId/links", requireAuth as any, async (req, res) => {
-    try {
-      const pageId = parseInt(req.params.pageId);
-      if (!await assertOwnsPage(req, res, pageId)) return;
-      const data = insertPageLinkSchema.parse({ ...req.body, pageId });
-      const link = await storage.createLink(data);
-      res.json({ success: true, link });
-    } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
-      res.status(500).json({ error: "Server error" });
-    }
-  });
-
-  app.patch("/api/links/:id", requireAuth as any, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const existing = await storage.getLinkById(id);
-      if (!existing) return res.status(404).json({ error: "Link not found" });
-      if (!await assertOwnsPage(req, res, existing.pageId)) return;
-      // Allowlist fields — prevent mass assignment (e.g. pageId overwrite)
-      const allowed = z.object({
-        label: z.string().min(1).max(100).optional(),
-        url: z.string().url().optional(),
-        icon: z.string().max(50).optional(),
-        featured: z.boolean().optional(),
-        style: z.enum(["default", "featured", "outline"]).optional(),
-        sortOrder: z.number().int().optional(),
-      });
-      let updateData: Record<string, unknown>;
-      try {
-        updateData = allowed.parse(req.body);
-      } catch {
-        return res.status(400).json({ error: "Invalid link data" });
-      }
-      // Validate URL scheme if provided (block javascript: XSS)
-      if (updateData.url && !/^(https?:\/\/|mailto:|tel:)/i.test(updateData.url as string)) {
-        return res.status(400).json({ error: "URL must start with http://, https://, mailto:, or tel:" });
-      }
-      const link = await storage.updateLink(id, updateData);
-      res.json({ success: true, link });
-    } catch { res.status(500).json({ error: "Server error" }); }
-  });
-
-  app.delete("/api/links/:id", requireAuth as any, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const existing = await storage.getLinkById(id);
-      if (!existing) return res.status(404).json({ error: "Link not found" });
-      if (!await assertOwnsPage(req, res, existing.pageId)) return;
-      await storage.deleteLink(id);
-      res.json({ success: true });
-    } catch { res.status(500).json({ error: "Server error" }); }
-  });
-
-  app.post("/api/pages/:pageId/links/reorder", requireAuth as any, async (req, res) => {
-    try {
-      const pageId = parseInt(req.params.pageId);
-      if (!await assertOwnsPage(req, res, pageId)) return;
-      const { orderedIds } = req.body;
-      await storage.reorderLinks(pageId, orderedIds);
       res.json({ success: true });
     } catch { res.status(500).json({ error: "Server error" }); }
   });
@@ -951,10 +835,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const pageForDate = await storage.getPageById(pageId);
       const allTimeSince = (pageForDate?.createdAt || undefined) as string | undefined;
       const eventsSinceOverride = days >= 3650 ? allTimeSince : undefined;
-      const [page, events, links, dailyViews, prevEvents] = await Promise.all([
+      const [page, events, dailyViews, prevEvents] = await Promise.all([
         Promise.resolve(pageForDate),
         storage.getEventsByPage(pageId, days, eventsSinceOverride),
-        storage.getLinksByPage(pageId),
         storage.getDailyViews(pageId, days, days >= 3650 ? allTimeSince : undefined),
         // Previous period: same window shifted back by `days`
         days < 3650 ? storage.getEventsByPage(pageId, days * 2).then((allE: any[]) => {
@@ -1047,7 +930,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         avgSessionViews: uniqueVisitors > 0 ? Math.round((views / uniqueVisitors) * 10) / 10 : 0,
         devices,
         devicePct,
-        topLinks: links.sort((a, b) => b.clickCount - a.clickCount).slice(0, 5),
         topCountries,
         dailyViews,
         dailyClicks,
@@ -1078,13 +960,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             }
           } catch {}
 
-          const interMap = new Map<string, { id: string; label: string; type: string; total: number; isLink: boolean; linkId?: number; views?: number; interactions?: number }>();
-          // Link clicks
-          for (const link of links) {
-            if (link.clickCount > 0) {
-              interMap.set(`link-${link.id}`, { id: `link-${link.id}`, label: link.label || link.url, type: "link", total: link.clickCount, isLink: true, linkId: link.id });
-            }
-          }
+          const interMap = new Map<string, { id: string; label: string; type: string; total: number; isLink: boolean; views?: number; interactions?: number }>();
           // Block events — split into views vs interactions per block
           const INTERACTION_EVENTS = new Set(["submit", "click", "vote", "expand", "play"]);
           const VIEW_EVENTS = new Set(["view"]);
@@ -1136,10 +1012,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const bid = (e as any).blockId ?? (e as any).block_id;
             if (!bid) continue;
             sum++;
-          }
-          // Also add link clicks (legacy links)
-          for (const link of links) {
-            sum += link.clickCount || 0;
           }
           return sum;
         })(),
@@ -1263,14 +1135,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         published: true,
       });
 
-      // AI-builder links are stored as type:"link" blocks in blocksJson above.
-      // Only insert a fallback page_link if NO rawLinks were provided — prevents duplicate rendering.
-      if (!rawLinks || rawLinks.length === 0) {
-        await storage.createLink({ pageId: page.id, label: "Contact me", url: "https://" + username + ".linkbay.ai", icon: "✉️", style: "featured", position: 0 });
-      }
-
-      const links = await storage.getLinksByPage(page.id);
-
       // Establish session — user is now logged in
       req.session.userId = user.id;
       req.session.userEmail = user.email;
@@ -1280,7 +1144,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         req.session.save((err) => err ? reject(err) : resolve());
       });
 
-      res.json({ success: true, page, links, pageUrl: `/${page.username}`, user: { id: user.id, email: user.email, name: user.name } });
+      res.json({ success: true, page, pageUrl: `/${page.username}`, user: { id: user.id, email: user.email, name: user.name } });
     } catch (err) {
       if ((err as any)?.message?.includes("UNIQUE")) return res.status(409).json({ error: "Username is already taken." });
       res.status(500).json({ error: "Server error" });
@@ -1499,7 +1363,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const sqlite2 = require("better-sqlite3")(process.env.DB_PATH || "data.db");
       sqlite2.prepare("DELETE FROM page_events WHERE page_id = ?").run(id);
       sqlite2.prepare("DELETE FROM leads WHERE page_id = ?").run(id);
-      sqlite2.prepare("DELETE FROM page_links WHERE page_id = ?").run(id);
       sqlite2.prepare("DELETE FROM pages WHERE id = ?").run(id);
       sqlite2.close();
       res.redirect("/admin");
@@ -1616,9 +1479,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const pages = sqlite.prepare(`
       SELECT p.id, p.username, p.owner_name, p.owner_email, p.title, p.published,
         p.view_count, p.created_at,
-        (SELECT COUNT(*) FROM page_links WHERE page_id = p.id) as link_count,
         (SELECT COUNT(*) FROM leads WHERE page_id = p.id) as lead_count,
-        (SELECT SUM(click_count) FROM page_links WHERE page_id = p.id) as total_clicks
+        (SELECT COUNT(*) FROM page_events WHERE page_id = p.id AND type = 'link_click') as total_clicks
       FROM pages p
       WHERE p.owner_email NOT IN ('sarah@example.com','alex@example.com','mark@example.com','amara@example.com','studio@example.com','kai@example.com','lena@example.com','jordan@example.com','priya@example.com')
       ORDER BY p.created_at DESC
@@ -1626,7 +1488,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const totalEvents = (sqlite.prepare("SELECT COUNT(*) as c FROM page_events").get() as any).c;
     const totalLeads = (sqlite.prepare("SELECT COUNT(*) as c FROM leads").get() as any).c;
-    const totalClicks = (sqlite.prepare("SELECT SUM(click_count) as c FROM page_links").get() as any).c || 0;
+    const totalClicks = (sqlite.prepare("SELECT COUNT(*) as c FROM page_events WHERE type = 'link_click'").get() as any).c || 0;
     const totalViews = (sqlite.prepare("SELECT SUM(view_count) as c FROM pages WHERE published = 1").get() as any).c || 0;
 
     // Event-type breakdown (Goal 2)
@@ -1654,10 +1516,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       GROUP BY p.id
       ORDER BY lead_count DESC LIMIT 5
     `).all() as any[];
-    const avgLinksRow = sqlite.prepare(`
-      SELECT AVG(c) as avg FROM (SELECT COUNT(*) as c FROM page_links GROUP BY page_id)
-    `).get() as any;
-    const avgLinks = avgLinksRow?.avg ? Number(avgLinksRow.avg).toFixed(1) : "0.0";
+    const avgLinks = "0.0"; // legacy links removed — blocks used instead
     // Avg blocks per page (General 12)
     const avgBlocksRow = sqlite.prepare(`
       SELECT AVG(block_count) as avg FROM (

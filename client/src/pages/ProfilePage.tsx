@@ -86,6 +86,28 @@ function trackBlock(pageId: number, blockId: string, blockType: string, eventTyp
   apiRequest("POST", `/api/pages/${pageId}/track-block`, { blockId, blockType, eventType }).catch(() => {});
 }
 
+// ─── BlockViewTracker ─────────────────────────────────────────
+// Wraps any block and fires a single "block_view" event when it scrolls
+// into view (≥20% visible). This gives per-block view counts distinct
+// from the page-level "view" event, so Block Analysis can show real
+// block views instead of page views.
+function BlockViewTracker({ pageId, blockId, blockType, children }: { pageId: number; blockId: string; blockType: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const tracked = useRef(false);
+  useEffect(() => {
+    if (!ref.current) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !tracked.current) {
+        tracked.current = true;
+        trackBlock(pageId, blockId, blockType, "block_view");
+      }
+    }, { threshold: 0.2 });
+    obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, [pageId, blockId, blockType]);
+  return <div ref={ref}>{children}</div>;
+}
+
 // ─── Extra block renderers ───────────────────────────────────
 function ImageBlock({ block }: { block: Block }) {
   const src = block.src || block.url || "";
@@ -1290,9 +1312,11 @@ export default function ProfilePage() {
                 default: return null;
               }
               return (
-                <div key={block.id} className={isDivider ? undefined : "block-card"} style={{ borderRadius: isDivider ? undefined : blockRadius, overflow: isDivider ? undefined : "hidden" }}>
-                  {inner}
-                </div>
+                <BlockViewTracker key={block.id} pageId={page.id} blockId={String(block.id)} blockType={block.type}>
+                  <div className={isDivider ? undefined : "block-card"} style={{ borderRadius: isDivider ? undefined : blockRadius, overflow: isDivider ? undefined : "hidden" }}>
+                    {inner}
+                  </div>
+                </BlockViewTracker>
               );
             })}
           </div>

@@ -521,6 +521,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   //  PAGES — owner/builder routes
   // ─────────────────────────────────────────────────
 
+  // Check email availability (used by /builder Step 1 before account creation)
+  app.get("/api/auth/check-email", async (req, res) => {
+    try {
+      const email = String(req.query.email || "").trim().toLowerCase();
+      if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) return res.json({ available: true });
+      const db = new Database(process.env.DB_PATH || "data.db");
+      const user = db.prepare("SELECT id FROM users WHERE LOWER(email) = ?").get(email);
+      db.close();
+      return res.json({ available: !user });
+    } catch { return res.json({ available: true }); }
+  });
+
   // Check username availability
   app.get("/api/pages/check/:username", async (req, res) => {
     try {
@@ -629,6 +641,106 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const page = await storage.updatePage(pageId, { published: false });
       res.json({ success: true, page });
     } catch { res.status(500).json({ error: "Server error" }); }
+  });
+
+  // ── GET /api/pages/:id/blocks/:blockId/history ────────────────────────────────
+  // Returns the block's live-period history records from block_history table
+  app.get("/api/pages/:id/blocks/:blockId/history", requireAuth as any, async (req: Request, res: Response) => {
+    try {
+      const pageId = parseInt(String(req.params.id));
+      if (!await assertOwnsPage(req, res, pageId)) return;
+      const blockId = req.params.blockId;
+      const db = new Database(process.env.DB_PATH || "data.db");
+      const rows = db.prepare(
+        "SELECT * FROM block_history WHERE page_id = ? AND block_id = ? ORDER BY created_at ASC"
+      ).all(pageId, blockId);
+      // Compute current live-period stats (block is currently live — no end yet)
+      const today = new Date().toISOString();
+      const lastLive = (rows as any[]).filter((r: any) => r.event === "went_live").slice(-1)[0];
+      const liveStart = lastLive?.went_live_at || null;
+      // Current period views & interactions from page_events
+      let currentPeriodViews = 0, currentPeriodInteractions = 0;
+      if (liveStart) {
+        const events = db.prepare(
+          "SELECT type, COUNT(*) as cnt FROM page_events WHERE page_id = ? AND block_id = ? AND created_at >= ? GROUP BY type"
+        ).all(pageId, blockId, liveStart) as any[];
+        for (const e of events) {
+          if (e.type === "view") currentPeriodViews += e.cnt;
+          else currentPeriodInteractions += e.cnt;
+        }
+      }
+      // All-time totals
+      const allTime = db.prepare(
+        "SELECT type, COUNT(*) as cnt FROM page_events WHERE page_id = ? AND block_id = ? GROUP BY type"
+      ).all(pageId, blockId) as any[];
+      let totalViews = 0, totalInteractions = 0;
+      for (const e of allTime) {
+        if (e.type === "view") totalViews += e.cnt;
+        else totalInteractions += e.cnt;
+      }
+      db.close();
+      return res.json({
+        history: rows,
+        liveStart,
+        currentPeriodViews,
+        currentPeriodInteractions,
+        totalViews,
+        totalInteractions,
+        now: today,
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── POST /api/pages/:id/blocks/:blockId/record-archive ────────────────────────
+  // Called client-side when archiving a block — writes a history snapshot
+  app.post("/api/pages/:id/blocks/:blockId/record-archive", requireAuth as any, async (req: Request, res: Response) => {
+    try {
+      const pageId = parseInt(String(req.params.id));
+      if (!await assertOwnsPage(req, res, pageId)) return;
+      const blockId = req.params.blockId;
+      const { blockType, blockTitle, periodViews, periodInteractions, totalViews, totalInteractions, wentLiveAt } = req.body;
+      const db = new Database(process.env.DB_PATH || "data.db");
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO block_history (page_id, block_id, block_type, block_title, event, went_live_at, went_archived_at, period_views, period_interactions, total_views_alltime, total_interactions_alltime, created_at)
+        VALUES (?, ?, ?, ?, 'archived', ?, ?, ?, ?, ?, ?, ?)
+      `).run(pageId, blockId, blockType || null, blockTitle || null, wentLiveAt || null, now, periodViews || 0, periodInteractions || 0, totalViews || 0, totalInteractions || 0, now);
+      // Also write a "went_live" seed record if this is the first archive and no history exists
+      const existingLive = db.prepare("SELECT id FROM block_history WHERE page_id = ? AND block_id = ? AND event = 'went_live' LIMIT 1").get(pageId, blockId);
+      if (!existingLive && wentLiveAt) {
+        db.prepare(`
+          INSERT INTO block_history (page_id, block_id, block_type, block_title, event, went_live_at, created_at)
+          VALUES (?, ?, ?, ?, 'went_live', ?, ?)
+        `).run(pageId, blockId, blockType || null, blockTitle || null, wentLiveAt, wentLiveAt);
+      }
+      db.close();
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── POST /api/pages/:id/blocks/:blockId/record-live ───────────────────────────
+  // Called when a block goes live for the first time (or is restored from archive)
+  app.post("/api/pages/:id/blocks/:blockId/record-live", requireAuth as any, async (req: Request, res: Response) => {
+    try {
+      const pageId = parseInt(String(req.params.id));
+      if (!await assertOwnsPage(req, res, pageId)) return;
+      const blockId = req.params.blockId;
+      const { blockType, blockTitle } = req.body;
+      const db = new Database(process.env.DB_PATH || "data.db");
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO block_history (page_id, block_id, block_type, block_title, event, went_live_at, created_at)
+        VALUES (?, ?, ?, ?, 'went_live', ?, ?)
+      `).run(pageId, blockId, blockType || null, blockTitle || null, now, now);
+      db.close();
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
   });
 
   // Delete page (auth + ownership)
@@ -2410,7 +2522,7 @@ Output schema:
 
 Block types and their field shapes:
 - text:      { id, type:"text",      content:"markdown text" }
-- link:      { id, type:"link",      title:"label", url:"https://...", description:"optional" }
+- link:      { id, type:"link", title:"label", url:"https://...", description:"optional", icon:"single emoji that fits the link purpose — e.g. 📅 booking, 📧 email, 🎥 video, 💼 work, 📄 doc, ⬇️ download, 🛒 shop, 🎓 course, 🎤 podcast, 🌐 website" }
 - socials:   { id, type:"socials",   links:[{platform:"instagram",url:"https://..."}, ...] }
 - lead_form: { id, type:"lead_form", title:"...", description:"...", buttonText:"..." }
 - video:     { id, type:"video",     url:"https://youtube.com/...", title:"..." }
@@ -2645,6 +2757,55 @@ Suggested font for this use case: ${FONT_HINTS[ucKey]}`,
     }
   });
 
+
+  // ── GET /api/ai/suggest-username — suggests an untaken page slug ───────────
+  app.get("/api/ai/suggest-username", async (req: Request, res: Response) => {
+    try {
+      const name   = String(req.query.name   || "").slice(0, 80);
+      const domain = String(req.query.domain || "").slice(0, 80);
+      if (!name && !domain) return res.status(400).json({ error: "name or domain required" });
+
+      const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+      const candidates: string[] = [];
+      if (name) {
+        const base = toSlug(name);
+        const parts = name.trim().split(/\s+/);
+        candidates.push(base);
+        if (parts.length >= 2) {
+          candidates.push(toSlug(parts[0] + "-" + parts[parts.length - 1]));
+          candidates.push(toSlug(parts[0] + parts[parts.length - 1]));
+          candidates.push(toSlug(parts[0]));
+        }
+      }
+      if (domain) {
+        const domainBase = domain.replace(/^www\./, "").split(".")[0];
+        candidates.push(toSlug(domainBase));
+      }
+
+      const RESERVED = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","r","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback"]);
+      const seen = new Set<string>();
+      const unique = candidates.filter(c => c && c.length >= 3 && !RESERVED.has(c) && !seen.has(c) && (seen.add(c), true));
+
+      const db = new Database(process.env.DB_PATH || "data.db");
+      for (const slug of unique) {
+        const existing = db.prepare("SELECT id FROM pages WHERE username = ?").get(slug);
+        if (!existing) { db.close(); return res.json({ username: slug }); }
+      }
+      // All taken — append numeric suffix
+      const base = unique[0] || toSlug(name || domain);
+      for (let i = 2; i <= 99; i++) {
+        const slug = (base + "-" + i).slice(0, 40);
+        const existing = db.prepare("SELECT id FROM pages WHERE username = ?").get(slug);
+        if (!existing) { db.close(); return res.json({ username: slug }); }
+      }
+      db.close();
+      return res.json({ username: (base + "-" + Date.now().toString(36).slice(-4)).slice(0, 40) });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── POST /api/ai/onboarding-suggest ───────────────────────────────────────────────
   /**
    * Generates a personalised headline, bio, theme preset, and starter blocks
@@ -2689,7 +2850,7 @@ Output schema:
 }
 
 Block types:
-{ id:"blk-1", type:"link",        title:"...", url:"https://...", description:"...", icon:"emoji", style:"featured"|"default"|"outline" }
+{ id:"blk-1", type:"link", title:"...", url:"https://...", description:"...", icon:"single emoji matching link purpose: 📅 booking 📧 email 🎥 video 💼 work 📄 doc ⬇️ download 🛒 shop 🎓 course 🎤 podcast 🌐 website 🚀 launch", style:"featured"|"default"|"outline" }
 { id:"blk-2", type:"text",        content:"markdown bio text" }
 { id:"blk-3", type:"lead-form",   title:"...", formDescription:"...", buttonText:"..." }
 { id:"blk-4", type:"social-links", platforms:"[{\\"platform\\":\\"linkedin\\",\\"url\\":\\"https://linkedin.com/in/...\\"}]" }
@@ -2888,7 +3049,7 @@ Return ONLY valid JSON with these fields:
 }
 
 Block types:
-{ id:"blk-1", type:"link",        title:"...", url:"https://...", description:"...", icon:"emoji", style:"featured" }
+{ id:"blk-1", type:"link", title:"...", url:"https://...", description:"...", icon:"single emoji matching link purpose: 📅 booking 📧 email 🎥 video 💼 work 📄 doc ⬇️ download 🛒 shop 🎓 course 🎤 podcast 🌐 website", style:"featured" }
 { id:"blk-2", type:"text",        content:"markdown bio text" }
 { id:"blk-3", type:"lead-form",   title:"...", formDescription:"...", buttonText:"..." }
 { id:"blk-4", type:"social-links", platforms:"[{\\"platform\\":\\"linkedin\\",\\"url\\":\\"https://...\\"}]" }

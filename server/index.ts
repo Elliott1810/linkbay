@@ -257,15 +257,19 @@ app.use((req, res, next) => {
         const owner = await storage.getUserByEmail(page.ownerEmail);
 
         // Build OG fields
-        const pageTitle = page.title
+        const fallbackTitle = page.title
           ? `${page.title} | Linkbay`
           : `${page.ownerName} on Linkbay`;
-        const pageDescription = [
+        const fallbackDescription = [
           page.bio,
           page.location ? `📍 ${page.location}` : "",
           page.contactEmail ? `✉ ${page.contactEmail}` : "",
           "View my links and get in touch.",
         ].filter(Boolean).join("  ·  ").slice(0, 200);
+
+        // Prefer AI-generated SEO fields if available
+        const pageTitle       = (page as any).seoTitle       || fallbackTitle;
+        const pageDescription = (page as any).seoDescription || fallbackDescription;
 
         const pageUrl = `https://linkbay.ai/${username}`;
         const accentColor = page.accentColor || "#e06b1a";
@@ -309,6 +313,24 @@ app.use((req, res, next) => {
           /<meta name="description" content="[^"]*" \/>/,
           `<meta name="description" content="${escHtml(pageDescription)}" />`
         );
+
+        // Inject JSON-LD structured data if AI has generated it
+        const rawJsonLd = (page as any).jsonLd;
+        if (rawJsonLd) {
+          let jsonLdStr: string;
+          try {
+            // jsonLd may be stored as a JSON string or already an object
+            const jsonLdObj = typeof rawJsonLd === "string" ? JSON.parse(rawJsonLd) : rawJsonLd;
+            jsonLdStr = JSON.stringify(jsonLdObj);
+          } catch { jsonLdStr = ""; }
+          if (jsonLdStr) {
+            html = html.replace(
+              /<\/head>/,
+              `  <script type="application/ld+json">${jsonLdStr}<\/script>
+<\/head>`
+            );
+          }
+        }
 
         res.set("Content-Type", "text/html; charset=utf-8");
         // Cache for 5 minutes — enough for crawlers, short enough to pick up profile edits

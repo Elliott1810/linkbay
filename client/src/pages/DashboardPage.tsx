@@ -1235,6 +1235,18 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
     if (block.type === "social-links" && !(block as any).socials && (block as any).links) {
       (normalised as any).socials = (block as any).links;
     }
+    // AI import-url returns platforms as a JSON string — parse into socials
+    if (block.type === "social-links" && typeof (block as any).platforms === "string") {
+      try {
+        const parsed = JSON.parse((block as any).platforms);
+        if (Array.isArray(parsed)) (normalised as any).socials = parsed.map((p: any) => ({ platform: p.platform || "", url: p.url || "" }));
+      } catch { /* ignore */ }
+    }
+    if (block.type === "social-links" && Array.isArray((block as any).platforms)) {
+      if (!(normalised as any).socials) {
+        (normalised as any).socials = (block as any).platforms.map((p: any) => ({ platform: p.platform || "", url: p.url || "" }));
+      }
+    }
     if (block.type === "poll" && !(block as any).question && (block as any).label) {
       (normalised as any).question = (block as any).label;
     }
@@ -1849,14 +1861,34 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
                 if (data.blocks) {
                   // #18: normalise AI blocks (link, socials, lead_form) to app block types
                   const genId = () => "blk-" + Math.random().toString(36).slice(2, 8);
-                  const normalised = (data.blocks as any[]).flatMap((b: any) => {
+                  const normalisedAll = (data.blocks as any[]).flatMap((b: any) => {
                     switch (b.type) {
                       case "link": return [{ id: b.id || genId(), type: "link", title: b.title || b.label || "Link", url: b.url || "", description: b.description || "", icon: b.icon || "🔗", linkStyle: b.linkStyle || "default" }];
-                      case "socials": return [{ id: b.id || genId(), type: "social-links", socials: (b.links || []).map((l: any) => ({ platform: l.platform, url: l.url })) }];
+                      case "socials": {
+                        // Handle platforms as JSON string or array
+                        let socialArr = b.links || b.socials || [];
+                        if (!Array.isArray(socialArr) && typeof (b.platforms) === "string") {
+                          try { socialArr = JSON.parse(b.platforms); } catch { socialArr = []; }
+                        } else if (Array.isArray(b.platforms)) {
+                          socialArr = b.platforms;
+                        }
+                        return [{ id: b.id || genId(), type: "social-links", socials: (socialArr as any[]).map((l: any) => ({ platform: l.platform || "", url: l.url || "" })) }];
+                      }
+                      case "social-links": {
+                        let socialArr2 = b.socials || b.links || [];
+                        if (!Array.isArray(socialArr2) && typeof b.platforms === "string") {
+                          try { socialArr2 = JSON.parse(b.platforms); } catch { socialArr2 = []; }
+                        } else if (!Array.isArray(socialArr2) && Array.isArray(b.platforms)) {
+                          socialArr2 = b.platforms;
+                        }
+                        return [{ id: b.id || genId(), type: "social-links", socials: (socialArr2 as any[]).map((l: any) => ({ platform: l.platform || "", url: l.url || "" })) }];
+                      }
                       case "lead_form": return [{ id: b.id || genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || "", buttonText: b.buttonText || "Send" }];
                       default: return [b];
                     }
                   });
+                  // Respect block allowance: free tier capped at FREE_BLOCK_LIMIT
+                  const normalised = editorTier === "free" ? normalisedAll.slice(0, FREE_BLOCK_LIMIT) : normalisedAll;
                   updateData.blocks = JSON.stringify(normalised);
                   // #13/#13a: Mark all AI-generated blocks as new for highlighting
                   const newIds = (data.blocks as any[]).flatMap((b: any) => {
@@ -2377,7 +2409,12 @@ function AIBlockRecommender({ onAddAll, onSkip, remainingSlots }: { onAddAll: (b
           case "text": return [{ id: genId(), type: "text", content: b.content || "" }];
           case "lead-form": return [{ id: genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || "", buttonText: b.buttonText || "Send" } as any];
           case "link": return [{ id: genId(), type: "link", title: b.title || "Link", url: b.url || "", description: b.description || "", icon: b.icon || "🔗", linkStyle: b.style || "default" } as any];
-          case "social-links": return [{ id: genId(), type: "social-links", socials: (b.links || []).map((l: any) => ({ platform: l.platform, url: l.url })) } as any];
+          case "social-links": {
+            let slArr = b.socials || b.links || [];
+            if (!Array.isArray(slArr) && typeof b.platforms === "string") { try { slArr = JSON.parse(b.platforms); } catch { slArr = []; } }
+            else if (!Array.isArray(slArr) && Array.isArray(b.platforms)) { slArr = b.platforms; }
+            return [{ id: genId(), type: "social-links", socials: (slArr as any[]).map((l: any) => ({ platform: l.platform || "", url: l.url || "" })) } as any];
+          }
           case "booking": return [{ id: genId(), type: "booking", title: b.title || "Book a call", platform: b.platform || "calendly", embedUrl: b.embedUrl || "", embedHeight: b.embedHeight || 650 } as any];
           default: return [];
         }
@@ -3631,6 +3668,16 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
         newArchived = existingArchived.includes(blockId) ? existingArchived : [...existingArchived, blockId];
       } else if (action === "restore") {
         // Restore from archived back to live (G6: block goes to bottom)
+        // Block limit check: free tier may not exceed FREE_BLOCK_LIMIT live blocks
+        const currentBlocks2: any[] = (() => { try { return JSON.parse(page.blocks || "[]"); } catch { return []; } })();
+        const currentArchived2: string[] = (() => { try { return JSON.parse(page.archivedBlockIds || "[]"); } catch { return []; } })();
+        const currentHidden2: string[] = (() => { try { return JSON.parse((page as any).hiddenBlockIds || "[]"); } catch { return []; } })();
+        const currentLive = currentBlocks2.filter((b: any) => !currentArchived2.includes(b.id) && !currentHidden2.includes(b.id));
+        const PANEL_FREE_LIMIT = 5;
+        const editorTierLocal: string = licenceTier ?? "free";
+        if (editorTierLocal === "free" && currentLive.length >= PANEL_FREE_LIMIT) {
+          throw new Error("BLOCK_LIMIT");
+        }
         newArchived = existingArchived.filter((id: string) => id !== blockId);
         newHidden = existingHidden.filter((id: string) => id !== blockId);
       } else if (action === "hide") {
@@ -3665,6 +3712,11 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
       queryClient.invalidateQueries({ queryKey: ["/api/pages", selectedPageId, "block-analytics"] });
       // Also invalidate main analytics so topInteractionsMap stays in sync
       queryClient.invalidateQueries({ queryKey: ["/api/pages", selectedPageId, "analytics"] });
+    },
+    onError: (err: Error) => {
+      if (err.message === "BLOCK_LIMIT") {
+        alert("Block limit reached. Free plan allows 5 live blocks. Remove a block first before restoring this one.");
+      }
     },
   });
 
@@ -5606,7 +5658,7 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
       ${avatarHtml}
       <div style="font-size:13px;font-weight:800;color:#fff;font-family:Arial,sans-serif;line-height:1.2;margin-bottom:4px">${name.split(" ")[0]}</div>
       <div style="font-size:11px;color:${safeAccent};font-family:Arial,sans-serif;font-weight:700;margin-bottom:14px">${name.split(" ").slice(1).join(" ") || ""}</div>
-      ${pageUrl ? `<a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:10px;font-weight:700;padding:6px 10px;border-radius:20px;text-decoration:none;letter-spacing:0.04em;line-height:1">${condensedUrl}</a>` : ""}
+      ${pageUrl ? `<a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:10px;font-weight:700;padding:6px 10px;border-radius:20px;text-decoration:none;letter-spacing:0.04em;line-height:1">${btnText}</a>` : ""}
     </td>
     <!-- White content panel -->
     <td style="background:#ffffff;padding:20px 20px;vertical-align:middle">
@@ -5662,7 +5714,7 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
           <td style="vertical-align:middle">
             ${contactItems.join(dot)}
           </td>
-          ${pageUrl ? `<td style="text-align:right;vertical-align:middle;white-space:nowrap;padding-left:12px"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;padding:7px 14px;border-radius:20px;text-decoration:none;letter-spacing:0.03em">${condensedUrl}</a></td>` : ""}
+          ${pageUrl ? `<td style="text-align:right;vertical-align:middle;white-space:nowrap;padding-left:12px"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;padding:7px 14px;border-radius:20px;text-decoration:none;letter-spacing:0.03em">${btnText}</a></td>` : ""}
         </tr>
       </table>
     </td>
@@ -5705,7 +5757,7 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
             ${phone ? `<div style="font-size:12px;color:#475569;font-family:Arial,sans-serif;padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">📞</span><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></div>` : ""}
             ${email ? `<div style="font-size:12px;font-family:Arial,sans-serif;padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></div>` : ""}
           </td>
-          ${pageUrl ? `<td style="text-align:right;vertical-align:middle"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;padding:8px 16px;border-radius:20px;text-decoration:none;letter-spacing:0.02em;white-space:nowrap">${condensedUrl}</a></td>` : ""}
+          ${pageUrl ? `<td style="text-align:right;vertical-align:middle"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;padding:8px 16px;border-radius:20px;text-decoration:none;letter-spacing:0.02em;white-space:nowrap">${btnText}</a></td>` : ""}
         </tr>
       </table>
     </td>
@@ -5876,7 +5928,7 @@ function EmailSignaturePanel({ user, pages }: { user: any; pages: any[] }) {
             {/* Link button settings */}
             <div style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1rem 1.125rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
               <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.125rem" }}>Profile link button</div>
-              <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>Linking to: <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>{defaultPageUrl || "(no page yet)"}</span></div>
+              <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>Linking to: <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>{defaultPageUrl ? defaultPageUrl.replace(/^https?:\/\/(www\.)?/, "") : "(no page yet)"}</span></div>
               <div>{inputLabel("Button label")}<input className="input" value={pageLabel} onChange={e => setPageLabel(e.target.value)} placeholder="View my profile" style={{ width: "100%", boxSizing: "border-box" as const }} /></div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.25rem" }}>
                 {inputLabel("Accent colour")}

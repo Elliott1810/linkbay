@@ -35,7 +35,7 @@ const icons: Record<string, JSX.Element> = {
   signature: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8l7.89 5.26a2 2 0 0 0 2.22 0L21 8M5 19h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/></svg>,
 };
 
-const LINK_ICONS = ["🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇️", "⭐", "💬", "🌐", "📊"];
+const LINK_ICONS = ["🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇️", "⭐", "💬", "🌐", "📊", "🎓", "🛒", "📝", "🗳️", "📞", "🎯", "🤝", "🚀", "🏆", "🎤", "🎵", "🎨", "🏋️", "🍕", "✈️", "🏠", "💡", "🔑", "🌿", "🎬", "📣", "🤖", "📰", "🎁", "💳", "🔐", "🖥️", "📸", "🧠", "⚡", "🌍"];
 
 // Shared block type emoji map — used in Top Interactions across Overview, Analytics, and Blocks panels
 const BLOCK_TYPE_EMOJI: Record<string, string> = {
@@ -3594,6 +3594,10 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
   const [searchHidden, setSearchHidden] = useState("");
   // #9a: toggle for bar chart
   const [blockChartMode, setBlockChartMode] = useState<"interactions" | "views">("interactions");
+  // Block history modal
+  const [historyBlockId, setHistoryBlockId] = useState<string | null>(null);
+  const [historyData, setHistoryData] = useState<any>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // G6b: "hidden" = archived from the hidden section; stays out of live even after restore attempt
   // We store hiddenBlockIds in page.hiddenBlockIds (same pattern as archivedBlockIds)
@@ -3703,7 +3707,37 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
 
       const res = await apiRequest("PATCH", `/api/pages/${selectedPageId}`, patchData);
       if (!res.ok) throw new Error("Failed to update");
-      return res.json();
+      const result = await res.json();
+
+      // Record history event after successful PATCH
+      try {
+        const theBlock = pageBlocks.find((b: any) => b.id === blockId);
+        const blockType = theBlock?.type ?? "";
+        const blockTitle = theBlock?.title || theBlock?.label || theBlock?.question || "";
+        if (action === "archive") {
+          // Gather stats for the period being closed
+          const bStats = blockStats.get(blockId);
+          const periodViews = bStats?.views ?? 0;
+          const periodInteractions = bStats?.interactions ?? 0;
+          const atBlock = allTimeBlocks.find((b: any) => b.blockId === blockId);
+          const totalViews = atBlock?.totalViews ?? 0;
+          const totalInteractions2 = atBlock?.totalInteractions ?? 0;
+          // Fetch current history to get wentLiveAt
+          let wentLiveAt: string | null = null;
+          try {
+            const hr = await apiRequest("GET", `/api/pages/${selectedPageId}/blocks/${blockId}/history`);
+            if (hr.ok) { const hd = await hr.json(); wentLiveAt = hd.liveStart ?? null; }
+          } catch { /* ignore */ }
+          await apiRequest("POST", `/api/pages/${selectedPageId}/blocks/${blockId}/record-archive`, {
+            blockType, blockTitle, periodViews, periodInteractions,
+            totalViews, totalInteractions: totalInteractions2, wentLiveAt,
+          });
+        } else if (action === "restore") {
+          await apiRequest("POST", `/api/pages/${selectedPageId}/blocks/${blockId}/record-live`, { blockType, blockTitle });
+        }
+      } catch { /* history recording is best-effort — don't fail the mutation */ }
+
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
@@ -3809,8 +3843,127 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
     cursor: "pointer",
   });
 
+  // ── BlockHistoryModal ──────────────────────────────────────────────────────
+  const BlockHistoryModal = historyBlockId !== null ? (() => {
+    const modalBlock = pageBlocks.find((b: any) => b.id === historyBlockId);
+    const modalLabel = modalBlock ? blockLabel(modalBlock) : historyBlockId;
+
+    const formatDuration = (fromIso: string | null | undefined, toIso?: string | null): string => {
+      if (!fromIso) return "Unknown";
+      const from = new Date(fromIso);
+      const to = toIso ? new Date(toIso) : new Date();
+      const diffMs = to.getTime() - from.getTime();
+      if (diffMs < 0) return "0 days";
+      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      if (days < 1) return "Less than a day";
+      if (days === 1) return "1 day";
+      return `${days} days`;
+    };
+
+    const formatDate = (iso: string | null | undefined): string => {
+      if (!iso) return "—";
+      try { return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch { return iso; }
+    };
+
+    const history: any[] = historyData?.history ?? [];
+    // Build period pairs: each 'went_live' paired with the next 'archived'
+    const liveEvents = history.filter((h: any) => h.event === "went_live");
+    const archiveEvents = history.filter((h: any) => h.event === "archived");
+
+    const currentPeriodViews: number = historyData?.currentPeriodViews ?? 0;
+    const currentPeriodInteractions: number = historyData?.currentPeriodInteractions ?? 0;
+    const totalViews: number = historyData?.totalViews ?? 0;
+    const totalInteractions: number = historyData?.totalInteractions ?? 0;
+    const liveStart: string | null = historyData?.liveStart ?? null;
+    void (historyData?.now); // available from API but unused in display (formatDuration uses new Date())
+
+    return (
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", padding: "1rem" }}
+        onClick={() => { setHistoryBlockId(null); setHistoryData(null); }}
+      >
+        <div
+          className="card"
+          style={{ width: "100%", maxWidth: 560, maxHeight: "85vh", overflow: "auto", padding: "1.5rem", position: "relative" }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.25rem" }}>
+            <div>
+              <h2 style={{ fontSize: "var(--text-base)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.25rem" }}>Block History</h2>
+              <p style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{modalLabel}</p>
+            </div>
+            <button onClick={() => { setHistoryBlockId(null); setHistoryData(null); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--color-text-faint)", lineHeight: 1, padding: "0.25rem" }}>✕</button>
+          </div>
+
+          {historyLoading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {[0,1,2].map(i => <div key={i} className="skeleton" style={{ height: 48, borderRadius: "var(--radius-md)" }} />)}
+            </div>
+          ) : (
+            <>
+              {/* Summary stats */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.25rem" }}>
+                {[
+                  { label: "Went live", value: formatDate(liveStart) },
+                  { label: "Time live", value: formatDuration(liveStart, null) },
+                  { label: "All-time views", value: totalViews },
+                  { label: "All-time interactions", value: totalInteractions },
+                  { label: "Period views (current)", value: currentPeriodViews },
+                  { label: "Period interactions (current)", value: currentPeriodInteractions },
+                ].map(stat => (
+                  <div key={stat.label} className="card" style={{ padding: "0.75rem", textAlign: "center", background: "var(--color-surface-offset)" }}>
+                    <div style={{ fontSize: "var(--text-lg)", fontWeight: 800, color: "var(--color-primary)", fontFamily: "Cabinet Grotesk, sans-serif" }}>{stat.value}</div>
+                    <div style={{ fontSize: 10, color: "var(--color-text-faint)", marginTop: "0.125rem" }}>{stat.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Past periods table */}
+              {archiveEvents.length > 0 ? (
+                <>
+                  <h3 style={{ fontSize: 12, fontWeight: 700, marginBottom: "0.5rem", color: "var(--color-text-muted)" }}>Past periods</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    {archiveEvents.map((ae: any, idx: number) => {
+                      // Find the preceding went_live event
+                      const correspondingLive = liveEvents.filter((le: any) => {
+                        if (!ae.went_live_at && !le.went_live_at) return false;
+                        return le.went_live_at === ae.went_live_at || (!ae.went_live_at && idx === 0);
+                      })[0] ?? liveEvents[idx];
+                      const wentLiveAt = ae.went_live_at ?? correspondingLive?.went_live_at ?? null;
+                      const archivedAt = ae.went_archived_at ?? ae.created_at ?? null;
+                      return (
+                        <div key={ae.id} style={{ background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", padding: "0.75rem", fontSize: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.375rem" }}>
+                            <span style={{ fontWeight: 700, color: "var(--color-text)" }}>Period {archiveEvents.length - idx}</span>
+                            <span style={{ color: "var(--color-text-faint)" }}>{formatDuration(wentLiveAt, archivedAt)}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: "1rem", color: "var(--color-text-muted)" }}>
+                            <span>📅 {formatDate(wentLiveAt)} → {formatDate(archivedAt)}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: "1.5rem", marginTop: "0.375rem", fontSize: 11, color: "var(--color-text-faint)" }}>
+                            <span>Views: <strong style={{ color: "var(--color-text)" }}>{ae.period_views ?? 0}</strong></span>
+                            <span>Interactions: <strong style={{ color: "var(--color-text)" }}>{ae.period_interactions ?? 0}</strong></span>
+                          </div>
+                        </div>
+                      );
+                    }).reverse()}
+                  </div>
+                </>
+              ) : (
+                <p style={{ fontSize: 12, color: "var(--color-text-faint)", textAlign: "center", padding: "0.75rem" }}>No past periods yet — history is recorded when you archive a block.</p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  })() : null;
+  // ── end BlockHistoryModal ──────────────────────────────────────────────────
+
   return (
     <div className="blocks-panel-content" style={{ flex: 1, padding: "1.5rem", overflow: "auto" }}>
+      {BlockHistoryModal}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "0.75rem" }}>
         <div>
           <h1 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif" }}>Block Analysis</h1>
@@ -4003,6 +4156,16 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                         <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{blockLabel(block)}</span>
                         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
                           <span style={{ fontWeight: 700, color: "var(--color-primary)" }}>Interaction rate: {interactionRate.toFixed(1)}%</span>
+                          <button onClick={async () => {
+                            setHistoryBlockId(block.id);
+                            setHistoryLoading(true);
+                            setHistoryData(null);
+                            try {
+                              const r = await apiRequest("GET", `/api/pages/${selectedPageId}/blocks/${block.id}/history`);
+                              const d = await r.json();
+                              setHistoryData(d);
+                            } catch { setHistoryData(null); } finally { setHistoryLoading(false); }
+                          }} className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "0.15rem 0.5rem" }} title="Block history">History</button>
                           <button onClick={() => archiveMutation.mutate({ blockId: block.id, action: "archive" })} disabled={archiveMutation.isPending} className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "0.15rem 0.5rem" }} title="Archive block">Archive</button>
                         </div>
                       </div>

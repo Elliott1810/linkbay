@@ -496,7 +496,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY count DESC
       `).all(pageId) as Array<{ block_id: string; block_type: string; type: string; count: number }>;
 
-      // Aggregate by blockId across event types — #9: split views vs interactions properly
+      // Aggregate by blockId across event types
+      // block_view = per-block IntersectionObserver view (distinct from page-level "view")
       const BLOCK_INTERACTION_EVENTS = new Set(["submit", "click", "vote", "expand", "play", "link_click"]);
       const blockMap = new Map<string, { blockId: string; blockType: string; totalInteractions: number; totalViews: number; byEventType: Record<string, number> }>();
       for (const e of allTimeBlockEvents) {
@@ -504,7 +505,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!blockMap.has(key)) blockMap.set(key, { blockId: e.block_id, blockType: e.block_type, totalInteractions: 0, totalViews: 0, byEventType: {} });
         const b = blockMap.get(key)!;
         b.byEventType[e.type] = (b.byEventType[e.type] || 0) + e.count;
-        if (e.type === "view") b.totalViews += e.count;
+        if (e.type === "block_view") b.totalViews += e.count;          // per-block view event
+        else if (e.type === "view") { /* legacy page-level view — skip for block stats */ }
         else if (BLOCK_INTERACTION_EVENTS.has(e.type) || e.type.startsWith("block_interact")) b.totalInteractions += e.count;
         else b.totalInteractions += e.count;
       }
@@ -671,35 +673,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Current period:
-      // - "Page views" = page-level view events (type='view', no block_id filter) since liveStart
-      //   This is the total audience that could have seen this block.
-      // - "Interactions" = block-specific non-view events since liveStart
+      // - "Block views" = block_view events (IntersectionObserver fires once per block per visit)
+      // - "Interactions" = all other non-view events for this block since liveStart
       let currentPeriodViews = 0, currentPeriodInteractions = 0;
       if (liveStart) {
-        // Page views (page-level, not per-block — blocks don't emit their own view events)
-        const pageViewRow = db.prepare(
-          "SELECT COUNT(*) as cnt FROM page_events WHERE page_id = ? AND type = 'view' AND created_at >= ?"
-        ).get(pageId, liveStart) as any;
-        currentPeriodViews = pageViewRow?.cnt ?? 0;
-        // Block interactions (all non-view events for this block since liveStart)
-        const blockInterRows = db.prepare(
-          "SELECT type, COUNT(*) as cnt FROM page_events WHERE page_id = ? AND block_id = ? AND type != 'view' AND created_at >= ? GROUP BY type"
+        const blockEventRows = db.prepare(
+          "SELECT type, COUNT(*) as cnt FROM page_events WHERE page_id = ? AND block_id = ? AND created_at >= ? GROUP BY type"
         ).all(pageId, blockId, liveStart) as any[];
-        for (const e of blockInterRows) currentPeriodInteractions += e.cnt;
+        for (const e of blockEventRows) {
+          if (e.type === "block_view") currentPeriodViews += e.cnt;
+          else if (e.type !== "view") currentPeriodInteractions += e.cnt; // skip legacy page-level view
+        }
       }
 
-      // All-time totals for this block (interactions only — views are page-level)
+      // All-time totals for this block
       const allTime = db.prepare(
         "SELECT type, COUNT(*) as cnt FROM page_events WHERE page_id = ? AND block_id = ? GROUP BY type"
       ).all(pageId, blockId) as any[];
-      // All-time page views for context
-      const allTimePageViews = (db.prepare(
-        "SELECT COUNT(*) as cnt FROM page_events WHERE page_id = ? AND type = 'view'"
-      ).get(pageId) as any)?.cnt ?? 0;
-      let totalViews = allTimePageViews;
-      let totalInteractions = 0;
+      let totalViews = 0, totalInteractions = 0;
       for (const e of allTime) {
-        if (e.type !== "view") totalInteractions += e.cnt;
+        if (e.type === "block_view") totalViews += e.cnt;
+        else if (e.type !== "view") totalInteractions += e.cnt; // skip legacy page-level view
       }
       db.close();
       return res.json({

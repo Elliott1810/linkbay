@@ -638,51 +638,8 @@ function OverviewPanel({
         </div>
       )}
 
-      {/* Top links + share section */}
-      <div className="overview-bottom-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
-        {/* Top links */}
-        <div className="card" style={{ padding: "1.25rem" }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.75rem" }}>Top Interactions</div>
-          {(() => {
-            const interactions = analytics?.topInteractions ?? [];
-            if (interactions.length === 0) return (
-              <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>
-                No interactions tracked yet. Share your page!
-              </div>
-            );
-            const liveBlockIds = (() => { try { return new Set((JSON.parse(page?.blocks || "[]") as any[]).map((b: any) => b.id)); } catch { return new Set(); } })();
-            const totalPageViews = Math.max(analytics?.periodViews ?? analytics?.totalViews ?? 1, 1);
-            return interactions.map((item: any) => {
-              const isLive = !item.blockId || liveBlockIds.has(item.blockId);
-              const total = item.total ?? item.clickCount ?? 0;
-              const interactionPct = Math.min(Math.round((total / totalPageViews) * 1000) / 10, 100);
-              const viewsPct = 100;
-              const barColor = isLive ? "var(--color-primary)" : "var(--color-text-faint)";
-              const emoji = blockTypeEmoji(item.type || item.blockType || "link");
-              return (
-                <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
-                    <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{item.label || item.blockType || "Link"}</span>
-                    {!isLive && <span style={{ fontSize: 9, background: "var(--color-surface-offset)", color: "var(--color-text-faint)", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>past</span>}
-                    <span style={{ fontWeight: 700, color: barColor, flexShrink: 0 }}>Interaction rate: {interactionPct.toFixed(1)}%</span>
-                  </div>
-                  {/* Stacked bar: views (amber) + interactions (primary) as two segments */}
-                  <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
-                    <div style={{ height: "100%", width: `${Math.min(viewsPct - interactionPct, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
-                    <div style={{ height: "100%", width: `${interactionPct}%`, background: barColor, borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
-                  </div>
-                  <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                    <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Page views: {totalPageViews}</span>
-                    <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: barColor, marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
-                  </div>
-                </div>
-              );
-            });
-          })()}
-        </div>
-
-        {/* Right column: Quick actions + Share section */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      {/* Quick actions + Share section — full width, no Top Interactions (moved to Page Analytics) */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {/* G1: Page health score — uses user.avatarUrl for photo check, hideable via G1a */}
           {!pageHealthHidden && (() => {
             const checks = [
@@ -822,7 +779,6 @@ function OverviewPanel({
               </a>
             </div>
           </div>
-        </div>
       </div>
     </div>
   );
@@ -3757,7 +3713,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1.5rem" }}>
         {[
-          { label: days === 0 ? "Interactions (all time)" : `Interactions (${days}d)`, value: totalInteractions, sub: "Excl. view events" },
+          { label: days === 0 ? "Interactions (all time)" : `Interactions (${days}d)`, value: totalInteractions, sub: "Block clicks \u0026 engagements" },
           { label: "Trackable blocks", value: displayLiveBlocks.length, sub: `of ${liveBlocks.length} live` },
           { label: "Archived", value: archivedBlocks.length, sub: "Off your page" },
           { label: "Hidden", value: hiddenBlocks.length, sub: "Fully removed" },
@@ -5464,7 +5420,7 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
       </div>
 
       {/* Danger zone */}
-      <div className="card" style={{ padding: "1.5rem", border: "1.5px solid rgba(239,68,68,0.25)" }}>
+      <div className="card" style={{ padding: "1.5rem", border: "1.5px solid rgba(239,68,68,0.25)", marginTop: "1rem" }}>
         <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem", color: "var(--color-error)" }}>Danger zone</h2>
         <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1.25rem" }}>
           Permanently delete your account and all associated pages, links, and leads. This action cannot be undone.
@@ -5519,7 +5475,7 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
       </div>
 
       {/* #16: Referrals moved into Settings */}
-      <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem" }}>
+      <div className="card" style={{ padding: "1.5rem", marginBottom: "1rem", marginTop: "1rem" }}>
         <h2 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.25rem" }}>Referrals</h2>
         <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>Earn rewards by sharing Linkbay with friends.</p>
         <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>🎁</div>
@@ -5546,82 +5502,118 @@ function buildSignatureHtml(opts: {
   const safeAccent = accent || "#e06b1a";
   const btnText = pageLabel || "View my profile";
   const hasAvatar = !!avatarUrl;
+  const initials = name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
 
-  const avatarBlock = hasAvatar ? `<img src="${avatarUrl}" width="56" height="56" style="width:56px;height:56px;border-radius:50%;object-fit:cover;display:block;border:2px solid ${safeAccent}" alt="${name}" />` : `<div style="width:56px;height:56px;border-radius:50%;background:${safeAccent};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;font-family:Arial,sans-serif;line-height:56px;text-align:center">${name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}</div>`;
+  // Helper: slightly darken a hex colour by mixing with black
+  const darken = (hex: string, amt = 20): string => {
+    const h = hex.replace("#", "");
+    const r = Math.max(0, parseInt(h.slice(0,2),16) - amt);
+    const g = Math.max(0, parseInt(h.slice(2,4),16) - amt);
+    const b = Math.max(0, parseInt(h.slice(4,6),16) - amt);
+    return `#${r.toString(16).padStart(2,"0")}${g.toString(16).padStart(2,"0")}${b.toString(16).padStart(2,"0")}`;
+  };
+  const accentDark = darken(safeAccent, 25);
 
-  const dividerHtml = showDivider ? `<div style="border-top:2px solid ${safeAccent};margin:0 0 12px 0;width:100%"></div>` : "";
+  const dividerHtml = showDivider
+    ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:14px"><tr><td style="height:2px;background:linear-gradient(90deg,${safeAccent},${accentDark});border-radius:2px;font-size:0;line-height:0">&nbsp;</td></tr></table>`
+    : "";
 
-  const metaLine = [title, company].filter(Boolean).join(" · ");
-  const phoneHtml = phone ? `<tr><td style="padding:1px 0;font-size:12px;color:#666;font-family:Arial,sans-serif;">📞 <a href="tel:${phone}" style="color:#666;text-decoration:none">${phone}</a></td></tr>` : "";
-  const emailHtml = email ? `<tr><td style="padding:1px 0;font-size:12px;color:#666;font-family:Arial,sans-serif;">✉ <a href="mailto:${email}" style="color:${safeAccent};text-decoration:none">${email}</a></td></tr>` : "";
-  const btnHtml = pageUrl ? `<tr><td style="padding-top:10px"><a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;padding:7px 16px;border-radius:6px;text-decoration:none;letter-spacing:0.01em">${btnText} →</a></td></tr>` : "";
-
-  // ── Minimal: clean inline layout, monogram or avatar, accent dot separator ──
-  if (style === "minimal") {
-    const dotSep = `<span style="color:${safeAccent};margin:0 5px;font-size:11px">•</span>`;
-    const metaParts = [title, company].filter(Boolean);
-    const metaHtml = metaParts.length ? metaParts.map(p => `<span style="font-size:11px;color:#777;font-family:Arial,sans-serif">${p}</span>`).join(dotSep) : "";
-    const contactLine = [phone ? `<a href="tel:${phone}" style="font-size:11px;color:#777;text-decoration:none;font-family:Arial,sans-serif">${phone}</a>` : "", email ? `<a href="mailto:${email}" style="font-size:11px;color:${safeAccent};text-decoration:none;font-family:Arial,sans-serif">${email}</a>` : ""].filter(Boolean).join(dotSep);
-    return `<!-- Linkbay Email Signature -->
-<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:480px">
-  ${dividerHtml ? `<tr><td colspan="2" style="padding-bottom:10px">${dividerHtml}</td></tr>` : ""}
+  // ─────────────────────────────────────────────────────────────────
+  // CLASSIC — bold left accent stripe, avatar, two-column layout
+  // Large name, colour-coded meta, subtle gradient header bar
+  // ─────────────────────────────────────────────────────────────────
+  if (style === "classic") {
+    const avatarHtml = hasAvatar
+      ? `<img src="${avatarUrl}" width="68" height="68" alt="${name}" style="width:68px;height:68px;border-radius:50%;object-fit:cover;border:3px solid ${safeAccent};display:block" />`
+      : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="68" height="68" style="width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,${safeAccent},${accentDark});text-align:center;vertical-align:middle;font-size:26px;font-weight:800;color:#fff;font-family:Arial,sans-serif;letter-spacing:-0.5px">${initials}</td></tr></table>`;
+    const metaLine = [title, company].filter(Boolean).join("  ·  ");
+    return `<!-- Linkbay Email Signature: Classic -->
+${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:500px;border-left:4px solid ${safeAccent};padding-left:0">
   <tr>
-    <td style="padding-right:14px;vertical-align:middle">${avatarBlock}</td>
+    <td style="padding:0 18px 0 14px;vertical-align:top;width:80px">
+      ${avatarHtml}
+      ${pageUrl ? `<div style="margin-top:10px;text-align:center"><a href="${pageUrl}" style="display:inline-block;background:${safeAccent};background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:Arial,sans-serif;font-size:10px;font-weight:700;padding:5px 11px;border-radius:20px;text-decoration:none;letter-spacing:0.03em;white-space:nowrap">${btnText}</a></div>` : ""}
+    </td>
+    <td style="vertical-align:top;padding:2px 0">
+      <table cellpadding="0" cellspacing="0" border="0">
+        <tr><td style="font-size:20px;font-weight:800;color:#0f172a;font-family:Arial,sans-serif;letter-spacing:-0.03em;line-height:1.15;padding-bottom:4px">${name}</td></tr>
+        ${metaLine ? `<tr><td style="font-size:12px;font-weight:700;color:${safeAccent};font-family:Arial,sans-serif;letter-spacing:0.02em;text-transform:uppercase;padding-bottom:10px">${metaLine}</td></tr>` : ""}
+        ${phone ? `<tr><td style="padding:2px 0;font-size:12px;color:#475569;font-family:Arial,sans-serif"><span style="display:inline-block;width:16px;color:${safeAccent};font-weight:700">📞</span><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></td></tr>` : ""}
+        ${email ? `<tr><td style="padding:2px 0;font-size:12px;font-family:Arial,sans-serif"><span style="display:inline-block;width:16px;color:${safeAccent};font-weight:700">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></td></tr>` : ""}
+      </table>
+    </td>
+  </tr>
+</table>`;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // MINIMAL — single-line layout, bold name, dot-separated details,
+  // ultra-thin accent underline, inline CTA link (no button)
+  // ─────────────────────────────────────────────────────────────────
+  if (style === "minimal") {
+    const avatarHtml = hasAvatar
+      ? `<img src="${avatarUrl}" width="44" height="44" alt="${name}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid ${safeAccent};display:block" />`
+      : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="44" height="44" style="width:44px;height:44px;border-radius:50%;background:${safeAccent};text-align:center;vertical-align:middle;font-size:17px;font-weight:800;color:#fff;font-family:Arial,sans-serif">${initials}</td></tr></table>`;
+    const dot = `<span style="color:${safeAccent};margin:0 6px;font-size:10px;vertical-align:middle">&#9679;</span>`;
+    const metaParts = [title, company].filter(Boolean);
+    const contactParts = [
+      phone ? `<a href="tel:${phone}" style="color:#64748b;text-decoration:none;font-family:Arial,sans-serif;font-size:11px">${phone}</a>` : "",
+      email ? `<a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-family:Arial,sans-serif;font-size:11px;font-weight:600">${email}</a>` : "",
+      pageUrl ? `<a href="${pageUrl}" style="color:${safeAccent};text-decoration:none;font-family:Arial,sans-serif;font-size:11px;font-weight:700;border-bottom:1px solid ${safeAccent}">${btnText} &#8594;</a>` : "",
+    ].filter(Boolean);
+    const row2 = [...metaParts.map(p => `<span style="font-size:11px;color:#64748b;font-family:Arial,sans-serif">${p}</span>`), ...contactParts].join(dot);
+    return `<!-- Linkbay Email Signature: Minimal -->
+${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:520px">
+  <tr>
+    <td style="padding-right:14px;vertical-align:middle">${avatarHtml}</td>
     <td style="vertical-align:middle">
       <table cellpadding="0" cellspacing="0" border="0">
-        <tr><td style="font-size:15px;font-weight:700;color:#111;font-family:Arial,sans-serif;letter-spacing:-0.01em;padding-bottom:2px">${name}</td></tr>
-        ${metaHtml ? `<tr><td style="padding-bottom:4px">${metaHtml}</td></tr>` : ""}
-        ${contactLine ? `<tr><td style="padding-bottom:8px">${contactLine}</td></tr>` : ""}
-        ${pageUrl ? `<tr><td><a href="${pageUrl}" style="display:inline-block;font-size:11px;font-weight:700;color:${safeAccent};font-family:Arial,sans-serif;text-decoration:none;border-bottom:1.5px solid ${safeAccent};padding-bottom:1px">${btnText} →</a></td></tr>` : ""}
+        <tr><td style="font-size:16px;font-weight:800;color:#0f172a;font-family:Arial,sans-serif;letter-spacing:-0.02em;padding-bottom:3px">${name}</td></tr>
+        ${row2 ? `<tr><td style="line-height:1.6">${row2}</td></tr>` : ""}
+        <tr><td style="padding-top:6px"><div style="height:2px;width:32px;background:${safeAccent};border-radius:2px"></div></td></tr>
       </table>
     </td>
   </tr>
 </table>`;
   }
 
-  // ── Card: coloured header band with name/title, details below ──
-  if (style === "card") {
-    const accentBg = safeAccent;
-    const avatarCardBlock = hasAvatar
-      ? `<img src="${avatarUrl}" width="52" height="52" style="width:52px;height:52px;border-radius:50%;object-fit:cover;display:block;border:3px solid rgba(255,255,255,0.85)" alt="${name}" />`
-      : `<div style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;font-family:Arial,sans-serif;line-height:52px;text-align:center;border:2px solid rgba(255,255,255,0.45)">${name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}</div>`;
-    return `<!-- Linkbay Email Signature -->
-<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;border-radius:10px;overflow:hidden;max-width:420px;border:1px solid #e5e7eb">
-  ${dividerHtml ? `<tr><td colspan="2" style="padding:8px 16px 0">${dividerHtml}</td></tr>` : ""}
+  // ─────────────────────────────────────────────────────────────────
+  // CARD — full bleed dark header with avatar, gradient background,
+  // frosted-glass name overlay, clean white info panel below
+  // Most visually striking — stands out in any inbox
+  // ─────────────────────────────────────────────────────────────────
+  // Card style
+  const avatarCardHtml = hasAvatar
+    ? `<img src="${avatarUrl}" width="60" height="60" alt="${name}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,0.9);display:block" />`
+    : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="60" height="60" style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.25);text-align:center;vertical-align:middle;font-size:22px;font-weight:800;color:#fff;font-family:Arial,sans-serif;border:2px solid rgba(255,255,255,0.5)">${initials}</td></tr></table>`;
+  const metaLineCard = [title, company].filter(Boolean).join("  ·  ");
+  return `<!-- Linkbay Email Signature: Card -->
+${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:440px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,0.08)">
+  <!-- Header -->
   <tr>
-    <td style="background:${accentBg};padding:16px 18px;vertical-align:middle" width="88">${avatarCardBlock}</td>
-    <td style="background:${accentBg};padding:16px 18px 16px 0;vertical-align:middle">
-      <div style="font-size:17px;font-weight:800;color:#fff;font-family:Arial,sans-serif;letter-spacing:-0.01em;line-height:1.2">${name}</div>
-      ${metaLine ? `<div style="font-size:11px;color:rgba(255,255,255,0.82);font-family:Arial,sans-serif;margin-top:3px">${metaLine}</div>` : ""}
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2" style="background:#fff;padding:12px 18px">
+    <td style="background:linear-gradient(135deg,${safeAccent} 0%,${accentDark} 100%);padding:20px 20px 16px;vertical-align:bottom">
       <table cellpadding="0" cellspacing="0" border="0">
-        ${phone ? `<tr><td style="padding:2px 0;font-size:12px;color:#555;font-family:Arial,sans-serif"><span style="color:${safeAccent};margin-right:5px">☎</span><a href="tel:${phone}" style="color:#555;text-decoration:none">${phone}</a></td></tr>` : ""}
-        ${email ? `<tr><td style="padding:2px 0;font-size:12px;font-family:Arial,sans-serif"><span style="color:${safeAccent};margin-right:5px">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none">${email}</a></td></tr>` : ""}
-        ${pageUrl ? `<tr><td style="padding-top:10px"><a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:700;padding:7px 16px;border-radius:6px;text-decoration:none">${btnText} →</a></td></tr>` : ""}
+        <tr>
+          <td style="padding-right:14px;vertical-align:bottom">${avatarCardHtml}</td>
+          <td style="vertical-align:bottom;padding-bottom:2px">
+            <div style="font-size:20px;font-weight:800;color:#fff;font-family:Arial,sans-serif;letter-spacing:-0.03em;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.2)">${name}</div>
+            ${metaLineCard ? `<div style="font-size:11px;color:rgba(255,255,255,0.85);font-family:Arial,sans-serif;margin-top:3px;font-weight:500">${metaLineCard}</div>` : ""}
+          </td>
+        </tr>
       </table>
     </td>
   </tr>
-</table>`;
-  }
-
-  // ── Classic: refined two-column with subtle header accent bar ──
-  return `<!-- Linkbay Email Signature -->
-<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:480px">
-  ${dividerHtml ? `<tr><td colspan="2" style="padding-bottom:12px">${dividerHtml}</td></tr>` : ""}
+  <!-- Info row -->
   <tr>
-    <td style="padding-right:16px;vertical-align:top">
-      ${avatarBlock}
-      ${pageUrl ? `<div style="margin-top:8px;text-align:center"><a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;text-decoration:none;white-space:nowrap">${btnText}</a></div>` : ""}
-    </td>
-    <td style="vertical-align:top;border-left:3px solid ${safeAccent};padding-left:16px">
-      <table cellpadding="0" cellspacing="0" border="0">
-        <tr><td style="font-size:17px;font-weight:800;color:#111;font-family:Arial,sans-serif;letter-spacing:-0.01em;line-height:1.2;padding-bottom:3px">${name}</td></tr>
-        ${metaLine ? `<tr><td style="font-size:12px;color:${safeAccent};font-family:Arial,sans-serif;font-weight:600;padding-bottom:8px">${metaLine}</td></tr>` : ""}
-        ${phone ? `<tr><td style="padding:1px 0;font-size:12px;color:#666;font-family:Arial,sans-serif">☎ <a href="tel:${phone}" style="color:#666;text-decoration:none">${phone}</a></td></tr>` : ""}
-        ${email ? `<tr><td style="padding:1px 0;font-size:12px;font-family:Arial,sans-serif">✉ <a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></td></tr>` : ""}
+    <td style="background:#ffffff;padding:14px 20px">
+      <table cellpadding="0" cellspacing="0" border="0" width="100%">
+        <tr>
+          <td>
+            ${phone ? `<div style="font-size:12px;color:#475569;font-family:Arial,sans-serif;padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">📞</span><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></div>` : ""}
+            ${email ? `<div style="font-size:12px;font-family:Arial,sans-serif;padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></div>` : ""}
+          </td>
+          ${pageUrl ? `<td style="text-align:right;vertical-align:middle"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;padding:8px 16px;border-radius:20px;text-decoration:none;letter-spacing:0.02em;white-space:nowrap">${btnText} &#8594;</a></td>` : ""}
+        </tr>
       </table>
     </td>
   </tr>
@@ -6562,7 +6554,21 @@ export default function DashboardPage() {
             </div>
           </div>
         );
-      case "signature": return <EmailSignaturePanel user={user} pages={pages} />;
+      case "signature": {
+        if (licenceTier === "free") return (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
+            <div style={{ textAlign: "center", maxWidth: 380 }}>
+              <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>✉️</div>
+              <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", marginBottom: "0.5rem" }}>Email Signature — Pro feature</h2>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginBottom: "1.5rem" }}>Upgrade to Pro or Business to generate a branded HTML email signature that links directly to your Linkbay page.</p>
+              <button className="btn btn-primary" style={{ justifyContent: "center" }} onClick={() => { setActiveNav("billing"); }}>
+                Upgrade to Pro →
+              </button>
+            </div>
+          </div>
+        );
+        return <EmailSignaturePanel user={user} pages={pages} />;
+      }
       case "settings": return <SettingsPanel user={user} pages={pages} onLogout={async () => { await logout(); navigate("/"); }} />;
       case "billing": return <BillingPanel />;
       default: return <OverviewPanel pages={pages} user={user} onNavigate={(tab) => setActiveNav(tab)} sharedLink={sharedLink} onShared={markShared} onDismiss={dismissOnboarding} dismissed={onboardingDismissed} activePageId={activePageId} setActivePageId={setActivePageId} />;
@@ -6773,16 +6779,6 @@ export default function DashboardPage() {
             {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             {!sidebarCollapsed && "Collapse"}
           </button>
-          <Link
-            href="/account"
-            className="sidebar-nav-item"
-            style={{ width: "100%", textAlign: "left", justifyContent: sidebarCollapsed ? "center" : undefined, textDecoration: "none" }}
-            data-testid="button-account-settings"
-            title={sidebarCollapsed ? "Account settings" : undefined}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-            {!sidebarCollapsed && "Account settings"}
-          </Link>
           <button
             onClick={async () => { await logout(); navigate("/"); }}
             className="sidebar-nav-item"

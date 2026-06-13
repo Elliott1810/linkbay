@@ -6,6 +6,8 @@ import crypto from "crypto";
 import Database from "better-sqlite3";
 import Stripe from "stripe";
 import OpenAI from "openai";
+import https from "https";
+import http from "http";
 
 // ─── Tier limits ─────────────────────────────────────────────────────────────
 const TIER_LIMITS: Record<string, { pages: number; blocks: number; analytics: boolean; contacts: boolean; csvExport: boolean; qrCode: boolean; removebranding: boolean; priorityAiRpm: number; leadNotifyEmail: boolean }> = {
@@ -600,6 +602,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const page = await storage.updatePage(pageId, data);
       res.json({ success: true, page });
+      // Fire-and-forget SEO generation (non-blocking — runs after response is sent)
+      if (process.env.OPENAI_API_KEY) {
+        generateSeoForPage(page as Record<string, unknown>).catch(() => {/* silent */});
+      }
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
       res.status(500).json({ error: "Server error" });
@@ -2701,5 +2707,281 @@ ${ themeHint ? `- Theme accent: ${themeHint.accentColor} (use exactly this)\n- B
       return res.status(500).json({ error: "AI generation failed. Please try again." });
     }
   });
+
+  // ─────────────────────────────────────────────────
+  //  AI — Import from URL
+  // ─────────────────────────────────────────────────
+  app.post("/api/ai/import-url", requireAuth as any, async (req, res) => {
+    const rateLimitKey = (req as any).session?.userId ?? (req as any).session?.userEmail ?? "anon";
+    const now = Date.now();
+    const bucket = aiRateLimit.get(rateLimitKey);
+    if (bucket) {
+      if (now < bucket.resetAt && bucket.count >= 20) {
+        return res.status(429).json({ error: "Rate limit exceeded. Try again in an hour." });
+      }
+      if (now >= bucket.resetAt) {
+        aiRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 3600_000 });
+      } else {
+        bucket.count++;
+      }
+    } else {
+      aiRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 3600_000 });
+    }
+
+    const { url } = req.body as { url?: string };
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "url is required" });
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+      if (![ "http:", "https:" ].includes(parsedUrl.protocol)) throw new Error();
+    } catch {
+      return res.status(400).json({ error: "Invalid URL" });
+    }
+
+    // Fetch the target URL with Node built-in http/https
+    const rawHtml = await new Promise<string>((resolve, reject) => {
+      const lib = parsedUrl.protocol === "https:" ? https : http;
+      const reqOptions = {
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.pathname + parsedUrl.search,
+        port: parsedUrl.port || (parsedUrl.protocol === "https:" ? 443 : 80),
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; Linkbay/1.0; +https://linkbay.ai)",
+          "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.5",
+        },
+        timeout: 10_000,
+      };
+      const r = lib.request(reqOptions, (response) => {
+        // Follow single redirect
+        if (
+          response.statusCode &&
+          response.statusCode >= 300 &&
+          response.statusCode < 400 &&
+          response.headers.location
+        ) {
+          try {
+            const redirectLib = response.headers.location.startsWith("https") ? https : http;
+            const rr = redirectLib.get(response.headers.location, (rs) => {
+              const chunks: Buffer[] = [];
+              rs.on("data", (c: Buffer) => chunks.push(c));
+              rs.on("end", () => resolve(Buffer.concat(chunks).toString("utf8").slice(0, 200_000)));
+              rs.on("error", reject);
+            });
+            rr.on("error", reject);
+          } catch (e) { reject(e); }
+          return;
+        }
+        const chunks: Buffer[] = [];
+        response.on("data", (c: Buffer) => chunks.push(c));
+        response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8").slice(0, 200_000)));
+        response.on("error", reject);
+      });
+      r.on("error", reject);
+      r.on("timeout", () => { r.destroy(); reject(new Error("timeout")); });
+      r.end();
+    }).catch(() => "");
+
+    if (!rawHtml) {
+      return res.status(422).json({ error: "Could not fetch that URL. Make sure it is publicly accessible." });
+    }
+
+    // ── Parse the HTML for metadata ──────────────────────────────────────────
+    function getMeta(html: string, ...attrs: string[]): string {
+      for (const attr of attrs) {
+        const m = html.match(new RegExp(`<meta[^>]+${attr}[^>]+content=["']([^"']{1,600})["']`, "i"))
+          || html.match(new RegExp(`<meta[^>]+content=["']([^"']{1,600})["'][^>]+${attr}`, "i"));
+        if (m) return m[1].trim();
+      }
+      return "";
+    }
+    const titleMatch = rawHtml.match(/<title[^>]*>([^<]{1,200})<\/title>/i);
+    const metaTitle       = titleMatch ? titleMatch[1].trim() : "";
+    const metaDescription = getMeta(rawHtml, 'name=["\']description["\']') ||
+                            getMeta(rawHtml, 'property=["\']og:description["\']');
+    const ogTitle         = getMeta(rawHtml, 'property=["\']og:title["\']');
+    const ogDescription   = getMeta(rawHtml, 'property=["\']og:description["\']');
+    const ogImage         = getMeta(rawHtml, 'property=["\']og:image["\']');
+    // Strip tags and collapse whitespace for body text
+    const bodyText = rawHtml
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 3000);
+    const h1Match = rawHtml.match(/<h1[^>]*>([^<]{1,200})<\/h1>/i);
+    const h1Text = h1Match ? h1Match[1].replace(/<[^>]+>/g, "").trim() : "";
+    const hostname = parsedUrl.hostname.replace(/^www\./, "");
+    const platform =
+      hostname.includes("linkedin.com") ? "LinkedIn" :
+      hostname.includes("youtube.com")  ? "YouTube" :
+      hostname.includes("substack.com") ? "Substack" :
+      hostname.includes("calendly.com") ? "Calendly" :
+      hostname.includes("etsy.com")     ? "Etsy" :
+      hostname.includes("instagram.com") ? "Instagram" :
+      hostname.includes("twitter.com") || hostname.includes("x.com") ? "X / Twitter" :
+      hostname;
+
+    // ── Call GPT-4o to generate the page ─────────────────────────────────────
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const systemPrompt = `You are Linkbay AI. Given scraped content from a ${platform} page, generate a complete link-in-bio page profile as a JSON object.
+
+Return ONLY valid JSON with these fields:
+{
+  "background": "#hex or rgba(...) or 'gradient:...' ",
+  "accentColor": "#hex",
+  "fontFamily": "Cabinet Grotesk",
+  "blockStyle": "default|featured|outline|minimal",
+  "title": "Person or brand headline (under 80 chars)",
+  "bio": "2-sentence bio (under 280 chars)",
+  "blocks": [...]
+}
+
+Block types:
+{ id:"blk-1", type:"link",        title:"...", url:"https://...", description:"...", icon:"emoji", style:"featured" }
+{ id:"blk-2", type:"text",        content:"markdown bio text" }
+{ id:"blk-3", type:"lead-form",   title:"...", formDescription:"...", buttonText:"..." }
+{ id:"blk-4", type:"social-links", platforms:"[{\\"platform\\":\\"linkedin\\",\\"url\\":\\"https://...\\"}]" }
+{ id:"blk-5", type:"booking",     title:"...", platform:"calendly", embedUrl:"", embedHeight:650 }
+
+Rules:
+- Extract the person's real name from the title/h1 — use it throughout
+- The link-in-bio page URL being imported is ${url} — add it as the primary featured link block
+- Generate 4-8 relevant blocks that best represent the person/brand
+- Pick an accent colour that matches the brand (warm, professional, avoid purple/neon)
+- Background should be white (#ffffff), near-white, or a very light warm tint — not dark
+- Output ONLY the JSON object, no markdown fences`;
+
+    const userPrompt = `Platform: ${platform}
+URL: ${url}
+Page title: ${metaTitle || ogTitle}
+Meta description: ${metaDescription || ogDescription}
+H1: ${h1Text}
+Body text (truncated): ${bodyText}`;
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+        temperature: 0.7,
+      });
+
+      const raw = completion.choices[0]?.message?.content || "{}";
+      let parsed: Record<string, unknown>;
+      try { parsed = JSON.parse(raw); } catch { return res.status(500).json({ error: "AI returned malformed JSON" }); }
+
+      if (!parsed.title || !parsed.bio || !Array.isArray(parsed.blocks)) {
+        return res.status(500).json({ error: "AI response missing required fields" });
+      }
+
+      // Add og:image as avatar hint if present
+      if (ogImage && !parsed.avatarUrl) parsed.avatarUrl = ogImage;
+      parsed.importedFrom = url;
+      parsed.importedPlatform = platform;
+
+      return res.json(parsed);
+    } catch (e: any) {
+      console.error("AI import-url error:", e.message);
+      return res.status(500).json({ error: "AI generation failed. Please try again." });
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────
+//  Background: generate SEO fields for a page
+// ─────────────────────────────────────────────────
+async function generateSeoForPage(page: Record<string, unknown>): Promise<void> {
+  if (!process.env.OPENAI_API_KEY) return;
+  const pageId = page.id as number;
+  if (!pageId) return;
+
+  // Build a textual summary of the page for the AI
+  const name     = (page.title as string) || (page.ownerName as string) || "";
+  const bio      = (page.bio as string) || "";
+  const username = (page.username as string) || "";
+  const location = (page.location as string) || "";
+
+  // Parse blocks for extra context
+  let blocksText = "";
+  try {
+    const blocks = typeof page.blocks === "string" ? JSON.parse(page.blocks as string) : (page.blocks || []);
+    blocksText = (blocks as Array<Record<string, unknown>>)
+      .map((b) => {
+        if (b.type === "link")      return `Link: ${b.title} → ${b.url}`;
+        if (b.type === "text")      return `Text: ${b.content}`;
+        if (b.type === "lead-form") return `Lead form: ${b.title}`;
+        return "";
+      })
+      .filter(Boolean)
+      .join("; ")
+      .slice(0, 600);
+  } catch { /* ignore */ }
+
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  const prompt = `Generate SEO metadata for a Linkbay profile page.
+
+Profile:
+- Name / Title: ${name}
+- Username (URL slug): ${username}
+- Bio: ${bio}
+- Location: ${location}
+- Blocks: ${blocksText}
+
+Return ONLY valid JSON:
+{
+  "seoTitle": "50-60 char title including name + key skill/service",
+  "seoDescription": "150-160 char description with clear value prop + CTA",
+  "seoKeywords": "comma-separated 5-10 relevant keywords",
+  "jsonLd": { /* schema.org Person or ProfilePage object */ }
+}
+
+For jsonLd use @type ProfilePage or Person with: @context, @type, name, url, description, and jobTitle if inferable.
+Profile URL is https://linkbay.ai/${username}`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      max_tokens: 600,
+      temperature: 0.4,
+    });
+
+    const raw = completion.choices[0]?.message?.content || "{}";
+    const seo = JSON.parse(raw) as {
+      seoTitle?: string;
+      seoDescription?: string;
+      seoKeywords?: string;
+      jsonLd?: Record<string, unknown>;
+    };
+
+    const updatePayload: Record<string, unknown> = {};
+    if (seo.seoTitle)       updatePayload.seoTitle       = seo.seoTitle.slice(0, 70);
+    if (seo.seoDescription) updatePayload.seoDescription = seo.seoDescription.slice(0, 200);
+    if (seo.seoKeywords)    updatePayload.seoKeywords    = seo.seoKeywords.slice(0, 300);
+    if (seo.jsonLd)         updatePayload.jsonLd         = JSON.stringify(seo.jsonLd);
+
+    if (Object.keys(updatePayload).length > 0) {
+      await storage.updatePage(pageId, updatePayload as any);
+    }
+  } catch {
+    // Non-critical — silently ignore SEO generation errors
+  }
 }
 

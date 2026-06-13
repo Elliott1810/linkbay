@@ -501,7 +501,7 @@ function mapAiBlocks(aiBlocks: any[]): { links: PageLink[]; blocks: Block[] } {
   (aiBlocks || []).forEach((b: any) => {
     switch (b.type) {
       case "link":
-        links.push({ label: b.title || b.label || "Link", url: b.url || "", icon: "🔗", style: "default", description: b.description, position: links.length });
+        links.push({ label: b.title || b.label || "Link", url: b.url || "", icon: b.icon || "🔗", style: b.style || "default", description: b.description, position: links.length });
         break;
       case "text":
         blocks.push({ id: genId(), type: "text", content: b.content || "" });

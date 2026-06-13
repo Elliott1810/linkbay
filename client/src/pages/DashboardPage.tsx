@@ -5008,6 +5008,9 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
   const [avatarMsg, setAvatarMsg] = useState("");
   const [avatarError, setAvatarError] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [headerMsg, setHeaderMsg] = useState("");
+  const [headerError, setHeaderError] = useState("");
+  const [headerUploading, setHeaderUploading] = useState(false);
   const [, navigate] = useLocation();
   // Notification preferences (stored in user's browser via state; can be persisted per user)
   const [emailOnNewLead, setEmailOnNewLead] = useState(false);
@@ -5064,6 +5067,45 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
       setAvatarMsg("Profile picture removed.");
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       setTimeout(() => setAvatarMsg(""), 3000);
+    },
+  });
+
+  // Header image upload — uses the first page's ID
+  const firstPageId = pages?.[0]?.id;
+  const currentHeaderImageUrl = pages?.[0]?.headerImageUrl ?? null;
+
+  const handleHeaderImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !firstPageId) return;
+    setHeaderError(""); setHeaderMsg(""); setHeaderUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("headerImage", file);
+      const res = await fetch(`/api/pages/${firstPageId}/header-image`, { method: "POST", body: formData, credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setHeaderMsg("Header picture updated!");
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      setTimeout(() => setHeaderMsg(""), 3000);
+    } catch (err: any) {
+      setHeaderError(err.message || "Upload failed");
+    } finally {
+      setHeaderUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const removeHeaderImageMutation = useMutation({
+    mutationFn: async () => {
+      if (!firstPageId) throw new Error("No page");
+      const res = await apiRequest("DELETE", `/api/pages/${firstPageId}/header-image`);
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+      return res.json();
+    },
+    onSuccess: () => {
+      setHeaderMsg("Header picture removed.");
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      setTimeout(() => setHeaderMsg(""), 3000);
     },
   });
 
@@ -5169,6 +5211,35 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
             {avatarError && <div style={{ fontSize: 12, color: "var(--color-error)", marginTop: "0.5rem" }}>{avatarError}</div>}
           </div>
         </div>
+
+        {/* Header image upload */}
+        {firstPageId && (
+          <div style={{ marginBottom: "1.5rem", padding: "1rem", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)" }}>
+            <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.25rem" }}>Header picture</div>
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginBottom: "0.875rem" }}>Shown as the background of your hero card. JPEG, PNG or WebP. Max 8MB. Cropped to 1200×400.</div>
+            {currentHeaderImageUrl && (
+              <div style={{ marginBottom: "0.875rem", borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--color-border)", maxHeight: 120, position: "relative" }}>
+                <img src={resolveMediaUrl(currentHeaderImageUrl)} alt="Header" style={{ width: "100%", height: 120, objectFit: "cover", display: "block" }} />
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.5))", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ color: "#fff", fontSize: 11, fontWeight: 600, opacity: 0.9 }}>Current header</span>
+                </div>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <label className="btn btn-secondary btn-sm" style={{ cursor: "pointer" }}>
+                {headerUploading ? "Uploading…" : currentHeaderImageUrl ? "Change header" : "Upload header"}
+                <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handleHeaderImageChange} disabled={headerUploading} />
+              </label>
+              {currentHeaderImageUrl && (
+                <button className="btn btn-sm" style={{ color: "var(--color-error)", border: "1.5px solid var(--color-error)", background: "transparent" }} onClick={() => removeHeaderImageMutation.mutate()} disabled={removeHeaderImageMutation.isPending}>
+                  {removeHeaderImageMutation.isPending ? "Removing…" : "Remove"}
+                </button>
+              )}
+            </div>
+            {headerMsg && <div style={{ fontSize: 12, color: "var(--color-success)", fontWeight: 600, marginTop: "0.5rem" }}>✓ {headerMsg}</div>}
+            {headerError && <div style={{ fontSize: 12, color: "var(--color-error)", marginTop: "0.5rem" }}>{headerError}</div>}
+          </div>
+        )}
 
         <div className="settings-profile-name-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.25rem" }}>
           <div>

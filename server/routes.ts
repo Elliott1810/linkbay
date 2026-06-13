@@ -573,6 +573,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!await assertOwnsPage(req, res, pageId)) return;
       // Allowlist fields — prevent mass-assignment of ownerEmail, viewCount, etc.
       const allowedFields = z.object({
+        username: z.string().min(3).max(60).regex(/^[a-z0-9-]+$/).optional(),
         title: z.string().min(1).max(100).optional(),
         bio: z.string().max(300).optional(),
         location: z.string().max(80).optional(),
@@ -590,6 +591,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         headerImageUrl: z.string().nullable().optional(),
       });
       const data = allowedFields.parse(req.body);
+      // If username is being changed, validate uniqueness + reserved words
+      if (data.username) {
+        const RESERVED_NAMES = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","r","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback","404","500"]);
+        if (RESERVED_NAMES.has(data.username)) return res.status(400).json({ error: "That username is reserved." });
+        const existing = await storage.getPageByUsername(data.username);
+        if (existing && existing.id !== pageId) return res.status(409).json({ error: "That URL is already taken." });
+      }
       const page = await storage.updatePage(pageId, data);
       res.json({ success: true, page });
     } catch (err) {
@@ -1533,7 +1541,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const totalEvents = (sqlite.prepare("SELECT COUNT(*) as c FROM page_events").get() as any).c;
     const totalLeads = (sqlite.prepare("SELECT COUNT(*) as c FROM leads").get() as any).c;
     const totalClicks = (sqlite.prepare("SELECT COUNT(*) as c FROM page_events WHERE type = 'link_click'").get() as any).c || 0;
-    const totalViews = (sqlite.prepare("SELECT SUM(view_count) as c FROM pages WHERE published = 1").get() as any).c || 0;
+    // Use SUM(view_count) as the canonical view total — server-side counter, consistent with per-page view figures
+    const totalViews = (sqlite.prepare("SELECT SUM(view_count) as c FROM pages").get() as any).c || 0;
 
     // Event-type breakdown (Goal 2)
     const eventsByType = sqlite.prepare("SELECT type, COUNT(*) as c FROM page_events GROUP BY type").all() as Array<{ type: string; c: number }>;
@@ -1815,7 +1824,8 @@ function toggleSection(btn){
   <div class="section">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem"><h2 style="margin:0">Event breakdown</h2><button onclick="toggleSection(this)" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600;color:#64748b">&#9660; Collapse</button></div><div class="section-body">
     <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:13px">
-      <div><strong style="color:#e06b1a">Views:</strong> ${fmt(viewEvents)}</div>
+      <div><strong style="color:#e06b1a">Views (browser events):</strong> ${fmt(viewEvents)}</div>
+      <div><strong style="color:#e06b1a">Views (server counter):</strong> ${fmt(totalViews)}</div>
       <div><strong style="color:#e06b1a">Link Clicks:</strong> ${fmt(linkClickEvents)}</div>
       <div><strong style="color:#e06b1a">Lead Submits:</strong> ${fmt(leadSubmitEvents)}</div>
       <div><strong style="color:#e06b1a">Total Contacts (all users):</strong> ${fmt(totalContacts)}</div>

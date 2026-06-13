@@ -1697,6 +1697,13 @@ img.avatar-img {
   }
 }
 
+/* ── Account Settings: name/email grid → single column on mobile ── */
+@media (max-width: 600px) {
+  .settings-profile-name-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 /* ── Block editor list item: action buttons wrap ── */
 @media (max-width: 768px) {
   .block-list-item-actions {

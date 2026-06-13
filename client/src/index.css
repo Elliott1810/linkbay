@@ -2049,6 +2049,19 @@ img.avatar-img {
   border-radius: 0 var(--radius-md) var(--radius-md) 0 !important;
 }
 
+/* Hero header image exemption
+   Problem: block-style rules set `background-image: initial !important` on .block-card > *,
+   which beats even inline React style props (CSS !important beats non-!important inline).
+   Solution: store the image URL in a CSS custom property (--hero-bg) on the element via
+   React inline style, then reference it here with !important so it wins the cascade. */
+.block-card > .hero-header-img {
+  background-image: var(--hero-bg) !important;
+  background-size: cover !important;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-color: transparent !important;
+}
+
 /* #5: Glass info card — applied to profile main card + bio block */
 .block-style-glass-info {
   backdrop-filter: blur(12px) !important;

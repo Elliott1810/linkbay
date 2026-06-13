@@ -1261,7 +1261,31 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
 
   const startEdit = (block: PageBlock) => {
     setEditingBlockId(block.id);
-    setEditValues({ ...block });
+    // Normalise legacy field names from seed data:
+    // link blocks may use .label instead of .title
+    // social-links blocks may use .links instead of .socials
+    // lead-form blocks may use .label instead of .title
+    // text blocks may use .body instead of .content
+    const normalised: Partial<PageBlock> = { ...block };
+    if (block.type === "link" && !(block as any).title && (block as any).label) {
+      (normalised as any).title = (block as any).label;
+    }
+    if (block.type === "lead-form" && !(block as any).title && (block as any).label) {
+      (normalised as any).title = (block as any).label;
+    }
+    if (block.type === "text" && !(block as any).content && (block as any).body) {
+      (normalised as any).content = (block as any).body;
+    }
+    if (block.type === "social-links" && !(block as any).socials && (block as any).links) {
+      (normalised as any).socials = (block as any).links;
+    }
+    if (block.type === "poll" && !(block as any).question && (block as any).label) {
+      (normalised as any).question = (block as any).label;
+    }
+    if (block.type === "faq" && !(block as any).faqs && (block as any).items) {
+      (normalised as any).faqs = ((block as any).items || []).map((i: any) => ({ q: i.question || i.q || "", a: i.answer || i.a || "" }));
+    }
+    setEditValues(normalised);
   };
 
   const saveEdit = () => {
@@ -1288,9 +1312,16 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                 {block.type === "text" && (
                   <>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>📝 Text Block</div>
+                    <input
+                      className="input"
+                      value={editValues.title ?? ""}
+                      onChange={e => setEditValues(v => ({ ...v, title: e.target.value }))}
+                      placeholder="Title (optional)"
+                      style={{ fontSize: 13 }}
+                    />
                     <textarea
                       className="input"
-                      value={editValues.content ?? ""}
+                      value={editValues.content ?? (editValues as any).body ?? ""}
                       onChange={e => setEditValues(v => ({ ...v, content: e.target.value }))}
                       rows={4}
                       style={{ fontSize: 13, resize: "vertical" }}
@@ -1533,9 +1564,10 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                   <>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)" }}>🔗 Link Block</div>
                     <div style={{ display: "flex", gap: "0.5rem" }}>
-                      <input className="input" placeholder="Label" value={editValues.title ?? ""} onChange={e => setEditValues(v => ({ ...v, title: e.target.value }))} style={{ flex: 1, fontSize: 13 }} />
+                      <input className="input" placeholder="Label" value={editValues.title ?? (editValues as any).label ?? ""} onChange={e => setEditValues(v => ({ ...v, title: e.target.value }))} style={{ flex: 1, fontSize: 13 }} />
                       <input className="input" placeholder="URL (https://...)" value={editValues.url ?? ""} onChange={e => setEditValues(v => ({ ...v, url: e.target.value }))} style={{ flex: 2, fontSize: 13 }} />
                     </div>
+                    <input className="input" placeholder="Description / subtitle (optional)" value={editValues.description ?? ""} onChange={e => setEditValues(v => ({ ...v, description: e.target.value }))} style={{ fontSize: 13 }} />
                     <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                       <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", flexShrink: 0 }}>Icon:</span>
                       <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
@@ -1617,13 +1649,13 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                     <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{block.question}</div>
                   )}
                   {block.type === "lead-form" && (
-                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{block.title || "Lead Capture Form"}</div>
+                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{(block as any).title || (block as any).label || "Lead Capture Form"}</div>
                   )}
                   {(block.type === "image" || block.type === "video") && (
                     <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.src}</div>
                   )}
                   {block.type === "social-links" && (
-                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{(block.socials?.length ?? 0)} social link{(block.socials?.length ?? 0) !== 1 ? "s" : ""}</div>
+                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{((block.socials ?? (block as any).links)?.length ?? 0)} social link{((block.socials ?? (block as any).links)?.length ?? 0) !== 1 ? "s" : ""}</div>
                   )}
                   {block.type === "countdown" && (
                     <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{block.title || "Countdown"} → {block.targetDate}</div>
@@ -1642,7 +1674,7 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                   )}
                   {/* #14: link block summary */}
                   {block.type === "link" && (
-                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.icon ?? "🔗"} {block.title}</div>
+                    <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.icon ?? "🔗"} {(block as any).title || (block as any).label || "Link"}</div>
                   )}
                   {block.type === "vcard" && (
                     <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{block.vcName || "Contact card"}</div>
@@ -2578,8 +2610,16 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
   // #14: link block
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  const [linkDescription, setLinkDescription] = useState("");
   const [linkIcon, setLinkIcon] = useState("🔗");
   const [linkStyle, setLinkStyleState] = useState<"default" | "featured" | "outline">("default");
+  // button description
+  const [btnDescription, setBtnDescription] = useState("");
+  // booking
+  const [bookingPlatform, setBookingPlatform] = useState("calendly");
+  const [bookingUrl, setBookingUrl] = useState("");
+  const [bookingLabel, setBookingLabel] = useState("Book a call");
+  const [bookingHeight, setBookingHeight] = useState(650);
   // vcard
   const [vcName, setVcName] = useState("");
   const [vcJobTitle, setVcJobTitle] = useState("");
@@ -2599,7 +2639,9 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
     setBtnLabel(""); setBtnUrl("");
     setTQuote(""); setTAuthor(""); setTRole("");
     setFaqs([{ q: "", a: "" }]);
-    setLinkLabel(""); setLinkUrl(""); setLinkIcon("🔗"); setLinkStyleState("default");
+    setLinkLabel(""); setLinkUrl(""); setLinkDescription(""); setLinkIcon("🔗"); setLinkStyleState("default");
+    setBtnDescription("");
+    setBookingPlatform("calendly"); setBookingUrl(""); setBookingLabel("Book a call"); setBookingHeight(650);
     setVcName(""); setVcJobTitle(""); setVcCompany(""); setVcPhone(""); setVcEmail(""); setVcWebsite("");
     setError("");
   };
@@ -2644,7 +2686,7 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
       onAdd({ id, type: "divider", dividerStyle: divStyle, thickness: divThickness } as any);
     } else if (blockType === "button") {
       if (!btnLabel.trim() || !btnUrl.trim()) { setError("Label and URL are required"); return; }
-      onAdd({ id, type: "button", title: btnLabel.trim(), url: btnUrl.trim() });
+      onAdd({ id, type: "button", title: btnLabel.trim(), url: btnUrl.trim(), description: btnDescription.trim() || undefined } as any);
     } else if (blockType === "testimonial") {
       if (!tQuote.trim()) { setError("Quote is required"); return; }
       onAdd({ id, type: "testimonial", quote: tQuote.trim(), author: tAuthor.trim() || undefined, authorRole: tRole.trim() || undefined });
@@ -2654,10 +2696,13 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
       onAdd({ id, type: "faq", faqs: valid });
     } else if (blockType === "link") {
       if (!linkLabel.trim() || !linkUrl.trim()) { setError("Label and URL are required"); return; }
-      onAdd({ id, type: "link", title: linkLabel.trim(), url: linkUrl.trim(), icon: linkIcon, linkStyle });
+      onAdd({ id, type: "link", title: linkLabel.trim(), url: linkUrl.trim(), description: linkDescription.trim() || undefined, icon: linkIcon, linkStyle });
     } else if (blockType === "vcard") {
       if (!vcName.trim()) { setError("Full name is required"); return; }
       onAdd({ id, type: "vcard", vcName: vcName.trim(), vcJobTitle: vcJobTitle.trim() || undefined, vcCompany: vcCompany.trim() || undefined, vcPhone: vcPhone.trim() || undefined, vcEmail: vcEmail.trim() || undefined, vcWebsite: vcWebsite.trim() || undefined });
+    } else if (blockType === "booking") {
+      if (!bookingUrl.trim()) { setError("Booking embed URL is required"); return; }
+      onAdd({ id, type: "booking", platform: bookingPlatform, embedUrl: bookingUrl.trim(), title: bookingLabel.trim() || "Book a call", embedHeight: bookingHeight } as any);
     }
     reset();
   };
@@ -2697,6 +2742,7 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
           { id: "faq", label: "❓ FAQ" },
           { id: "link", label: "🔗 Link" },
           { id: "vcard", label: "💾 vCard" },
+          { id: "booking", label: "📅 Booking" },
         ] as const).map(t => (
 
           <button
@@ -2858,6 +2904,7 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <input className="input" placeholder="Button label" value={btnLabel} onChange={e => setBtnLabel(e.target.value)} style={{ fontSize: 13 }} />
           <input className="input" placeholder="URL (https://...)" value={btnUrl} onChange={e => setBtnUrl(e.target.value)} style={{ fontSize: 13 }} />
+          <input className="input" placeholder="Description / subtitle (optional)" value={btnDescription} onChange={e => setBtnDescription(e.target.value)} style={{ fontSize: 13 }} />
         </div>
       )}
 
@@ -2895,6 +2942,27 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
         </div>
       )}
 
+      {/* Booking block form */}
+      {blockType === "booking" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>Embed a booking calendar (Calendly, Cal.com, etc.)</div>
+          <input className="input" placeholder="Block title (e.g. Book a call)" value={bookingLabel} onChange={e => setBookingLabel(e.target.value)} style={{ fontSize: 13 }} />
+          <input className="input" placeholder="Embed URL (https://calendly.com/...)" value={bookingUrl} onChange={e => setBookingUrl(e.target.value)} style={{ fontSize: 13 }} />
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", flexShrink: 0 }}>Platform:</span>
+            {(["calendly", "cal.com", "tidycal", "savvycal"] as const).map(p => (
+              <button key={p} type="button" onClick={() => setBookingPlatform(p)} style={{ padding: "0.3rem 0.625rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${bookingPlatform === p ? "var(--color-primary)" : "var(--color-border)"}`, background: bookingPlatform === p ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: bookingPlatform === p ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>{p}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", flexShrink: 0 }}>Embed height:</span>
+            {([500, 650, 800] as const).map(h => (
+              <button key={h} type="button" onClick={() => setBookingHeight(h)} style={{ padding: "0.3rem 0.625rem", borderRadius: "var(--radius-sm)", border: `1.5px solid ${bookingHeight === h ? "var(--color-primary)" : "var(--color-border)"}`, background: bookingHeight === h ? "var(--color-primary-highlight)" : "var(--color-surface)", fontSize: 10, fontWeight: 600, color: bookingHeight === h ? "var(--color-primary)" : "var(--color-text-muted)", cursor: "pointer" }}>{h}px</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* #14: Link block form */}
       {blockType === "link" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -2902,6 +2970,7 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
             <input className="input" placeholder="Label (e.g. Book a call)" value={linkLabel} onChange={e => setLinkLabel(e.target.value)} style={{ flex: 1, fontSize: 13 }} data-testid="input-link-label" />
             <input className="input" placeholder="URL (https://...)" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} style={{ flex: 2, fontSize: 13 }} data-testid="input-link-url" />
           </div>
+          <input className="input" placeholder="Description / subtitle (optional)" value={linkDescription} onChange={e => setLinkDescription(e.target.value)} style={{ fontSize: 13 }} />
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", flexShrink: 0 }}>Icon:</span>
             <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>

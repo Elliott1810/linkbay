@@ -724,10 +724,18 @@ function TextBlock({ block, accent }: { block: Block; accent: string }) {
 
 // ─── Tracked link card ───────────────────────────────────────
 // #19: TrackedLinkCard supports style = "featured" | "outline" | "default"
-function TrackedLinkCard({ link, accentColor, featured }: { link: PageData["links"][0]; accentColor: string; featured?: boolean }) {
+// blockId + pageId: when rendering a block-type link (type="link" in blocks[]), pass these
+// so the click is tracked via track-block (block analytics) not the legacy links endpoint
+function TrackedLinkCard({ link, accentColor, featured, blockId, pageId: blockPageId }: { link: PageData["links"][0]; accentColor: string; featured?: boolean; blockId?: string; pageId?: number }) {
   const mutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", `/api/links/${link.id}/click`);
+      if (blockId && blockPageId) {
+        // Block-type link: track via track-block so block analytics capture the click
+        await apiRequest("POST", `/api/pages/${blockPageId}/track-block`, { blockId, blockType: "link", eventType: "click" });
+      } else {
+        // Legacy DB link with numeric id
+        await apiRequest("POST", `/api/links/${link.id}/click`);
+      }
     },
   });
 
@@ -1181,7 +1189,7 @@ export default function ProfilePage() {
           {/* Profile views badge — accent fill with auto-contrast text for readability on any background */}
           <div style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.3rem 0.875rem", background: `${accent}22`, borderRadius: "var(--radius-full)", fontSize: "var(--text-xs)", border: `1px solid ${accent}40` }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: safeAccent, display: "inline-block", flexShrink: 0 }} />
-            <span style={{ fontWeight: 600, color: safeAccent }}>{(page.viewCount + 1).toLocaleString()} profile views</span>
+            <span style={{ fontWeight: 600, color: safeAccent }}>{page.viewCount.toLocaleString()} profile views</span>
           </div>
         </div>
         </div>{/* end block-style wrapper */}
@@ -1211,7 +1219,7 @@ export default function ProfilePage() {
                 case "link": {
                   // #14: support both legacy `style` and new `linkStyle` field
                   const linkItem = { id: (block as any).id ?? 0, label: (block as any).label || (block as any).title || "", url: (block as any).url || "", description: (block as any).description ?? null, icon: (block as any).icon || "", style: (block as any).linkStyle || (block as any).style || "default", position: (block as any).position ?? 0, clickCount: 0 };
-                  inner = <TrackedLinkCard key={block.id} link={linkItem as any} accentColor={accent} />;
+                  inner = <TrackedLinkCard key={block.id} link={linkItem as any} accentColor={accent} blockId={String(block.id)} pageId={page.id} />;
                   break;
                 }
                 case "text": inner = <TextBlock key={block.id} block={block} accent={accent} />; break;

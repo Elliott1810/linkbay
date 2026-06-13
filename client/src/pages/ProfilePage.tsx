@@ -732,16 +732,28 @@ function TrackedLinkCard({ link, accentColor, featured, blockId, pageId: blockPa
   const effectiveStyle = featured ? "featured" : (link.style || "default");
 
   // #16a: featured style
+  // Luminance-based contrast: use dark text on light accent, white on dark accent
+  function isLightColor(hex: string): boolean {
+    const h = hex.replace("#", "");
+    if (h.length < 6) return false;
+    const r = parseInt(h.slice(0,2),16)/255;
+    const g = parseInt(h.slice(2,4),16)/255;
+    const b = parseInt(h.slice(4,6),16)/255;
+    return 0.299*r + 0.587*g + 0.114*b > 0.5;
+  }
   if (effectiveStyle === "featured") {
+    const textColor = isLightColor(accentColor) ? "#1a1917" : "#fff";
     return (
       <button
         onClick={handleClick}
+        className="featured-btn"
         style={{
           display: "block", width: "100%", padding: "1.125rem 1.25rem",
-          background: accentColor, color: accentColor === "#ffffff" || accentColor === "#fff" ? "#1a1917" : "#fff",
+          background: accentColor, color: textColor,
           borderRadius: "var(--radius-lg)", border: "none", textAlign: "left",
-          cursor: "pointer", marginBottom: "1rem", transition: "all var(--transition-interactive)"
-        }}
+          cursor: "pointer", marginBottom: "1rem", transition: "all var(--transition-interactive)",
+          "--featured-bg": accentColor, "--featured-color": textColor
+        } as React.CSSProperties}
         data-testid={`link-featured-${link.id}`}
       >
         <div style={{ fontWeight: 700, fontSize: "var(--text-sm)" }}>
@@ -1006,9 +1018,11 @@ export default function ProfilePage() {
   };
   const blockRadius = blockRadiusMap[blockStyle] ?? "var(--radius-lg)";
   // Goal 6: auto text color based on background luminance, or explicit textColor override
+  // "auto" is a sentinel meaning "let luminance decide" — treat it as falsy
   const luminance = getBackgroundLuminance(page.background || "none");
-  const autoText = (page as any).textColor || (luminance === "dark" ? "#f5f5f7" : "#0a0a0b");
-  const autoTextMuted = (page as any).textColor || (luminance === "dark" ? "rgba(245,245,247,0.72)" : "rgba(10,10,11,0.62)");
+  const explicitTextColor = (page as any).textColor && (page as any).textColor !== "auto" ? (page as any).textColor : null;
+  const autoText = explicitTextColor || (luminance === "dark" ? "#f5f5f7" : "#0a0a0b");
+  const autoTextMuted = explicitTextColor || (luminance === "dark" ? "rgba(245,245,247,0.72)" : "rgba(10,10,11,0.62)");
   // #4/#4a: safeAccent — use accent if WCAG AA contrast passes against card bg, else fallback to autoText
   const cardBgLuminance = luminance === "dark" ? 0.12 : 0.82;
   const accentLuminance = (() => {
@@ -1036,12 +1050,13 @@ export default function ProfilePage() {
         "--color-primary": accent,
         "--color-text": autoText,
         "--color-text-muted": autoTextMuted,
-        "--color-bg": "#ffffff",
-        "--color-surface": "#f8f8f8",
-        "--color-surface-2": "#f2f2f2",
-        "--color-surface-offset": "#efefef",
-        "--color-border": "rgba(0,0,0,0.1)",
-        "--color-divider": "rgba(0,0,0,0.08)",
+        // Dark backgrounds get dark surface tokens so cards don't scream white on a dark gradient
+        "--color-bg":              luminance === "dark" ? "rgba(0,0,0,0.45)"     : "#ffffff",
+        "--color-surface":         luminance === "dark" ? "rgba(255,255,255,0.10)" : "#f8f8f8",
+        "--color-surface-2":       luminance === "dark" ? "rgba(255,255,255,0.07)" : "#f2f2f2",
+        "--color-surface-offset":  luminance === "dark" ? "rgba(255,255,255,0.05)" : "#efefef",
+        "--color-border":   luminance === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)",
+        "--color-divider":  luminance === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
       } as any}
     >
       {/* Minimal top bar — #5: only shown when user is logged in (hides CTA for non-logged-in visitors) */}

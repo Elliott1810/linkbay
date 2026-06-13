@@ -552,6 +552,7 @@ function AISuggestionsStep({
 }) {
   const roleLabel = USE_CASE_LABELS[state.useCase] || "Professional";
   type Phase = "qa" | "generating" | "done" | "error";
+  const [inputMode, setInputMode] = useState<"questions" | "import">("questions");
   const [phase, setPhase] = useState<Phase>("qa");
   const [qaStep, setQaStep] = useState(0);
   const [answers, setAnswers] = useState({
@@ -564,6 +565,47 @@ function AISuggestionsStep({
   const [aiBlocks, setAiBlocks] = useState<{ links: PageLink[]; blocks: Block[] } | null>(null);
   const [aiTheme, setAiTheme] = useState<{ background: string; blockStyle: string; font: string } | null>(null);
   const [aiError, setAiError] = useState("");
+  // URL import
+  const [importUrls, setImportUrls] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState("");
+
+  const handleUrlImport = async () => {
+    const urls = importUrls.split(/[\n,]+/).map(u => u.trim()).filter(u => u.length > 0);
+    if (!urls.length) return;
+    setImportLoading(true);
+    setImportError("");
+    try {
+      // Fetch all URLs in parallel, merge blocks
+      const results = await Promise.all(
+        urls.map(url =>
+          fetch("/api/ai/import-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+            credentials: "include",
+          }).then(r => r.json())
+        )
+      );
+      // Use first result for theme, merge all blocks
+      const first = results[0];
+      if (first?.error) throw new Error(first.error);
+      const allBlocks = results.flatMap((r: any) => r?.blocks || []);
+      const merged = mapAiBlocks(allBlocks);
+      setAiBlocks(merged);
+      if (first?.background || first?.blockStyle || first?.fontFamily) {
+        setAiTheme({ background: first.background || "", blockStyle: first.blockStyle || "", font: first.fontFamily || "" });
+      }
+      if (first?.accentColor) update({ accentColor: first.accentColor });
+      if (first?.title) update({ title: first.title });
+      if (first?.bio) update({ bio: first.bio });
+      setPhase("done");
+    } catch (e: any) {
+      setImportError(e.message || "Import failed. Please try again.");
+    } finally {
+      setImportLoading(false);
+    }
+  };
 
   const followupQ = USE_CASE_FOLLOWUP[state.useCase] || USE_CASE_FOLLOWUP.other;
 
@@ -811,39 +853,89 @@ function AISuggestionsStep({
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
           <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--color-primary-highlight)", border: "1.5px solid var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>✨</div>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-faint)", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>AI Page Builder · {qaStep + 1} of {TOTAL_QA}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-faint)", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
+              AI Page Builder{inputMode === "questions" ? ` · ${qaStep + 1} of ${TOTAL_QA}` : ""}
+            </div>
             <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>Personalising for {state.name.split(" ")[0] || "you"}</div>
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.75rem" }}>
-          <div style={{ height: "100%", width: `${progress}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.3s" }} />
+        {/* Mode toggle */}
+        <div style={{ display: "flex", gap: "0.375rem", marginBottom: "1.25rem", background: "var(--color-bg)", borderRadius: "var(--radius-md)", padding: "3px", border: "1px solid var(--color-border)" }}>
+          {(["questions", "import"] as const).map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => { setInputMode(m); setImportError(""); }}
+              style={{ flex: 1, padding: "0.4rem 0.5rem", borderRadius: "calc(var(--radius-md) - 3px)", border: "none", cursor: "pointer", fontSize: 13, fontWeight: inputMode === m ? 700 : 500, background: inputMode === m ? "var(--color-surface)" : "transparent", color: inputMode === m ? "var(--color-primary)" : "var(--color-text-muted)", boxShadow: inputMode === m ? "0 1px 4px rgba(0,0,0,0.10)" : "none", transition: "all 0.15s" }}
+            >
+              {m === "questions" ? "✍️  Answer questions" : "🔗  Import from URL"}
+            </button>
+          ))}
         </div>
 
-        {renderQuestion()}
+        {inputMode === "import" ? (
+          <div>
+            <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "0.75rem" }}>
+              Paste one or more URLs — your LinkedIn, website, YouTube, Substack, Etsy, Calendly etc. AI will read them all and build your page automatically.
+            </p>
+            {/* Platform chips */}
+            <div style={{ display: "flex", flexWrap: "wrap" as const, gap: "0.375rem", marginBottom: "0.875rem" }}>
+              {["LinkedIn","Website","YouTube","Substack","Etsy","Calendly","Instagram"].map(p => (
+                <span key={p} style={{ fontSize: 11, fontWeight: 600, padding: "0.2rem 0.55rem", borderRadius: 999, background: "var(--color-primary-highlight)", color: "var(--color-primary)" }}>{p}</span>
+              ))}
+            </div>
+            <textarea
+              autoFocus
+              rows={4}
+              value={importUrls}
+              onChange={e => setImportUrls(e.target.value)}
+              placeholder={"https://linkedin.com/in/yourname\nhttps://yourwebsite.com"}
+              style={{ width: "100%", boxSizing: "border-box" as const, padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1.5px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: 13, resize: "none", fontFamily: "monospace", lineHeight: 1.6, marginBottom: "0.5rem", outline: "none" }}
+              onFocus={e => (e.target.style.borderColor = "var(--color-primary)")}
+              onBlur={e => (e.target.style.borderColor = "var(--color-border)")}
+            />
+            <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>One URL per line, or separate with commas. Add multiple to give AI more context.</p>
+            {importError && <div style={{ fontSize: 13, color: "var(--color-error, #dc2626)", marginBottom: "0.75rem", padding: "0.5rem 0.75rem", background: "rgba(220,38,38,0.08)", borderRadius: "var(--radius-sm)" }}>{importError}</div>}
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", minHeight: "2.75rem" }}>Skip AI</button>
+              <button type="button" onClick={handleUrlImport} disabled={!importUrls.trim() || importLoading} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }}>
+                {importLoading ? "Importing…" : "🔗 Import & Build"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Progress bar */}
+            <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.75rem" }}>
+              <div style={{ height: "100%", width: `${progress}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.3s" }} />
+            </div>
 
-        {/* Nav */}
-        <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.75rem" }}>
-          {qaStep === 0 ? (
-            <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)", minHeight: "2.75rem" }} data-testid="button-skip-suggestions">
-              Skip AI
-            </button>
-          ) : (
-            <button type="button" onClick={() => setQaStep(s => s - 1)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", minHeight: "2.75rem" }}>
-              ← Back
-            </button>
-          )}
-          {qaStep < TOTAL_QA - 1 ? (
-            <button type="button" onClick={() => setQaStep(s => s + 1)} disabled={!canAdvance()} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }} data-testid="button-ai-next">
-              Next →
-            </button>
-          ) : (
-            <button type="button" onClick={handleGenerate} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }} data-testid="button-ai-generate">
-              ✨ Build my page
-            </button>
-          )}
-        </div>
+            {renderQuestion()}
+
+            {/* Nav */}
+            <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.75rem" }}>
+              {qaStep === 0 ? (
+                <button type="button" onClick={() => { update({ links: [], blocks: [] }); onContinue(); }} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: "var(--text-sm)", minHeight: "2.75rem" }} data-testid="button-skip-suggestions">
+                  Skip AI
+                </button>
+              ) : (
+                <button type="button" onClick={() => setQaStep(s => s - 1)} className="btn btn-secondary" style={{ flex: 1, justifyContent: "center", minHeight: "2.75rem" }}>
+                  ← Back
+                </button>
+              )}
+              {qaStep < TOTAL_QA - 1 ? (
+                <button type="button" onClick={() => setQaStep(s => s + 1)} disabled={!canAdvance()} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }} data-testid="button-ai-next">
+                  Next →
+                </button>
+              ) : (
+                <button type="button" onClick={handleGenerate} className="btn btn-primary" style={{ flex: 2, justifyContent: "center", minHeight: "2.75rem" }} data-testid="button-ai-generate">
+                  ✨ Build my page
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -1786,14 +1878,23 @@ function StepLaunch({ state, pageUrl, onStartOver }: { state: BuilderState; page
 
 // ─── Main builder ─────────────────────────────────────────────
 export default function BuilderPage() {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [step, setStep] = useState(1);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [error, setError] = useState("");
   const [isDuplicateEmail, setIsDuplicateEmail] = useState(false);
   const [pageUrl, setPageUrl] = useState("");
+
+  // Pre-fill useCase from ?useCase= query param (e.g. from Templates page)
+  const useCaseFromUrl = (() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("useCase") || "";
+    } catch { return ""; }
+  })();
+
   const [state, setState] = useState<BuilderState>({
-    name: "", email: "", password: "", useCase: "",
+    name: "", email: "", password: "", useCase: useCaseFromUrl,
     username: "", title: "", bio: "", location: "", accentColor: "#e06b1a",
     phone: "", contactEmail: "",
     links: [], blocks: [], background: "none", font: undefined, blockStyle: undefined,

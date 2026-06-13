@@ -133,6 +133,11 @@ try { sqlite.exec("ALTER TABLE users ADD COLUMN trial_tier TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE users ADD COLUMN trial_expiry TEXT"); } catch {}
 // Sprint: header image per page
 try { sqlite.exec("ALTER TABLE pages ADD COLUMN header_image_url TEXT"); } catch {}
+// Sprint: AI-generated SEO metadata (invisible to user, used for OG tags + JSON-LD)
+try { sqlite.exec("ALTER TABLE pages ADD COLUMN seo_title TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE pages ADD COLUMN seo_description TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE pages ADD COLUMN seo_keywords TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE pages ADD COLUMN json_ld TEXT"); } catch {}
 
 // Contacts table (idempotent)
 sqlite.exec(`

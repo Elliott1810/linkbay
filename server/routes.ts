@@ -657,26 +657,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Compute current live-period stats (block is currently live — no end yet)
       const today = new Date().toISOString();
       const lastLive = (rows as any[]).filter((r: any) => r.event === "went_live").slice(-1)[0];
-      const liveStart = lastLive?.went_live_at || null;
-      // Current period views & interactions from page_events
+      // If no went_live record, fall back to page created_at so new installs show data
+      let liveStart: string | null = lastLive?.went_live_at || null;
+      if (!liveStart) {
+        const pageRow = db.prepare("SELECT created_at FROM pages WHERE id = ?").get(pageId) as any;
+        liveStart = pageRow?.created_at || null;
+      }
+
+      // Current period:
+      // - "Page views" = page-level view events (type='view', no block_id filter) since liveStart
+      //   This is the total audience that could have seen this block.
+      // - "Interactions" = block-specific non-view events since liveStart
       let currentPeriodViews = 0, currentPeriodInteractions = 0;
       if (liveStart) {
-        const events = db.prepare(
-          "SELECT type, COUNT(*) as cnt FROM page_events WHERE page_id = ? AND block_id = ? AND created_at >= ? GROUP BY type"
+        // Page views (page-level, not per-block — blocks don't emit their own view events)
+        const pageViewRow = db.prepare(
+          "SELECT COUNT(*) as cnt FROM page_events WHERE page_id = ? AND type = 'view' AND created_at >= ?"
+        ).get(pageId, liveStart) as any;
+        currentPeriodViews = pageViewRow?.cnt ?? 0;
+        // Block interactions (all non-view events for this block since liveStart)
+        const blockInterRows = db.prepare(
+          "SELECT type, COUNT(*) as cnt FROM page_events WHERE page_id = ? AND block_id = ? AND type != 'view' AND created_at >= ? GROUP BY type"
         ).all(pageId, blockId, liveStart) as any[];
-        for (const e of events) {
-          if (e.type === "view") currentPeriodViews += e.cnt;
-          else currentPeriodInteractions += e.cnt;
-        }
+        for (const e of blockInterRows) currentPeriodInteractions += e.cnt;
       }
-      // All-time totals
+
+      // All-time totals for this block (interactions only — views are page-level)
       const allTime = db.prepare(
         "SELECT type, COUNT(*) as cnt FROM page_events WHERE page_id = ? AND block_id = ? GROUP BY type"
       ).all(pageId, blockId) as any[];
-      let totalViews = 0, totalInteractions = 0;
+      // All-time page views for context
+      const allTimePageViews = (db.prepare(
+        "SELECT COUNT(*) as cnt FROM page_events WHERE page_id = ? AND type = 'view'"
+      ).get(pageId) as any)?.cnt ?? 0;
+      let totalViews = allTimePageViews;
+      let totalInteractions = 0;
       for (const e of allTime) {
-        if (e.type === "view") totalViews += e.cnt;
-        else totalInteractions += e.cnt;
+        if (e.type !== "view") totalInteractions += e.cnt;
       }
       db.close();
       return res.json({
@@ -2765,25 +2782,33 @@ Suggested font for this use case: ${FONT_HINTS[ucKey]}`,
       const domain = String(req.query.domain || "").slice(0, 80);
       if (!name && !domain) return res.status(400).json({ error: "name or domain required" });
 
-      const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      // Slug rules: max 12 chars, no hyphens, lowercase alphanumeric only
+      const MAX_SLUG = 12;
+      const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, MAX_SLUG);
 
       const candidates: string[] = [];
       if (name) {
-        const base = toSlug(name);
         const parts = name.trim().split(/\s+/);
-        candidates.push(base);
+        // 1. Concatenated first+last (e.g. "johnsmith")
         if (parts.length >= 2) {
-          candidates.push(toSlug(parts[0] + "-" + parts[parts.length - 1]));
           candidates.push(toSlug(parts[0] + parts[parts.length - 1]));
+          // 2. First word only
+          candidates.push(toSlug(parts[0]));
+          // 3. Last word only
+          candidates.push(toSlug(parts[parts.length - 1]));
+        } else {
+          // Single word name — use as-is (truncated)
           candidates.push(toSlug(parts[0]));
         }
+        // 4. Full name concatenated (no spaces)
+        candidates.push(toSlug(parts.join("")));
       }
       if (domain) {
         const domainBase = domain.replace(/^www\./, "").split(".")[0];
         candidates.push(toSlug(domainBase));
       }
 
-      const RESERVED = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","r","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback"]);
+      const RESERVED = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback"]);
       const seen = new Set<string>();
       const unique = candidates.filter(c => c && c.length >= 3 && !RESERVED.has(c) && !seen.has(c) && (seen.add(c), true));
 
@@ -2792,15 +2817,15 @@ Suggested font for this use case: ${FONT_HINTS[ucKey]}`,
         const existing = db.prepare("SELECT id FROM pages WHERE username = ?").get(slug);
         if (!existing) { db.close(); return res.json({ username: slug }); }
       }
-      // All taken — append numeric suffix
-      const base = unique[0] || toSlug(name || domain);
+      // All taken — append short numeric suffix (no hyphen)
+      const base = (unique[0] || toSlug(name || domain)).slice(0, 10); // leave 2 chars for suffix
       for (let i = 2; i <= 99; i++) {
-        const slug = (base + "-" + i).slice(0, 40);
+        const slug = (base + i).slice(0, MAX_SLUG);
         const existing = db.prepare("SELECT id FROM pages WHERE username = ?").get(slug);
         if (!existing) { db.close(); return res.json({ username: slug }); }
       }
       db.close();
-      return res.json({ username: (base + "-" + Date.now().toString(36).slice(-4)).slice(0, 40) });
+      return res.json({ username: (base + Date.now().toString(36).slice(-2)).slice(0, MAX_SLUG) });
     } catch (e: any) {
       return res.status(500).json({ error: e.message });
     }

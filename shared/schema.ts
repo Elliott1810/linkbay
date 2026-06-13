@@ -66,6 +66,7 @@ export const pages = sqliteTable("pages", {
   pageFont: text("page_font").default("inter"),          // font key
   archivedBlockIds: text("archived_block_ids").default("[]"), // JSON array of archived block ids
   hiddenBlockIds: text("hidden_block_ids").default("[]"),    // G6b: JSON array of permanently hidden block ids
+  headerImageUrl: text("header_image_url"),                   // Optional hero card background image (base64 or URL)
   blocks: text("blocks").notNull().default("[]"),       // JSON array of block objects
   published: integer("published", { mode: "boolean" }).notNull().default(false),
   viewCount: integer("view_count").notNull().default(0),

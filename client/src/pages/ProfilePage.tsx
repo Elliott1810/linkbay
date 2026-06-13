@@ -649,13 +649,20 @@ function PollBlock({ block, pageId, accentColor }: { block: Block; pageId: numbe
   const totalVotes = votes.reduce((sum, v) => sum + v.count, 0);
   const getCount = (i: number) => votes.find(v => v.optionIndex === i)?.count ?? 0;
 
+  // Normalise options — accept both string[] and {id,text}[] formats
+  const pollLabel = block.label || block.question || "Poll";
+  const rawOptions: Array<string | { id?: string; text?: string; label?: string }> = (block.options as any) ?? [];
+  const normOptions: string[] = rawOptions.map(o =>
+    typeof o === "string" ? o : (o.text || o.label || String(o))
+  );
+
   return (
     <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)" }}>
       <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.875rem", color: accentColor }}>
-        🗳️ {block.question}
+        🗳️ {pollLabel}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        {(block.options ?? []).map((opt, i) => {
+        {normOptions.map((opt, i) => {
           const count = getCount(i);
           const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
           return (
@@ -1081,20 +1088,22 @@ export default function ProfilePage() {
 
       <div className="profile-content-wrap" style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
 
-        {/* Cover / hero card — wrapped in block-style class so CSS applies identically to other blocks */}
-        {/* When headerImageUrl is set: override the block-style card background with the header image */}
-        <div className={page.headerImageUrl ? undefined : `block-style-${blockStyle}`} style={{ marginBottom: "1.25rem" }}>
+        {/* Cover / hero card — always wrapped in block-style class; header image applied as bg if set */}
+        <div className={`block-style-${blockStyle}`} style={{ marginBottom: "1.25rem" }}>
         <div className="block-card" style={{
           borderRadius: blockRadius,
           padding: "2.5rem 2rem",
           textAlign: "center",
           ...(page.headerImageUrl ? {
+            // contain = show full image without cropping; no-repeat centred; block-card bg fills letterbox
             backgroundImage: `url(${page.headerImageUrl})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
+            backgroundSize: "contain",
+            backgroundPosition: "center center",
             backgroundRepeat: "no-repeat",
             position: "relative",
             overflow: "hidden",
+            // Subtle dark fill behind the contained image so letterbox areas don't look broken
+            backgroundColor: "rgba(0,0,0,0.55)",
           } : {}),
         }}>
           {/* Dark overlay when header image is set — ensures text remains legible */}

@@ -1538,6 +1538,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     next();
   }
 
+  // ── POST /admin/reset-sim-stats ─────────────────────────────────────────
+  // Clears all analytics data (page_events, block_history, poll_votes, leads,
+  // view_count) for every page EXCEPT those owned by the owner account.
+  // Blocks, page settings, and user accounts are untouched.
+  app.post("/admin/reset-sim-stats", requireAdmin as any, async (req: Request, res: Response) => {
+    try {
+      const ownerEmail = "myzjjzk8vs@privaterelay.appleid.com";
+      const db2 = new Database(process.env.DB_PATH || "data.db");
+      // Get all page IDs that don't belong to the owner
+      const simPages = db2.prepare(
+        "SELECT id FROM pages WHERE owner_email != ?"
+      ).all(ownerEmail) as any[];
+      const ids = simPages.map((p: any) => p.id);
+      let cleared = 0;
+      for (const pageId of ids) {
+        db2.prepare("DELETE FROM page_events WHERE page_id = ?").run(pageId);
+        db2.prepare("DELETE FROM block_history WHERE page_id = ?").run(pageId);
+        db2.prepare("DELETE FROM poll_votes WHERE page_id = ?").run(pageId);
+        db2.prepare("DELETE FROM leads WHERE page_id = ?").run(pageId);
+        db2.prepare("UPDATE pages SET view_count = 0 WHERE id = ?").run(pageId);
+        cleared++;
+      }
+      db2.close();
+      return res.json({ success: true, pagesCleared: cleared, pageIds: ids });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
   // Admin delete actions (Basic Auth protected)
   app.post("/admin/delete-user", requireAdmin as any, async (req, res) => {
     try {

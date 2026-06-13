@@ -477,14 +477,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const since = new Date(Date.now() - days * 86400000).toISOString();
       const DB_PATH_LOCAL = process.env.DB_PATH || "data.db";
       const sqliteLocal = new Database(DB_PATH_LOCAL);
-      // Get all block-level events grouped by blockId + blockType + type
+      // Get all block-level events grouped by blockId + blockType + type + block_sub_id
+      // block_sub_id carries the platform name for social-links clicks (needed for per-platform split)
       const blockEvents = sqliteLocal.prepare(`
-        SELECT block_id, block_type, type, COUNT(*) as count
+        SELECT block_id, block_type, type, block_sub_id, COUNT(*) as count
         FROM page_events
         WHERE page_id = ? AND block_id IS NOT NULL AND created_at >= ?
-        GROUP BY block_id, block_type, type
+        GROUP BY block_id, block_type, type, block_sub_id
         ORDER BY count DESC
-      `).all(pageId, since) as Array<{ block_id: string; block_type: string; type: string; count: number }>;
+      `).all(pageId, since) as Array<{ block_id: string; block_type: string; type: string; block_sub_id: string | null; count: number }>;
 
       // Also get all-time block events (no date filter) for historical data
       const allTimeBlockEvents = sqliteLocal.prepare(`
@@ -554,6 +555,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!/^[a-z0-9-]{3,40}$/.test(data.username)) {
         return res.status(400).json({ error: "Username must be 3–40 lowercase letters, numbers, or hyphens." });
       }
+      // Block reserved slugs (same set as builder wizard + PATCH)
+      const CREATE_RESERVED = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","r","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback","404","500","features","docs","download","downloads","signin","signup","logout","legal","cookies","security","status","press","careers","jobs","partners","affiliate","refer","invite","search","explore","discover","feed","notifications","messages","inbox","account","profile","public","private","me","user","users","pages","page"]);
+      if (CREATE_RESERVED.has(data.username)) {
+        return res.status(400).json({ error: "That username is reserved. Please choose a different one." });
+      }
       const existing = await storage.getPageByUsername(data.username);
       if (existing) return res.status(409).json({ error: "That username is already taken." });
       // Tie page to the authenticated user (force ownership)
@@ -607,7 +613,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const data = allowedFields.parse(req.body);
       // If username is being changed, validate uniqueness + reserved words
       if (data.username) {
-        const RESERVED_NAMES = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","r","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback","404","500"]);
+        const RESERVED_NAMES = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","r","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback","404","500","features","docs","download","downloads","signin","signup","logout","legal","cookies","security","status","press","careers","jobs","partners","affiliate","refer","invite","search","explore","discover","feed","notifications","messages","inbox","account","profile","public","private","me","user","users","pages","page"]);
         if (RESERVED_NAMES.has(data.username)) return res.status(400).json({ error: "That username is reserved." });
         const existing = await storage.getPageByUsername(data.username);
         if (existing && existing.id !== pageId) return res.status(409).json({ error: "That URL is already taken." });
@@ -1207,7 +1213,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // #10: Block reserved usernames
-      const RESERVED_NAMES = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","r","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback","404","500"]);
+      const RESERVED_NAMES = new Set(["admin","dashboard","login","register","builder","api","blog","pricing","about","terms","privacy","r","static","assets","health","settings","upgrade","billing","help","support","contact","home","index","app","www","mail","email","auth","oauth","callback","404","500","features","docs","download","downloads","signin","signup","logout","legal","cookies","security","status","press","careers","jobs","partners","affiliate","refer","invite","search","explore","discover","feed","notifications","messages","inbox","account","profile","public","private","me","user","users","pages","page"]);
       if (RESERVED_NAMES.has(username)) {
         return res.status(400).json({ error: "That username is reserved. Please choose a different one." });
       }

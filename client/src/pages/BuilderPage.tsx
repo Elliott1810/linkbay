@@ -191,6 +191,15 @@ export const COLOR_OPTIONS = [
 // Dark backgrounds are flagged in BACKGROUND_OPTIONS. Used to auto-set text colour.
 export function getBackgroundLuminance(bg: string | null | undefined): "dark" | "light" {
   if (!bg || bg === "none") return "light";
+  // Raw hex — compute relative luminance to decide dark/light
+  if (bg.startsWith("#")) {
+    const hex = bg.replace("#", "");
+    const r = parseInt(hex.slice(0, 2), 16) / 255;
+    const g = parseInt(hex.slice(2, 4), 16) / 255;
+    const b2 = parseInt(hex.slice(4, 6), 16) / 255;
+    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b2;
+    return lum < 0.35 ? "dark" : "light";
+  }
   // New CSS class system
   if (bg.startsWith("bg-")) {
     const opt = BACKGROUND_OPTIONS.find(o => o.value === bg);
@@ -216,6 +225,8 @@ export function backgroundToCss(bg: string | null | undefined): React.CSSPropert
   if (!bg || bg === "none") return {};
   // New CSS-class system: class is applied directly to the element — no inline style needed
   if (bg.startsWith("bg-")) return {};
+  // Raw hex or rgba — AI import-url may return these directly
+  if (bg.startsWith("#") || bg.startsWith("rgb")) return { backgroundColor: bg };
   // Legacy JSON system — basic fallback so old profiles don't break
   if (bg.startsWith("{")) {
     try {

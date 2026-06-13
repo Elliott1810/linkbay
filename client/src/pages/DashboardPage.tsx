@@ -3656,7 +3656,8 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
   })();
 
   // G6c: filter out non-interaction blocks from live view
-  const NON_INTERACTION_TYPES = new Set(["text", "image", "divider", "testimonial", "vcard", "booking"]);
+  // booking is trackable (embed views/opens count as interactions) so it's excluded here
+  const NON_INTERACTION_TYPES = new Set(["text", "image", "divider", "testimonial", "vcard"]);
 
   const archiveMutation = useMutation({
     mutationFn: async ({ blockId, action }: { blockId: string; action: "archive" | "restore" | "hide" }) => {
@@ -3907,10 +3908,10 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                 {[
                   { label: "Went live", value: formatDate(liveStart) },
                   { label: "Time live", value: formatDuration(liveStart, null) },
-                  { label: "All-time views", value: totalViews },
+                  { label: "All-time page views", value: totalViews },
                   { label: "All-time interactions", value: totalInteractions },
-                  { label: "Period views (current)", value: currentPeriodViews },
-                  { label: "Period interactions (current)", value: currentPeriodInteractions },
+                  { label: "Page views (since live)", value: currentPeriodViews },
+                  { label: "Interactions (since live)", value: currentPeriodInteractions },
                 ].map(stat => (
                   <div key={stat.label} className="card" style={{ padding: "0.75rem", textAlign: "center", background: "var(--color-surface-offset)" }}>
                     <div style={{ fontSize: "var(--text-lg)", fontWeight: 800, color: "var(--color-primary)", fontFamily: "Cabinet Grotesk, sans-serif" }}>{stat.value}</div>

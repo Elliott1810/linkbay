@@ -2711,8 +2711,10 @@ ${ themeHint ? `- Theme accent: ${themeHint.accentColor} (use exactly this)\n- B
   // ─────────────────────────────────────────────────
   //  AI — Import from URL
   // ─────────────────────────────────────────────────
-  app.post("/api/ai/import-url", requireAuth as any, async (req, res) => {
-    const rateLimitKey = (req as any).session?.userId ?? (req as any).session?.userEmail ?? "anon";
+  // import-url is intentionally auth-optional: /builder uses it before account creation
+  app.post("/api/ai/import-url", async (req, res) => {
+    // Rate-limit by session userId if logged in, otherwise by IP
+    const rateLimitKey = (req as any).session?.userId ?? (req as any).session?.userEmail ?? req.ip ?? "anon";
     const now = Date.now();
     const bucket = aiRateLimit.get(rateLimitKey);
     if (bucket) {

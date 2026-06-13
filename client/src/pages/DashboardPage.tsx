@@ -3802,7 +3802,8 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
     const s = blockStats.get(bid)!;
     s.count += rowCount;
     s.eventTypes[et] = (s.eventTypes[et] || 0) + rowCount;
-    if (et === "view") s.views += rowCount;
+    if (et === "block_view") s.views += rowCount;    // per-block view (IntersectionObserver)
+    else if (et === "view") { /* page-level view — skip for block stats */ }
     else if (INTERACTION_EVENT_TYPES.has(et) || et.startsWith("block_interact")) s.interactions += rowCount;
     else s.interactions += rowCount; // unknown event types count as interactions
   }
@@ -3908,9 +3909,9 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                 {[
                   { label: "Went live", value: formatDate(liveStart) },
                   { label: "Time live", value: formatDuration(liveStart, null) },
-                  { label: "All-time page views", value: totalViews },
+                  { label: "All-time block views", value: totalViews },
                   { label: "All-time interactions", value: totalInteractions },
-                  { label: "Page views (since live)", value: currentPeriodViews },
+                  { label: "Block views (since live)", value: currentPeriodViews },
                   { label: "Interactions (since live)", value: currentPeriodInteractions },
                 ].map(stat => (
                   <div key={stat.label} className="card" style={{ padding: "0.75rem", textAlign: "center", background: "var(--color-surface-offset)" }}>
@@ -4101,7 +4102,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             {liveBlocks.length > displayLiveBlocks.length && (
               <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Text, image, divider, vCard and testimonial blocks are excluded from interaction tracking.</p>
             )}
-            <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>“Page views” is the total number of page views in this period — every block is shown on every page load.</p>
+            <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>“Block views” counts how many times each block scrolled into view during this period.</p>
             {displayLiveBlocks.length === 0 ? (
               <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No trackable blocks on this page.</p>
             ) : (
@@ -4121,27 +4122,29 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                   };
                   const isSocial = block.type === "social-links";
                   const platformMap = socialPlatformStats.get(block.id);
-                  const pageViewsTotal = mainPeriodViews;
+                  // Block views: per-block IntersectionObserver count (not page-level views)
+                  const blockViews = blockStats.get(block.id)?.views ?? 0;
+                  const blockViewsDenominator = Math.max(blockViews, 1);
 
                   // #11: Social links — render one row per platform instead of a single block row
                   if (isSocial && platformMap && platformMap.size > 0) {
                     return Array.from(platformMap.entries()).sort((a, b) => b[1] - a[1]).map(([platform, cnt]) => {
-                      const interactionRate = Math.min(Math.round((cnt / pageViewsTotal) * 1000) / 10, 100);
+                      const interactionRate = Math.min(Math.round((cnt / blockViewsDenominator) * 1000) / 10, 100);
                       const platformEmoji: Record<string, string> = { twitter: "🐦", instagram: "📸", facebook: "👍", linkedin: "💼", youtube: "▶️", tiktok: "🎵", github: "🐙", spotify: "🎧", snapchat: "👻", pinterest: "📌", whatsapp: "💬", telegram: "✈️" };
                       const emoji = platformEmoji[platform] || "🌐";
                       return (
                         <div key={`${block.id}-${platform}`} style={{ marginBottom: 0 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
                             <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{SOCIAL_PLATFORM_LABELS[platform] || platform}</span>
-                            <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Interaction rate: {interactionRate.toFixed(1)}%</span>
+                            <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Click rate: {interactionRate.toFixed(1)}%</span>
                           </div>
                           <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
                             <div style={{ height: "100%", width: `${Math.min(100 - interactionRate, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
                             <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                           </div>
                           <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Page views: {pageViewsTotal}</span>
-                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {cnt}</span>
+                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Block views: {blockViews}</span>
+                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Clicks: {cnt}</span>
                           </div>
                         </div>
                       );
@@ -4149,7 +4152,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                   }
 
                   // Standard block row — matches Top Interactions style
-                  const interactionRate = Math.min(Math.round((stats.interactions / pageViewsTotal) * 1000) / 10, 100);
+                  const interactionRate = Math.min(Math.round((stats.interactions / blockViewsDenominator) * 1000) / 10, 100);
                   const emoji = blockTypeEmoji(block.type);
                   return [(
                     <div key={block.id} style={{ marginBottom: 0 }}>
@@ -4175,7 +4178,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                         <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                       </div>
                       <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Page views: {pageViewsTotal}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Block views: {blockViews}</span>
                         <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {stats.interactions}</span>
                       </div>
                     </div>

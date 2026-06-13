@@ -6,7 +6,6 @@ import type {
   InsertWaitlist, Waitlist,
   InsertDemoRequest, DemoRequest,
   InsertPage, Page,
-  InsertPageLink, PageLink,
   InsertLead, Lead,
   InsertPageEvent, PageEvent,
   PollVote,
@@ -54,19 +53,6 @@ sqlite.exec(`
     view_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS page_links (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    page_id INTEGER NOT NULL,
-    label TEXT NOT NULL,
-    url TEXT NOT NULL,
-    description TEXT,
-    icon TEXT NOT NULL DEFAULT '🔗',
-    style TEXT NOT NULL DEFAULT 'default',
-    position INTEGER NOT NULL DEFAULT 0,
-    click_count INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS leads (
@@ -190,20 +176,31 @@ const now0 = new Date().toISOString();
 for (const p of demoProfiles) {
   const exists = sqlite.prepare("SELECT id FROM pages WHERE username = ?").get(p.username);
   if (!exists) {
-    sqlite.prepare(`INSERT INTO pages (username, owner_email, owner_name, title, bio, location, accent_color, theme, blocks, published, view_count, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,1,0,?,?)`) 
-      .run(p.username, p.email, p.name, p.title, p.bio, p.location, p.accent, "default", JSON.stringify([]), now0, now0);
-    const row = sqlite.prepare("SELECT id FROM pages WHERE username = ?").get(p.username) as any;
-    p.links.forEach(([icon, label, url, desc, style, pos]: any) => {
-      sqlite.prepare(`INSERT INTO page_links (page_id, label, url, description, icon, style, position, click_count, created_at) VALUES (?,?,?,?,?,?,?,?,?)`) 
-        .run(row.id, label, url, desc, icon, style, pos, 0, now0);
-    });
+    const blocks = p.links.map(([icon, label, url, desc, _style, pos]: any, i: number) => ({
+      id: `demo-${p.username}-link-${i}`,
+      type: "link",
+      title: label,
+      url,
+      description: desc || "",
+      icon: icon || "🔗",
+      linkStyle: _style || "default",
+      position: pos ?? i,
+    }));
+    sqlite.prepare(`INSERT INTO pages (username, owner_email, owner_name, title, bio, location, accent_color, theme, blocks, published, view_count, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,1,0,?,?)`)
+      .run(p.username, p.email, p.name, p.title, p.bio, p.location, p.accent, "default", JSON.stringify(blocks), now0, now0);
   }
 }
 
-// ─── Legacy seed guard (kept for backward compat) ────────────
+// ─── Legacy seed guard (backward compat — blocks only) ────────────
 const pageCount = (sqlite.prepare("SELECT COUNT(*) as c FROM pages").get() as any).c;
 if (pageCount === 0) {
   const now = new Date().toISOString();
+  const seedBlocks = [
+    { id: "seed-link-0", type: "link", title: "Book a free 30-min strategy call", url: "#booking", description: "Let's identify your biggest bottleneck.", icon: "📅", linkStyle: "featured", position: 0 },
+    { id: "seed-link-1", type: "link", title: "Download the Scaling Playbook (free)", url: "#download", description: "40 pages of frameworks I use with clients.", icon: "📄", linkStyle: "default", position: 1 },
+    { id: "seed-link-2", type: "link", title: "View my consulting services", url: "#services", description: "Strategic ops, team design, revenue systems.", icon: "💼", linkStyle: "default", position: 2 },
+    { id: "seed-link-3", type: "link", title: "Case study: 3× revenue in 8 months", url: "#case-study", description: "How a FinTech scaled their ops team.", icon: "📊", linkStyle: "default", position: 3 },
+  ];
   sqlite.prepare(`
     INSERT INTO pages (username, owner_email, owner_name, title, bio, location, accent_color, theme, blocks, published, view_count, created_at, updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,1,12847,?,?)
@@ -216,25 +213,14 @@ if (pageCount === 0) {
     "London, UK",
     "#e06b1a",
     "default",
-    JSON.stringify([]),
+    JSON.stringify(seedBlocks),
     now, now
   );
-
-  const page = sqlite.prepare("SELECT id FROM pages WHERE username = ?").get("sarah-jones-consultant") as any;
-  const pid = page.id;
-  const links = [
-    ["📅", "Book a free 30-min strategy call", "#booking", "Let's identify your biggest bottleneck.", "featured", 0],
-    ["📄", "Download the Scaling Playbook (free)", "#download", "40 pages of frameworks I use with clients.", "default", 1],
-    ["💼", "View my consulting services", "#services", "Strategic ops, team design, revenue systems.", "default", 2],
-    ["📊", "Case study: 3× revenue in 8 months", "#case-study", "How a FinTech scaled their ops team.", "default", 3],
-  ];
-  for (const [icon, label, url, desc, style, pos] of links) {
-    sqlite.prepare(`INSERT INTO page_links (page_id, label, url, description, icon, style, position, click_count, created_at) VALUES (?,?,?,?,?,?,?,?,?)`).run(pid, label, url, desc, icon, style, pos, Math.floor(Math.random() * 500) + 50, now);
-  }
   // Seed some leads
+  const seedPage = sqlite.prepare("SELECT id FROM pages WHERE username = ?").get("sarah-jones-consultant") as any;
   const leadNames = [["James Mitchell", "james@acme.com"], ["Priya Mehta", "priya@studio.co"], ["Tom Okafor", "tom@dev.io"]];
   for (const [n, e] of leadNames) {
-    sqlite.prepare(`INSERT INTO leads (page_id, name, email, source, status, created_at) VALUES (?,?,?,?,?,?)`).run(pid, n, e, "lead-form", "new", now);
+    sqlite.prepare(`INSERT INTO leads (page_id, name, email, source, status, created_at) VALUES (?,?,?,?,?,?)`).run(seedPage.id, n, e, "lead-form", "new", now);
   }
 }
 
@@ -262,14 +248,6 @@ export interface IStorage {
   deletePage(id: number): Promise<void>;
   incrementViewCount(id: number): Promise<void>;
   getPagesByOwner(email: string): Promise<Page[]>;
-  // Links
-  createLink(data: InsertPageLink): Promise<PageLink>;
-  getLinksByPage(pageId: number): Promise<PageLink[]>;
-  getLinkById(id: number): Promise<PageLink | undefined>;
-  updateLink(id: number, data: Partial<InsertPageLink>): Promise<PageLink>;
-  deleteLink(id: number): Promise<void>;
-  incrementLinkClick(id: number): Promise<void>;
-  reorderLinks(pageId: number, orderedIds: number[]): Promise<void>;
   // Leads
   createLead(data: InsertLead & { customFields?: string | null; deviceType?: string | null; isLinkbayUser?: boolean }): Promise<Lead>;
   getLeadById(id: number): Promise<Lead | undefined>;
@@ -332,7 +310,6 @@ export class DatabaseStorage implements IStorage {
     for (const p of userPages) {
       sqlite.prepare("DELETE FROM page_events WHERE page_id = ?").run(p.id);
       sqlite.prepare("DELETE FROM leads WHERE page_id = ?").run(p.id);
-      sqlite.prepare("DELETE FROM page_links WHERE page_id = ?").run(p.id);
     }
     sqlite.prepare("DELETE FROM pages WHERE owner_email = ?").run(userEmail);
     sqlite.prepare("DELETE FROM users WHERE id = ?").run(userId);
@@ -374,31 +351,6 @@ export class DatabaseStorage implements IStorage {
   }
   async getPagesByOwner(email: string): Promise<Page[]> {
     return db.select().from(schema.pages).where(eq(schema.pages.ownerEmail, email)).all();
-  }
-
-  // ── Links ──
-  async createLink(data: InsertPageLink): Promise<PageLink> {
-    return db.insert(schema.pageLinks).values({ ...data, createdAt: new Date().toISOString() }).returning().get();
-  }
-  async getLinksByPage(pageId: number): Promise<PageLink[]> {
-    return db.select().from(schema.pageLinks).where(eq(schema.pageLinks.pageId, pageId)).all();
-  }
-  async getLinkById(id: number): Promise<PageLink | undefined> {
-    return db.select().from(schema.pageLinks).where(eq(schema.pageLinks.id, id)).get();
-  }
-  async updateLink(id: number, data: Partial<InsertPageLink>): Promise<PageLink> {
-    return db.update(schema.pageLinks).set(data).where(eq(schema.pageLinks.id, id)).returning().get();
-  }
-  async deleteLink(id: number): Promise<void> {
-    sqlite.prepare("DELETE FROM page_links WHERE id = ?").run(id);
-  }
-  async incrementLinkClick(id: number): Promise<void> {
-    sqlite.prepare("UPDATE page_links SET click_count = click_count + 1 WHERE id = ?").run(id);
-  }
-  async reorderLinks(pageId: number, orderedIds: number[]): Promise<void> {
-    for (let i = 0; i < orderedIds.length; i++) {
-      sqlite.prepare("UPDATE page_links SET position = ? WHERE id = ? AND page_id = ?").run(i, orderedIds[i], pageId);
-    }
   }
 
   // ── Leads ──
@@ -685,39 +637,6 @@ try { sqlite.exec("ALTER TABLE poll_votes ADD COLUMN voter_token TEXT"); } catch
 // S6 #10: create unique index for anonymous dedup (voter_token) and signed-in dedup (voter_email)
 try { sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_poll_votes_token ON poll_votes(poll_id, voter_token) WHERE voter_token IS NOT NULL"); } catch {}
 try { sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_poll_votes_email ON poll_votes(poll_id, voter_email) WHERE voter_email IS NOT NULL"); } catch {}
-
-// ─── Sprint 8: Links → Blocks migration ─────────────────────────────────────
-// Auto-migrate page_links rows into type:"link" blocks prepended to the blocks array.
-// Runs once on server start; safe to re-run (skips pages that have no links or already migrated).
-export function migrateLinksToBlocks(): void {
-  const pages = sqlite.prepare("SELECT id, blocks FROM pages").all() as Array<{ id: number; blocks: string }>;
-  let migrated = 0;
-  for (const page of pages) {
-    const links = sqlite.prepare("SELECT * FROM page_links WHERE page_id = ? ORDER BY position ASC").all(page.id) as any[];
-    if (!links.length) continue; // nothing to migrate
-    let blocks: any[] = [];
-    try { blocks = JSON.parse(page.blocks || "[]"); } catch {}
-    // Check if already migrated (look for any block with type "link" that matches a link id)
-    const hasLinkBlocks = blocks.some((b: any) => b.type === "link" && b._fromLinkId);
-    if (hasLinkBlocks) continue;
-    // Prepend links as blocks
-    const linkBlocks = links.map((l: any) => ({
-      id: `link-migrated-${l.id}`,
-      type: "link",
-      title: l.label || "",
-      url: l.url || "#",
-      description: l.description || "",
-      icon: l.icon || "🔗",
-      style: l.style || "default",
-      _fromLinkId: l.id,
-    }));
-    const newBlocks = [...linkBlocks, ...blocks];
-    sqlite.prepare("UPDATE pages SET blocks = ? WHERE id = ?").run(JSON.stringify(newBlocks), page.id);
-    migrated++;
-  }
-  if (migrated > 0) console.log(`[Sprint 8] Migrated links→blocks for ${migrated} pages`);
-}
-
 // ─── Password reset tokens table ───────────────────────────────────────────────
 try {
   sqlite.exec(`

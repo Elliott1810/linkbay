@@ -4970,16 +4970,16 @@ function NewPageWizardModal({ open, onClose, onCreated }: { open: boolean; onClo
     <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1000 }} onClick={onClose}>
       <div className="card" style={{ width: "100%", maxWidth: 440, padding: "1.5rem" }} onClick={e => e.stopPropagation()}>
         <h3 style={{ fontWeight: 800, marginBottom: "0.5rem", fontFamily: "Cabinet Grotesk, sans-serif" }}>Name your new page</h3>
-        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>Choose a username for your page URL. The AI wizard will set everything else up.</p>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "1rem" }}>Choose a URL for your page. We recommend <strong>firstnamelastname</strong> — short, clean, and easy to share.</p>
         <input
           className="input"
-          placeholder="yourname"
+          placeholder="firstnamelastname"
           value={username}
           onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
           data-testid="input-wizard-username"
           autoFocus
         />
-        <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: "0.5rem" }}>linkbay.ai/{username || "yourname"}</p>
+        <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: "0.5rem" }}>linkbay.ai/{username || "firstnamelastname"}</p>
         {createMutation.error && <p style={{ color: "var(--color-error)", fontSize: "var(--text-sm)", marginTop: "0.5rem" }}>{(createMutation.error as Error).message}</p>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.25rem" }}>
           <button onClick={onClose} className="btn btn-secondary btn-sm">Cancel</button>

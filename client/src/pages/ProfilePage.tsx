@@ -715,8 +715,7 @@ function TextBlock({ block, accent }: { block: Block; accent: string }) {
   return (
     <div style={{ padding: "1.25rem", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)" }}>
       {block.title && <h3 style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem", color: accent }}>{block.title}</h3>}
-      {/* #16: body text uses accent colour */}
-      <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: accent, whiteSpace: "pre-wrap" }}>
+      <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.75, color: "var(--color-text-muted)", whiteSpace: "pre-wrap" }}>
         {body}
       </p>
     </div>
@@ -931,6 +930,40 @@ export default function ProfilePage() {
     apiRequest("POST", `/api/pages/public/${username}/view`).catch(() => {});
   }, [data?.page?.id, isPreview, username]);
 
+  // SEO: set document title + OG meta tags from page data
+  useEffect(() => {
+    if (!data?.page) return;
+    const { page } = data;
+    const displayName = page.ownerName || page.title || page.username || "";
+    const bio = page.bio || `${displayName}'s Linkbay page`;
+    const canonicalUrl = `https://linkbay.ai/${page.username}`;
+    const ogImage = page.avatarUrl || "https://linkbay.ai/og-default.png";
+
+    document.title = `${displayName} | Linkbay`;
+
+    const setMeta = (property: string, content: string, attr = "property") => {
+      let el = document.querySelector(`meta[${attr}="${property}"]`) as HTMLMetaElement | null;
+      if (!el) { el = document.createElement("meta"); el.setAttribute(attr, property); document.head.appendChild(el); }
+      el.content = content;
+    };
+    setMeta("og:title",       `${displayName} | Linkbay`);
+    setMeta("og:description", bio.slice(0, 160));
+    setMeta("og:url",         canonicalUrl);
+    setMeta("og:image",       ogImage);
+    setMeta("og:type",        "profile");
+    setMeta("og:site_name",   "Linkbay");
+    setMeta("twitter:card",          "summary_large_image", "name");
+    setMeta("twitter:title",         `${displayName} | Linkbay`, "name");
+    setMeta("twitter:description",   bio.slice(0, 160), "name");
+    setMeta("twitter:image",         ogImage, "name");
+
+    let canonical = document.querySelector("link[rel='canonical']") as HTMLLinkElement | null;
+    if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
+    canonical.href = canonicalUrl;
+
+    return () => { document.title = "Linkbay — Build your link-in-bio page"; };
+  }, [data?.page?.id, data?.page?.ownerName, data?.page?.bio, data?.page?.avatarUrl]);
+
   if (isLoading) return <ProfileSkeleton />;
   if (isError || !data) return <PageNotFound username={username || ""} />;
 
@@ -1101,10 +1134,12 @@ export default function ProfilePage() {
             {page.ownerName}
           </h1>
 
-          {/* #4a: Headline uses safeAccent */}
-          <p style={{ fontSize: "var(--text-sm)", color: safeAccent, marginBottom: "0.75rem", fontWeight: 500, fontFamily, opacity: 0.85 }}>
-            {page.title}
-          </p>
+          {/* Headline — only show if different from ownerName, to avoid duplicate text */}
+          {page.title && page.title.trim() !== page.ownerName.trim() && (
+            <p style={{ fontSize: "var(--text-sm)", color: safeAccent, marginBottom: "0.75rem", fontWeight: 500, fontFamily, opacity: 0.85 }}>
+              {page.title}
+            </p>
+          )}
 
           {/* #1: Bio moved into the info card */}
           {page.bio && (

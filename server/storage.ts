@@ -131,6 +131,8 @@ try { sqlite.exec("ALTER TABLE page_events ADD COLUMN block_sub_id TEXT"); } cat
 // Sprint 8: trial system
 try { sqlite.exec("ALTER TABLE users ADD COLUMN trial_tier TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE users ADD COLUMN trial_expiry TEXT"); } catch {}
+// Sprint: header image per page
+try { sqlite.exec("ALTER TABLE pages ADD COLUMN header_image_url TEXT"); } catch {}
 
 // Contacts table (idempotent)
 sqlite.exec(`

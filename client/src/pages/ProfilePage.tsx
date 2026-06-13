@@ -1051,6 +1051,7 @@ export default function ProfilePage() {
       className={bgClass || undefined}
       style={{
         minHeight: "100dvh",
+        position: "relative",
         color: autoText,
         fontFamily,
         ...bgStyle,
@@ -1070,11 +1071,15 @@ export default function ProfilePage() {
       {/* Full-page dimming overlay — when a header image is set, the background gradient
           is the header image tiled/stretched across the whole page. We dim the entire page
           uniformly so ALL block styles (ghost, outlined, underline, transparent ones etc.)
-          get the same semi-transparent treatment, not just the hero card. z:0 sits above the
-          CSS background but below the sticky owner bar (z:100) and all content. */}
+          get the same semi-transparent treatment, not just the hero card.
+          Uses position:absolute (not fixed) so it works on iOS Safari and Android Chrome
+          where fixed positioning can fail inside scrollable views. The root wrapper has
+          position:relative + min-height:100dvh so the overlay covers the full page even
+          when content is shorter than the viewport. */}
       {page.headerImageUrl && (
         <div style={{
-          position: "fixed", inset: 0,
+          position: "absolute", inset: 0,
+          minHeight: "100%",
           background: "rgba(0,0,0,0.28)",
           zIndex: 0,
           pointerEvents: "none",

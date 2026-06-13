@@ -1067,6 +1067,19 @@ export default function ProfilePage() {
         "--color-divider":  luminance === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
       } as any}
     >
+      {/* Full-page dimming overlay — when a header image is set, the background gradient
+          is the header image tiled/stretched across the whole page. We dim the entire page
+          uniformly so ALL block styles (ghost, outlined, underline, transparent ones etc.)
+          get the same semi-transparent treatment, not just the hero card. z:0 sits above the
+          CSS background but below the sticky owner bar (z:100) and all content. */}
+      {page.headerImageUrl && (
+        <div style={{
+          position: "fixed", inset: 0,
+          background: "rgba(0,0,0,0.28)",
+          zIndex: 0,
+          pointerEvents: "none",
+        }} />
+      )}
       {/* Minimal top bar — #5: only shown when user is logged in (hides CTA for non-logged-in visitors) */}
       {user && (
       <div className="profile-owner-bar" style={{
@@ -1086,7 +1099,7 @@ export default function ProfilePage() {
       </div>
       )}
 
-      <div className="profile-content-wrap" style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
+      <div className="profile-content-wrap" style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem", position: "relative", zIndex: 1 }}>
 
         {/* Cover / hero card — always wrapped in block-style class; header image applied as bg if set */}
         <div className={`block-style-${blockStyle}`} style={{ marginBottom: "1.25rem" }}>
@@ -1122,11 +1135,13 @@ export default function ProfilePage() {
               } as React.CSSProperties}
             />
           )}
-          {/* Dark gradient overlay — legibility layer above the image */}
+          {/* Dark gradient overlay — legibility layer above the hero image.
+              Combined with the page-level fixed overlay (rgba 0.28) this gives
+              good contrast without over-darkening. */}
           {page.headerImageUrl && (
             <div style={{
               position: "absolute", inset: 0,
-              background: "linear-gradient(to bottom, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0.65) 100%)",
+              background: "linear-gradient(to bottom, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.38) 100%)",
               zIndex: 1,
             }} />
           )}

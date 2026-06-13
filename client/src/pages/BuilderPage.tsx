@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -273,7 +273,7 @@ export function backgroundToClass(bg: string | null | undefined): string {
 }
 
 // Unified icon set used everywhere — empty string means "no icon" (default)
-const BLOCK_ICONS = ["", "🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇️", "⭐", "💬", "🌐", "📊", "🎓", "🛒", "📝", "🗳️", "📞", "🎯", "🤝", "🚀", "🏆"];
+const BLOCK_ICONS = ["", "🔗", "📅", "📧", "📄", "💼", "🎥", "📱", "⬇️", "⭐", "💬", "🌐", "📊", "🎓", "🛒", "📝", "🗳️", "📞", "🎯", "🤝", "🚀", "🏆", "🎤", "🎵", "🎨", "🏋️", "✈️", "🏠", "💡", "🔑", "📣", "🤖", "📰", "🎁", "💳", "🖥️", "📸", "🧠", "⚡", "🌍"];
 
 function slugify(str: string) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -356,8 +356,25 @@ function LivePreview({ state }: { state: BuilderState }) {
 }
 
 // ─── Step 1: Profile info ─────────────────────────────────────
-function Step1({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
+function Step1({ state, update, onEmailStatusChange }: { state: BuilderState; update: (v: Partial<BuilderState>) => void; onEmailStatusChange?: (taken: boolean) => void }) {
   const [showPassword, setShowPassword] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<"idle" | "checking" | "taken" | "available">("idle");
+  const emailCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const checkEmail = (email: string) => {
+    if (emailCheckTimer.current) clearTimeout(emailCheckTimer.current);
+    if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { setEmailStatus("idle"); onEmailStatusChange?.(false); return; }
+    setEmailStatus("checking");
+    emailCheckTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/auth/check-email?email=${encodeURIComponent(email)}`);
+        const d = await r.json();
+        const taken = !d.available;
+        setEmailStatus(taken ? "taken" : "available");
+        onEmailStatusChange?.(taken);
+      } catch { setEmailStatus("idle"); onEmailStatusChange?.(false); }
+    }, 500);
+  };
   const useCases = [
     { id: "consultant", icon: "💼", label: "Consultant / Coach" },
     { id: "creator", icon: "🎨", label: "Creator / Influencer" },
@@ -385,7 +402,29 @@ function Step1({ state, update }: { state: BuilderState; update: (v: Partial<Bui
         </div>
         <div>
           <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Email address *</label>
-          <input type="email" className="input" placeholder="sarah@company.com" value={state.email} onChange={e => update({ email: e.target.value })} required data-testid="input-builder-email" />
+          <div style={{ position: "relative" }}>
+            <input
+              type="email"
+              className="input"
+              placeholder="sarah@company.com"
+              value={state.email}
+              onChange={e => { update({ email: e.target.value }); checkEmail(e.target.value); }}
+              required
+              data-testid="input-builder-email"
+              style={{ borderColor: emailStatus === "taken" ? "var(--color-error)" : emailStatus === "available" ? "var(--color-success)" : undefined, paddingRight: "2.25rem" }}
+            />
+            <span style={{ position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)", fontSize: 14, pointerEvents: "none" }}>
+              {emailStatus === "checking" && "⏳"}
+              {emailStatus === "available" && "✅"}
+              {emailStatus === "taken" && "❌"}
+            </span>
+          </div>
+          {emailStatus === "taken" && (
+            <p style={{ fontSize: 11, color: "var(--color-error)", marginTop: 4 }}>
+              An account with this email already exists.{" "}
+              <a href="/login" style={{ color: "var(--color-error)", fontWeight: 700 }}>Sign in instead →</a>
+            </p>
+          )}
         </div>
         <div>
           <label style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Create a password *</label>
@@ -610,6 +649,18 @@ function AISuggestionsStep({
       if (first?.accentColor) update({ accentColor: first.accentColor });
       if (first?.title) update({ title: first.title });
       if (first?.bio) update({ bio: first.bio });
+      // Auto-suggest username from imported title/domain if not yet set
+      if (!state.username && (first?.title || urls[0])) {
+        try {
+          const domain = (() => { try { return new URL(urls[0]).hostname.replace(/^www\./, ""); } catch { return ""; } })();
+          const params = new URLSearchParams();
+          if (first?.title) params.set("name", first.title);
+          if (domain) params.set("domain", domain);
+          const sr = await fetch(`/api/ai/suggest-username?${params}`);
+          const sd = await sr.json();
+          if (sd.username) update({ username: sd.username });
+        } catch { /* non-critical */ }
+      }
       setPhase("done");
     } catch (e: any) {
       setImportError(e.message || "Import failed. Please try again.");
@@ -1091,11 +1142,16 @@ function AISuggestionsStep({
 function Step2({ state, update }: { state: BuilderState; update: (v: Partial<BuilderState>) => void }) {
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
 
-  // Auto-fill username from name
+  // Auto-suggest username from name via API (checks availability server-side)
   useEffect(() => {
-    if (state.name && !state.username) {
-      update({ username: slugify(state.name) });
-    }
+    if (!state.name) return;
+    if (state.username) { checkUsername(state.username); return; }
+    // Fetch AI-suggested untaken slug
+    const params = new URLSearchParams({ name: state.name });
+    fetch(`/api/ai/suggest-username?${params}`)
+      .then(r => r.json())
+      .then(d => { if (d.username) { update({ username: d.username }); setUsernameStatus("available"); } })
+      .catch(() => { update({ username: slugify(state.name) }); });
   }, []);
 
   const checkUsername = async (val: string) => {
@@ -1894,6 +1950,7 @@ export default function BuilderPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [error, setError] = useState("");
   const [isDuplicateEmail, setIsDuplicateEmail] = useState(false);
+  const [emailTaken, setEmailTaken] = useState(false);
   const [pageUrl, setPageUrl] = useState("");
 
   // Pre-fill useCase from ?useCase= query param (e.g. from Templates page)
@@ -1914,7 +1971,7 @@ export default function BuilderPage() {
   const update = (val: Partial<BuilderState>) => setState(s => ({ ...s, ...val }));
 
   const canNext = {
-    1: () => state.name.trim() && state.email.trim() && state.password.length >= 8 && state.useCase,
+    1: () => state.name.trim() && state.email.trim() && state.password.length >= 8 && state.useCase && !emailTaken,
     2: () => state.username.trim().length >= 3 && state.title.trim(),
     3: () => true,
   };
@@ -1998,7 +2055,7 @@ export default function BuilderPage() {
       <div className="builder-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, minHeight: "calc(100dvh - 56px)" }}>
         {/* Left — form */}
         <div style={{ padding: "3rem 2.5rem", maxWidth: 560, overflowY: "auto" }}>
-          {step === 1 && !showSuggestions && <Step1 state={state} update={update} />}
+          {step === 1 && !showSuggestions && <Step1 state={state} update={update} onEmailStatusChange={setEmailTaken} />}
           {step === 1 && showSuggestions && (
             <AISuggestionsStep
               state={state}

@@ -138,6 +138,29 @@ try { sqlite.exec("ALTER TABLE pages ADD COLUMN seo_title TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE pages ADD COLUMN seo_description TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE pages ADD COLUMN seo_keywords TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE pages ADD COLUMN json_ld TEXT"); } catch {}
+// Sprint: block history — records live periods and archived snapshots
+try {
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS block_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      page_id INTEGER NOT NULL,
+      block_id TEXT NOT NULL,
+      block_type TEXT,
+      block_title TEXT,
+      event TEXT NOT NULL,
+      went_live_at TEXT,
+      went_archived_at TEXT,
+      period_views INTEGER DEFAULT 0,
+      period_interactions INTEGER DEFAULT 0,
+      total_views_alltime INTEGER DEFAULT 0,
+      total_interactions_alltime INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+} catch {}
+try { sqlite.exec("CREATE INDEX IF NOT EXISTS idx_block_history_page ON block_history(page_id)"); } catch {}
+try { sqlite.exec("CREATE INDEX IF NOT EXISTS idx_block_history_block ON block_history(block_id)"); } catch {}
+
 
 // Contacts table (idempotent)
 sqlite.exec(`

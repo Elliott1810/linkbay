@@ -445,16 +445,6 @@ interface PageData {
     pageFont?: string | null;
     ownerTier?: string | null; // #6: pro/business users hide branding
   };
-  links: Array<{
-    id: number;
-    label: string;
-    url: string;
-    description: string | null;
-    icon: string;
-    style: string;
-    position: number;
-    clickCount: number;
-  }>;
 }
 
 // ─── Lead form ───────────────────────────────────────────────
@@ -723,18 +713,12 @@ function TextBlock({ block, accent }: { block: Block; accent: string }) {
 }
 
 // ─── Tracked link card ───────────────────────────────────────
-// #19: TrackedLinkCard supports style = "featured" | "outline" | "default"
-// blockId + pageId: when rendering a block-type link (type="link" in blocks[]), pass these
-// so the click is tracked via track-block (block analytics) not the legacy links endpoint
-function TrackedLinkCard({ link, accentColor, featured, blockId, pageId: blockPageId }: { link: PageData["links"][0]; accentColor: string; featured?: boolean; blockId?: string; pageId?: number }) {
+// Link card rendered from a type:"link" block — tracks click via track-block for block analytics
+function TrackedLinkCard({ link, accentColor, featured, blockId, pageId: blockPageId }: { link: { id: string | number; label: string; url: string; description?: string | null; icon?: string; style?: string }; accentColor: string; featured?: boolean; blockId?: string; pageId?: number }) {
   const mutation = useMutation({
     mutationFn: async () => {
       if (blockId && blockPageId) {
-        // Block-type link: track via track-block so block analytics capture the click
         await apiRequest("POST", `/api/pages/${blockPageId}/track-block`, { blockId, blockType: "link", eventType: "click" });
-      } else {
-        // Legacy DB link with numeric id
-        await apiRequest("POST", `/api/links/${link.id}/click`);
       }
     },
   });
@@ -975,12 +959,9 @@ export default function ProfilePage() {
   if (isLoading) return <ProfileSkeleton />;
   if (isError || !data) return <PageNotFound username={username || ""} />;
 
-  const { page, links } = data;
+  const { page } = data;
   const accent = page.accentColor || "#e06b1a";
   const fontFamily = getFontFamily(page.pageFont);
-  const sortedLinks = [...links].sort((a, b) => a.position - b.position);
-  const featuredLinks = sortedLinks.filter(l => l.style === "featured");
-  const regularLinks = sortedLinks.filter(l => l.style !== "featured");
 
   // #4/#4a: WCAG AA auto-contrast for accent-coloured text on the info card background
   // Returns white or black depending on luminance of the given colour
@@ -1193,20 +1174,6 @@ export default function ProfilePage() {
           </div>
         </div>
         </div>{/* end block-style wrapper */}
-
-        {/* Featured links */}
-        {featuredLinks.map(link => (
-          <TrackedLinkCard key={link.id} link={link} accentColor={accent} featured />
-        ))}
-
-        {/* Regular links */}
-        {regularLinks.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "1.5rem" }}>
-            {regularLinks.map(link => (
-              <TrackedLinkCard key={link.id} link={link} accentColor={accent} />
-            ))}
-          </div>
-        )}
 
         {/* Blocks */}
         {blocks.length > 0 && (

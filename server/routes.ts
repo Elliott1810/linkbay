@@ -587,6 +587,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pageFont: z.string().max(60).optional(),
         archivedBlockIds: z.string().optional(),
         hiddenBlockIds: z.string().optional(),
+        headerImageUrl: z.string().nullable().optional(),
       });
       const data = allowedFields.parse(req.body);
       const page = await storage.updatePage(pageId, data);
@@ -1245,6 +1246,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       // #16: base64 stored in DB — no filesystem cleanup needed
       await storage.updateUserAvatar(req.session.userId!, null);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // ─────────────────────────────────────────────────
+  //  PAGES — header image upload / remove
+  // ─────────────────────────────────────────────────
+
+  const headerImageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 8 * 1024 * 1024 }, // 8MB max
+    fileFilter: (_req, file, cb) => {
+      const allowed = ["image/jpeg", "image/png", "image/webp"];
+      cb(null, allowed.includes(file.mimetype));
+    },
+  });
+
+  app.post("/api/pages/:id/header-image", requireAuth as any, headerImageUpload.single("headerImage"), async (req: any, res) => {
+    try {
+      const pageId = parseInt(req.params.id);
+      if (!await assertOwnsPage(req, res, pageId)) return;
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      // Resize to 1200×400, cover crop, WebP 85 quality, then base64
+      const webpBuffer = await sharp(req.file.buffer)
+        .resize(1200, 400, { fit: "cover", position: "centre" })
+        .webp({ quality: 85 })
+        .toBuffer();
+      const base64 = `data:image/webp;base64,${webpBuffer.toString("base64")}`;
+      await storage.updatePage(pageId, { headerImageUrl: base64 });
+      res.json({ success: true, headerImageUrl: base64 });
+    } catch (err) {
+      console.error("Header image upload error:", err);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
+  app.delete("/api/pages/:id/header-image", requireAuth as any, async (req, res) => {
+    try {
+      const pageId = parseInt(req.params.id);
+      if (!await assertOwnsPage(req, res, pageId)) return;
+      await storage.updatePage(pageId, { headerImageUrl: null });
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: "Server error" });

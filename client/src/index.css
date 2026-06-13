@@ -1412,6 +1412,15 @@ img.avatar-img {
   border: none !important;
   box-shadow: none !important;
 }
+/* Featured accent button: preserve its background+color in ALL block styles.
+   Uses CSS custom props --featured-bg / --featured-color set via inline style.
+   The !important here wins over block-style > * overrides. */
+[class*="block-style-"] .block-card > .featured-btn {
+  background: var(--featured-bg) !important;
+  color: var(--featured-color) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
 
 .block-style-elevated .block-card {
   box-shadow: 0 8px 32px rgba(0,0,0,0.22) !important;
@@ -1511,6 +1520,11 @@ img.avatar-img {
 .block-style-dark-glass .block-card > * a,
 .block-style-dark-glass .block-card > * span {
   color: #f5f5f7 !important;
+}
+/* Dark-glass must not override featured button color */
+.block-style-dark-glass .block-card > .featured-btn {
+  color: var(--featured-color) !important;
+  background: var(--featured-bg) !important;
 }
 
 /* 2. Minimal High-Contrast — crisp white/dark bg, micro-animation on hover */

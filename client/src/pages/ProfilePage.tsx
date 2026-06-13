@@ -444,6 +444,7 @@ interface PageData {
     avatarUrl?: string | null;
     pageFont?: string | null;
     ownerTier?: string | null; // #6: pro/business users hide branding
+    headerImageUrl?: string | null;
   };
 }
 
@@ -1081,112 +1082,137 @@ export default function ProfilePage() {
       <div className="profile-content-wrap" style={{ maxWidth: 520, margin: "0 auto", padding: "2rem 1.25rem 4rem" }}>
 
         {/* Cover / hero card — wrapped in block-style class so CSS applies identically to other blocks */}
-        <div className={`block-style-${blockStyle}`} style={{ marginBottom: "1.25rem" }}>
+        {/* When headerImageUrl is set: override the block-style card background with the header image */}
+        <div className={page.headerImageUrl ? undefined : `block-style-${blockStyle}`} style={{ marginBottom: "1.25rem" }}>
         <div className="block-card" style={{
           borderRadius: blockRadius,
           padding: "2.5rem 2rem",
           textAlign: "center",
+          ...(page.headerImageUrl ? {
+            backgroundImage: `url(${page.headerImageUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            position: "relative",
+            overflow: "hidden",
+          } : {}),
         }}>
-          {/* #1/#7a: Avatar — centred, correct size, no overflow. Pentagon/Diamond removed (#7d) */}
+          {/* Dark overlay when header image is set — ensures text remains legible */}
+          {page.headerImageUrl && (
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.60) 100%)",
+              borderRadius: "inherit",
+              zIndex: 0,
+            }} />
+          )}
+          {/* All hero card content sits above overlay via zIndex:1 wrapper */}
+          <div style={{ position: "relative", zIndex: 1 }}>
+          {/* When header image is active, override accent-based text colours with white */}
           {(() => {
+            const heroText = page.headerImageUrl ? "#ffffff" : safeAccent;
+            const heroTextMuted = page.headerImageUrl ? "rgba(255,255,255,0.85)" : autoTextMuted;
             const shape = (page as any).avatarShape || "circle";
-            // #7d: pentagon/diamond removed; treat them as circle if somehow stored
             const avatarRadius = shape === "rounded" ? "var(--radius-lg)" : shape === "square" ? "0px" : "50%";
             const avatarSize = isPreview ? 36 : 72;
             const avatarFontSize = isPreview ? "1.25rem" : "1.75rem";
             const avatarInitialBg = wcagContrast(accent) === "#ffffff" ? accent : autoText;
-            return page.avatarUrl && !noPhoto ? (
-              <img
-                src={resolveMediaUrl(page.avatarUrl)}
-                alt={page.ownerName}
-                style={{
-                  /* #9: no avatar-img class — its !important width/height revert override inline styles */
-                  width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
-                  objectFit: "cover",
-                  margin: "0 auto 0.75rem",
-                  display: "block",
-                  flexShrink: 0,
-                  minWidth: avatarSize,
-                  maxWidth: avatarSize,
-                  border: "3px solid var(--color-surface)",
-                  boxShadow: "var(--shadow-md)"
-                }}
-              />
-            ) : (
-              <div style={{
-                width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
-                background: avatarInitialBg,
-                color: wcagContrast(avatarInitialBg),
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: avatarFontSize, fontWeight: 800,
-                margin: "0 auto 0.75rem",
-                border: "3px solid var(--color-surface)",
-                boxShadow: "var(--shadow-md)"
-              }}>
-                {page.ownerName.charAt(0).toUpperCase()}
-              </div>
+            return (
+              <>
+                {/* #1/#7a: Avatar — centred, correct size, no overflow */}
+                {page.avatarUrl && !noPhoto ? (
+                  <img
+                    src={resolveMediaUrl(page.avatarUrl)}
+                    alt={page.ownerName}
+                    style={{
+                      width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
+                      objectFit: "cover",
+                      margin: "0 auto 0.75rem",
+                      display: "block",
+                      flexShrink: 0,
+                      minWidth: avatarSize,
+                      maxWidth: avatarSize,
+                      border: "3px solid rgba(255,255,255,0.25)",
+                      boxShadow: "var(--shadow-md)"
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: avatarSize, height: avatarSize, borderRadius: avatarRadius,
+                    background: avatarInitialBg,
+                    color: wcagContrast(avatarInitialBg),
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: avatarFontSize, fontWeight: 800,
+                    margin: "0 auto 0.75rem",
+                    border: "3px solid rgba(255,255,255,0.25)",
+                    boxShadow: "var(--shadow-md)"
+                  }}>
+                    {page.ownerName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+
+                {/* Name */}
+                <h1 style={{
+                  fontSize: "var(--text-xl)", fontWeight: 800,
+                  fontFamily: fontFamily,
+                  letterSpacing: "-0.025em", marginBottom: "0.375rem",
+                  color: heroText,
+                }}>
+                  {page.ownerName}
+                </h1>
+
+                {/* Headline */}
+                {page.title && page.title.trim() !== page.ownerName.trim() && (
+                  <p style={{ fontSize: "var(--text-sm)", color: heroText, marginBottom: "0.75rem", fontWeight: 500, fontFamily, opacity: 0.85 }}>
+                    {page.title}
+                  </p>
+                )}
+
+                {/* Bio */}
+                {page.bio && (
+                  <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.7, color: heroTextMuted, fontFamily, marginBottom: "0.75rem", textAlign: "center" }}>{page.bio}</p>
+                )}
+
+                {/* Location */}
+                {page.location && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", marginBottom: "0.5rem" }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: heroText, flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <span style={{ fontSize: "var(--text-xs)", color: heroText, fontFamily }}>{page.location}</span>
+                  </div>
+                )}
+
+                {/* Contact links */}
+                {(page.phone || page.contactEmail) && (
+                  <div style={{ display: "flex", gap: "0.625rem", justifyContent: "center", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+                    {page.phone && (
+                      <a href={`tel:${page.phone}`}
+                        style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: heroText, textDecoration: "none", padding: "0.25rem 0.625rem", background: "rgba(255,255,255,0.15)", borderRadius: "var(--radius-full)", border: "1px solid rgba(255,255,255,0.3)", fontFamily }}
+                        data-testid="link-phone">
+                        📞 {page.phone}
+                      </a>
+                    )}
+                    {page.contactEmail && (
+                      <a href={`mailto:${page.contactEmail}`}
+                        style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: heroText, textDecoration: "none", padding: "0.25rem 0.625rem", background: "rgba(255,255,255,0.15)", borderRadius: "var(--radius-full)", border: "1px solid rgba(255,255,255,0.3)", fontFamily }}
+                        data-testid="link-contact-email">
+                        ✉️ {page.contactEmail}
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Profile views badge */}
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.3rem 0.875rem",
+                  background: page.headerImageUrl ? "rgba(255,255,255,0.15)" : `${accent}22`,
+                  borderRadius: "var(--radius-full)", fontSize: "var(--text-xs)",
+                  border: page.headerImageUrl ? "1px solid rgba(255,255,255,0.3)" : `1px solid ${accent}40` }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: heroText, display: "inline-block", flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, color: heroText }}>{page.viewCount.toLocaleString()} profile views</span>
+                </div>
+              </>
             );
           })()}
-
-          {/* #4a: Name uses safeAccent (WCAG AA checked) */}
-          <h1 style={{
-            fontSize: "var(--text-xl)", fontWeight: 800,
-            fontFamily: fontFamily,
-            letterSpacing: "-0.025em", marginBottom: "0.375rem",
-            color: safeAccent,
-          }}>
-            {page.ownerName}
-          </h1>
-
-          {/* Headline — only show if different from ownerName, to avoid duplicate text */}
-          {page.title && page.title.trim() !== page.ownerName.trim() && (
-            <p style={{ fontSize: "var(--text-sm)", color: safeAccent, marginBottom: "0.75rem", fontWeight: 500, fontFamily, opacity: 0.85 }}>
-              {page.title}
-            </p>
-          )}
-
-          {/* #1: Bio moved into the info card */}
-          {page.bio && (
-            <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.7, color: autoTextMuted, fontFamily, marginBottom: "0.75rem", textAlign: "center" }}>{page.bio}</p>
-          )}
-
-          {page.location && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", marginBottom: "0.5rem" }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: safeAccent, flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              {/* #4a: location uses safeAccent */}
-              <span style={{ fontSize: "var(--text-xs)", color: safeAccent, fontFamily }}>{page.location}</span>
-            </div>
-          )}
-
-          {/* Contact links */}
-          {(page.phone || page.contactEmail) && (
-            <div style={{ display: "flex", gap: "0.625rem", justifyContent: "center", marginBottom: "0.75rem", flexWrap: "wrap" }}>
-              {page.phone && (
-                <a
-                  href={`tel:${page.phone}`}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: safeAccent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30`, fontFamily }}
-                  data-testid="link-phone"
-                >
-                  📞 {page.phone}
-                </a>
-              )}
-              {page.contactEmail && (
-                <a
-                  href={`mailto:${page.contactEmail}`}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "var(--text-xs)", fontWeight: 600, color: safeAccent, textDecoration: "none", padding: "0.25rem 0.625rem", background: `${accent}14`, borderRadius: "var(--radius-full)", border: `1px solid ${accent}30`, fontFamily }}
-                  data-testid="link-contact-email"
-                >
-                  ✉️ {page.contactEmail}
-                </a>
-              )}
-            </div>
-          )}
-
-          {/* Profile views badge — accent fill with auto-contrast text for readability on any background */}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.3rem 0.875rem", background: `${accent}22`, borderRadius: "var(--radius-full)", fontSize: "var(--text-xs)", border: `1px solid ${accent}40` }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: safeAccent, display: "inline-block", flexShrink: 0 }} />
-            <span style={{ fontWeight: 600, color: safeAccent }}>{page.viewCount.toLocaleString()} profile views</span>
-          </div>
+          </div>{/* end zIndex wrapper */}
         </div>
         </div>{/* end block-style wrapper */}
 

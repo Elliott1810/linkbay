@@ -1700,6 +1700,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
   useEffect(() => { if (activePageId) { setSelectedPageId(activePageId); setNewBlockIds(new Set()); } }, [activePageId]);
   // AI Wizard
   const [aiWizardOpen, setAiWizardOpen] = useState(false);
+  const [editorUpgradeOpen, setEditorUpgradeOpen] = useState(false);
   const { data: licenceDataEditor } = useLicence();
   const editorTier: "free" | "pro" | "business" = (licenceDataEditor as any)?.tier ?? "free";
   const FREE_BLOCK_LIMIT = 5;
@@ -1820,7 +1821,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
           style={{ width: "100%", justifyContent: "center", fontSize: "var(--text-xs)", gap: "0.375rem" }}
           onClick={() => {
             if (editorTier === "free") {
-              alert("Upgrade to Pro to use AI page generation.");
+              setEditorUpgradeOpen(true);
               return;
             }
             setAiWizardOpen(true);
@@ -1831,6 +1832,13 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
           ✨ Generate with AI
           {editorTier === "free" && <span style={{ fontSize: 9, padding: "0.1rem 0.35rem", background: "rgba(255,255,255,0.2)", borderRadius: 999, fontWeight: 700 }}>PRO</span>}
         </button>
+
+        {editorUpgradeOpen && (
+          <UpgradeModal
+            onClose={() => setEditorUpgradeOpen(false)}
+            onBilling={() => { setEditorUpgradeOpen(false); }}
+          />
+        )}
 
         {aiWizardOpen && (
           <AIWizardModal
@@ -5162,7 +5170,7 @@ function SettingsPanel({ user, pages, onLogout }: { user: any; pages: any[]; onL
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.25rem" }}>
+        <div className="settings-profile-name-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.25rem" }}>
           <div>
             <label style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: "0.375rem" }}>Full name</label>
             <input className="input" value={name} onChange={e => setName(e.target.value)} data-testid="input-profile-name" />
@@ -5866,7 +5874,7 @@ function BillingPanel() {
       name: "Business",
       monthlyPrice: 20,
       annualPrice: 16,
-      color: "#0891b2",
+      color: "#e06b1a",
       features: ["Unlimited pages", "Unlimited blocks", "Analytics", "Contacts", "AI page builder", "QR codes", "CSV export", "Remove branding", "Custom domain", "Lead notifications", "Priority support"],
       priceIdMonthly: lic?.priceIds?.businessMonthly || "",
       priceIdAnnual: lic?.priceIds?.businessAnnual || "",
@@ -5892,7 +5900,7 @@ function BillingPanel() {
           <div>
             <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.25rem" }}>Current plan</div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ padding: "0.2rem 0.6rem", borderRadius: "var(--radius-full)", fontSize: 11, fontWeight: 700, background: currentTier === "free" ? "var(--color-surface-offset)" : currentTier === "pro" ? "rgba(224,107,26,0.15)" : "rgba(8,145,178,0.15)", color: currentTier === "free" ? "var(--color-text-muted)" : currentTier === "pro" ? "#e06b1a" : "#0891b2", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <span style={{ padding: "0.2rem 0.6rem", borderRadius: "var(--radius-full)", fontSize: 11, fontWeight: 700, background: currentTier === "free" ? "var(--color-surface-offset)" : "rgba(224,107,26,0.15)", color: currentTier === "free" ? "var(--color-text-muted)" : "#e06b1a", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 {currentTier}
               </span>
               {lic?.expiry && (

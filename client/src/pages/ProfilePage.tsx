@@ -1104,17 +1104,23 @@ export default function ProfilePage() {
           } : {}),
         }}>
           {/* Header image layer — sits at z:0 behind overlay and content.
-              Using a child <div> instead of CSS background on .block-card so it can't
-              be overridden by block-style `background: … !important` rules. */}
+              The class hero-header-img is used in index.css to exempt this div from
+              block-style `background-image: initial !important` overrides on .block-card > * */}
           {page.headerImageUrl && (
-            <div style={{
-              position: "absolute", inset: 0,
-              backgroundImage: `url(${page.headerImageUrl})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center center",
-              backgroundRepeat: "no-repeat",
-              zIndex: 0,
-            }} />
+            <div
+              className="hero-header-img"
+              style={{
+                position: "absolute", inset: 0,
+                // backgroundImage is NOT set here — block-style CSS uses
+                // `background-image: initial !important` on .block-card > * which
+                // would wipe an inline backgroundImage (CSS !important > non-!important inline).
+                // Instead we set a CSS custom property --hero-bg which is then read by
+                // .block-card > .hero-header-img { background-image: var(--hero-bg) !important }
+                // in index.css, giving us !important without hard-coding the URL.
+                "--hero-bg": `url(${page.headerImageUrl})`,
+                zIndex: 0,
+              } as React.CSSProperties}
+            />
           )}
           {/* Dark gradient overlay — legibility layer above the image */}
           {page.headerImageUrl && (

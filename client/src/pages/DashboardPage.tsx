@@ -2351,6 +2351,46 @@ function AIBlockRecommender({ onAddAll, onSkip, remainingSlots }: { onAddAll: (b
   const [suggestions, setSuggestions] = useState<PageBlock[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [errorMsg, setErrorMsg] = useState("");
+  // URL import state
+  const [showUrlImport, setShowUrlImport] = useState(false);
+  const [urlImportVal, setUrlImportVal] = useState("");
+  const [urlImportLoading, setUrlImportLoading] = useState(false);
+  const [urlImportError, setUrlImportError] = useState<string | null>(null);
+
+  async function handleUrlImport() {
+    if (!urlImportVal.trim()) return;
+    setUrlImportLoading(true);
+    setUrlImportError(null);
+    try {
+      const r = await fetch("/api/ai/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlImportVal.trim() }),
+        credentials: "include",
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Import failed");
+      const genId = () => "blk-" + Math.random().toString(36).slice(2, 8);
+      const cap = remainingSlots > 0 ? Math.min(5, remainingSlots) : 5;
+      const mapped: PageBlock[] = ((data.blocks || []) as any[]).flatMap((b: any): PageBlock[] => {
+        switch (b.type) {
+          case "text": return [{ id: genId(), type: "text", content: b.content || "" }];
+          case "lead-form": return [{ id: genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || "", buttonText: b.buttonText || "Send" } as any];
+          case "link": return [{ id: genId(), type: "link", title: b.title || "Link", url: b.url || "", description: b.description || "", icon: b.icon || "🔗", linkStyle: b.style || "default" } as any];
+          case "social-links": return [{ id: genId(), type: "social-links", socials: (b.links || []).map((l: any) => ({ platform: l.platform, url: l.url })) } as any];
+          case "booking": return [{ id: genId(), type: "booking", title: b.title || "Book a call", platform: b.platform || "calendly", embedUrl: b.embedUrl || "", embedHeight: b.embedHeight || 650 } as any];
+          default: return [];
+        }
+      }).slice(0, cap);
+      setSuggestions(mapped);
+      setSelected(new Set(mapped.map((_: PageBlock, i: number) => i)));
+      setPhase("done");
+    } catch (e: any) {
+      setUrlImportError(e.message || "Import failed. Please try again.");
+    } finally {
+      setUrlImportLoading(false);
+    }
+  }
 
   const tier = (licData as any)?.tier || "free";
   const userName = (userData as any)?.name || "";
@@ -2420,21 +2460,48 @@ function AIBlockRecommender({ onAddAll, onSkip, remainingSlots }: { onAddAll: (b
         <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-primary)" }}>✨ What do you want to achieve?</span>
         <button style={{ background: "none", border: "none", fontSize: 11, color: "var(--color-text-faint)", cursor: "pointer" }} onClick={onSkip}>Skip</button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.375rem", marginBottom: "0.75rem" }}>
-        {BLOCK_GOAL_OPTIONS.map(opt => {
-          const active = blockGoal === opt.value;
-          return (
-            <button key={opt.value} type="button" onClick={() => setBlockGoal(opt.value)} style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.625rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-surface)" : "var(--color-bg)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: 12, fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const }}>
-              <span>{opt.icon}</span>{opt.value}
+      {!showUrlImport ? (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.375rem", marginBottom: "0.75rem" }}>
+            {BLOCK_GOAL_OPTIONS.map(opt => {
+              const active = blockGoal === opt.value;
+              return (
+                <button key={opt.value} type="button" onClick={() => setBlockGoal(opt.value)} style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.625rem", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`, background: active ? "var(--color-surface)" : "var(--color-bg)", color: active ? "var(--color-primary)" : "var(--color-text)", fontSize: 12, fontWeight: active ? 700 : 500, cursor: "pointer", textAlign: "left" as const }}>
+                  <span>{opt.icon}</span>{opt.value}
+                </button>
+              );
+            })}
+          </div>
+          <button className="btn btn-primary btn-sm" style={{ width: "100%", justifyContent: "center", marginBottom: "0.5rem" }} disabled={!blockGoal} onClick={() => {
+            const fqs = GOAL_FOLLOWUPS[blockGoal] ?? [];
+            if (fqs.length > 0) { setFollowupStep(0); setFollowupAnswers({}); setPhase("followup"); }
+            else fetchSuggestions(blockGoal, {});
+          }}>Next →</button>
+          <div style={{ textAlign: "center" }}>
+            <button type="button" onClick={() => setShowUrlImport(true)} style={{ background: "none", border: "none", fontSize: 11, color: "var(--color-primary)", cursor: "pointer", textDecoration: "underline" }}>🔗 or import blocks from a URL</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.5rem" }}>Paste a LinkedIn, YouTube, Substack, Etsy, Calendly, or any public page URL:</p>
+          <input
+            autoFocus
+            type="url"
+            value={urlImportVal}
+            onChange={e => setUrlImportVal(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && urlImportVal.trim()) handleUrlImport(); }}
+            placeholder="https://linkedin.com/in/yourname"
+            style={{ width: "100%", padding: "0.625rem", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: 12, marginBottom: "0.5rem", boxSizing: "border-box" as const }}
+          />
+          {urlImportError && <div style={{ fontSize: 11, color: "var(--color-error, #dc2626)", marginBottom: "0.5rem" }}>{urlImportError}</div>}
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button className="btn btn-secondary btn-sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setShowUrlImport(false); setUrlImportError(null); }}>← Back</button>
+            <button className="btn btn-primary btn-sm" style={{ flex: 2, justifyContent: "center" }} disabled={!urlImportVal.trim() || urlImportLoading} onClick={handleUrlImport}>
+              {urlImportLoading ? "Importing…" : "🔗 Import & Generate"}
             </button>
-          );
-        })}
-      </div>
-      <button className="btn btn-primary btn-sm" style={{ width: "100%", justifyContent: "center" }} disabled={!blockGoal} onClick={() => {
-        const fqs = GOAL_FOLLOWUPS[blockGoal] ?? [];
-        if (fqs.length > 0) { setFollowupStep(0); setFollowupAnswers({}); setPhase("followup"); }
-        else fetchSuggestions(blockGoal, {});
-      }}>Next →</button>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -6155,16 +6222,41 @@ function BillingPanel() {
 // AIWizardModal
 // ────────────────────────────────────────────────────────────────────────
 function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (page: any) => void }) {
+  const [mode, setMode] = useState<"questions" | "import">("questions");
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({ name: "", tagline: "", goal: "", industry: "", colorMood: "", fontStyle: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // URL import state
+  const [importUrl, setImportUrl] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
+
+  async function handleImport() {
+    if (!importUrl.trim()) return;
+    setImportLoading(true);
+    setImportError(null);
+    try {
+      const r = await fetch("/api/ai/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: importUrl.trim() }),
+        credentials: "include",
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Import failed");
+      onApply(data);
+    } catch (e: any) {
+      setImportError(e.message || "Something went wrong. Please try again.");
+      setImportLoading(false);
+    }
+  }
 
   type WizardQuestion = {
     key: string;
@@ -6276,14 +6368,18 @@ function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (pa
     }
   }
 
+  const isLoading2 = loading || importLoading;
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
       <div style={{ background: "var(--color-surface)", borderRadius: "var(--radius-xl)", padding: "2rem", maxWidth: 480, width: "100%", boxShadow: "0 24px 64px rgba(0,0,0,0.24)" }} onClick={e => e.stopPropagation()}>
-        {loading ? (
+        {isLoading2 ? (
           <div style={{ textAlign: "center", padding: "2rem 0" }}>
             <div style={{ fontSize: 40, marginBottom: "1rem", animation: "spin 1.5s linear infinite", display: "inline-block" }}>✨</div>
             <div style={{ fontSize: "var(--text-base)", fontWeight: 700, marginBottom: "0.5rem" }}>Rebuilding your page…</div>
-            <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>GPT-4o is generating blocks tailored to your answers</div>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
+              {mode === "import" ? "GPT-4o is analysing the page and generating your profile" : "GPT-4o is generating blocks tailored to your answers"}
+            </div>
             <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
           </div>
         ) : (
@@ -6291,12 +6387,54 @@ function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (pa
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-faint)", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>✨ AI Page Builder · {step + 1} of {totalSteps}</div>
-                <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", margin: 0 }}>{currentQ.label}</h2>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-faint)", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>✨ AI Page Builder{mode === "questions" ? ` · ${step + 1} of ${totalSteps}` : ""}</div>
+                <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, fontFamily: "Cabinet Grotesk, sans-serif", margin: 0 }}>
+                  {mode === "import" ? "Import from a URL" : currentQ.label}
+                </h2>
               </div>
               <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 20, lineHeight: 1 }}>×</button>
             </div>
 
+            {/* Mode toggle */}
+            <div style={{ display: "flex", gap: "0.375rem", marginBottom: "1.25rem", background: "var(--color-bg)", borderRadius: "var(--radius-md)", padding: "3px" }}>
+              {(["questions", "import"] as const).map(m => (
+                <button key={m} onClick={() => { setMode(m); setError(null); setImportError(null); }} style={{ flex: 1, padding: "0.375rem 0.5rem", borderRadius: "calc(var(--radius-md) - 3px)", border: "none", cursor: "pointer", fontSize: "var(--text-sm)", fontWeight: mode === m ? 700 : 500, background: mode === m ? "var(--color-surface)" : "transparent", color: mode === m ? "var(--color-primary)" : "var(--color-text-muted)", boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.10)" : "none", transition: "all 0.15s" }}>
+                  {m === "questions" ? "✍️  Answer questions" : "🔗  Import from URL"}
+                </button>
+              ))}
+            </div>
+
+            {/* ── URL Import Mode ── */}
+            {mode === "import" && (
+              <>
+                <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "0.875rem", marginTop: "-0.25rem" }}>
+                  Paste your LinkedIn, YouTube, Substack, Etsy, Calendly, or any public page URL. AI will read it and build your Linkbay profile automatically.
+                </p>
+                {/* Platform chips */}
+                <div style={{ display: "flex", flexWrap: "wrap" as const, gap: "0.375rem", marginBottom: "1rem" }}>
+                  {["LinkedIn","YouTube","Substack","Etsy","Calendly","Website"].map(p => (
+                    <span key={p} style={{ fontSize: 11, fontWeight: 600, padding: "0.2rem 0.55rem", borderRadius: 999, background: "var(--color-primary-highlight)", color: "var(--color-primary)", letterSpacing: "0.02em" }}>{p}</span>
+                  ))}
+                </div>
+                <input
+                  autoFocus
+                  type="url"
+                  value={importUrl}
+                  onChange={e => setImportUrl(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && importUrl.trim()) handleImport(); }}
+                  placeholder="https://linkedin.com/in/yourname"
+                  style={{ width: "100%", padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", fontSize: "var(--text-sm)", marginBottom: "0.75rem", boxSizing: "border-box" as const }}
+                />
+                {importError && <div style={{ fontSize: 13, color: "var(--color-error, #dc2626)", marginBottom: "0.75rem", padding: "0.5rem", background: "rgba(220,38,38,0.08)", borderRadius: "var(--radius-sm)" }}>{importError}</div>}
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button className="btn btn-primary btn-sm" onClick={handleImport} disabled={!importUrl.trim()}>🔗 Import &amp; Generate</button>
+                </div>
+              </>
+            )}
+
+            {/* ── Question Mode ── */}
+            {mode === "questions" && (
+              <>
             {/* Progress bar */}
             <div style={{ height: 3, background: "var(--color-divider)", borderRadius: 999, marginBottom: "1.25rem" }}>
               <div style={{ height: "100%", width: `${((step + 1) / totalSteps) * 100}%`, background: "var(--color-primary)", borderRadius: 999, transition: "width 0.3s" }} />
@@ -6374,6 +6512,8 @@ function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (pa
                 <button className="btn btn-primary btn-sm" onClick={handleGenerate} disabled={!canNext}>✨ Build my page</button>
               )}
             </div>
+            </>
+            )}
           </>
         )}
       </div>

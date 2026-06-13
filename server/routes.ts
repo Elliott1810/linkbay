@@ -459,7 +459,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (req.session?.userEmail && page?.ownerEmail === req.session.userEmail) return res.json({ skipped: true });
       const ua = String(req.headers["user-agent"] || "");
       const device = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /iPad|Tablet/i.test(ua) ? "tablet" : "desktop";
-      await storage.recordEvent({ pageId, type: "link_click", device } as any);
+      // Accept optional blockId so clicks on block-type links appear in block analytics
+      const { blockId, blockType } = (req.body || {}) as { blockId?: string; blockType?: string };
+      await storage.recordEvent({ pageId, type: "link_click", device, blockId: blockId || null, blockType: blockType || null } as any);
       res.json({ success: true });
     } catch { res.json({ success: false }); }
   });

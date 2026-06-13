@@ -1094,29 +1094,38 @@ export default function ProfilePage() {
           borderRadius: blockRadius,
           padding: "2.5rem 2rem",
           textAlign: "center",
+          // When header image is set we need position:relative + overflow:hidden so the
+          // absolute image layer (see below) is clipped to the card shape. We do NOT set
+          // backgroundImage here because many block styles use `background: … !important`
+          // which is a shorthand that also resets background-image, wiping the photo.
           ...(page.headerImageUrl ? {
-            // contain = show full image without cropping; no-repeat centred; block-card bg fills letterbox
-            backgroundImage: `url(${page.headerImageUrl})`,
-            backgroundSize: "contain",
-            backgroundPosition: "center center",
-            backgroundRepeat: "no-repeat",
             position: "relative",
             overflow: "hidden",
-            // Subtle dark fill behind the contained image so letterbox areas don't look broken
-            backgroundColor: "rgba(0,0,0,0.55)",
           } : {}),
         }}>
-          {/* Dark overlay when header image is set — ensures text remains legible */}
+          {/* Header image layer — sits at z:0 behind overlay and content.
+              Using a child <div> instead of CSS background on .block-card so it can't
+              be overridden by block-style `background: … !important` rules. */}
           {page.headerImageUrl && (
             <div style={{
               position: "absolute", inset: 0,
-              background: "linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.60) 100%)",
-              borderRadius: "inherit",
+              backgroundImage: `url(${page.headerImageUrl})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center center",
+              backgroundRepeat: "no-repeat",
               zIndex: 0,
             }} />
           )}
-          {/* All hero card content sits above overlay via zIndex:1 wrapper */}
-          <div style={{ position: "relative", zIndex: 1 }}>
+          {/* Dark gradient overlay — legibility layer above the image */}
+          {page.headerImageUrl && (
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "linear-gradient(to bottom, rgba(0,0,0,0.40) 0%, rgba(0,0,0,0.65) 100%)",
+              zIndex: 1,
+            }} />
+          )}
+          {/* All hero card content sits above image + overlay layers */}
+          <div style={{ position: "relative", zIndex: 2 }}>
           {/* When header image is active, override accent-based text colours with white */}
           {(() => {
             const heroText = page.headerImageUrl ? "#ffffff" : safeAccent;

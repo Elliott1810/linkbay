@@ -2911,15 +2911,21 @@ Block types:
 { id:"blk-5", type:"booking",     title:"...", platform:"calendly", embedUrl:"", embedHeight:650 }
 { id:"blk-6", type:"countdown",   title:"...", targetDate:"2026-12-31" }
 
-Rules:
-- ALWAYS use the person's name and specific tagline — never placeholder text
-- Headline must match the voice tone: professional=formal, warm=friendly, bold=punchy, creative=expressive, expert=authoritative
-- Bio must sound human and specific — two sentences about what they do, one about what the visitor should do next
+Block variety and ordering rules:
+- NEVER generate only link blocks — always use a MIX: at least one text block (bio) + at least one non-link block (social-links, lead-form, booking, or countdown)
+- Always start with one featured link block as the primary CTA
+- ALWAYS include a text block with the person's bio (2-3 sentences, specific to their niche)
 - If goals include "Get new clients" or "Capture leads": add a lead-form block with service-specific title
 - If goals include "Drive bookings": add a booking block
-- If goals include "Promote a launch": add a countdown block dated 90 days from now
+- If goals include "Promote a launch": add a countdown block dated 90 days from now AND a lead-form waitlist block
 - If goals include "Link my socials" or "Grow my audience": add a social-links block
-- Always start with one featured link block as the primary CTA
+- Prefer social-links over individual link blocks for social media profiles — group all socials into one social-links block
+- NEVER use placeholder text like "Your Name" or "your link here" — always use the person's actual name/tagline
+- BLOCK ORDERING: primary CTA link first, then bio text, then secondary links, then lead-form/booking, then social-links last
+- Headline must match the voice tone: professional=formal, warm=friendly, bold=punchy, creative=expressive, expert=authoritative
+- Bio must sound human and specific — two sentences about what they do, one call to action
+- URL placeholders: when real URL unknown use https://[your-link].com format — NEVER example.com
+- TEXT OPENERS: NEVER begin text block with "Welcome to my page", "Hello!", or generic greetings — open with name + confident claim
 - ALWAYS respect themeHint.accentColor and themeHint.background if provided
 - ALWAYS respect themeHint.pageFont if provided
 - Output ONLY the JSON object`;
@@ -3121,8 +3127,15 @@ Rules:
     * Event or countdown → countdown block
     * Only use a link block when the content is genuinely best served as a clickable link (e.g. portfolio, shop, external resource)
 - A well-structured page should typically include: 1 text bio block, 1-2 link blocks (primary CTAs), 1 social-links block, and optionally a lead-form or booking block
-- Pick an accent colour that matches the brand (warm, professional, avoid purple/neon)
-- Background should be white (#ffffff), near-white, or a very light warm tint — not dark
+- Pick an accent colour that matches the brand's visual identity (use brand colours from the page where possible)
+- Choose a background from this list that fits the brand aesthetic: none, bg-aurora, bg-blush, bg-dusk, bg-ember, bg-fog, bg-forest, bg-glacier, bg-haze, bg-ivory, bg-lava, bg-midnight, bg-mint, bg-mocha, bg-ocean, bg-peach, bg-plum, bg-rose, bg-sand, bg-slate, bg-twilight, bg-warm-white, bg-warm-sand
+- Do NOT default to plain white — choose a background that reflects the brand's personality and colour palette
+- Dark brands (dark website, dark brand colours) → use dark backgrounds (bg-midnight, bg-slate, bg-mocha, bg-aurora)
+- Light professional brands → use bg-ivory, bg-glacier, bg-sand, bg-warm-sand
+- Creative/vibrant brands → use bg-mint, bg-peach, bg-blush, bg-rose
+- Background MUST have good contrast with white text (dark bg) or dark text (light bg)
+- Infer blockStyle from the brand aesthetic: corporate/professional → elevated or bordered; creative → ghost or frosted; tech/dark → frosted or shadow-depth
+- fontFamily should match brand voice: formal/editorial → cabinet-grotesk or playfair; tech/startup → inter or space-grotesk; friendly → general-sans
 - Output ONLY the JSON object, no markdown fences`;
 
     const userPrompt = `Platform: ${platform}

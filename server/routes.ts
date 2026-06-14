@@ -3137,19 +3137,37 @@ Block types:
 
 Rules:
 - Extract the person's real name from the title/h1 — use it throughout
-- The link-in-bio page URL being imported is ${url} — add it as the primary featured link block
+- The link-in-bio page URL being imported is ${url} — add it as the primary featured link block if it is useful (e.g. a portfolio site, Substack, LinkedIn). Do NOT add it if the URL is already represented by a social-links block platform.
 - Generate 4-8 relevant blocks that best represent the person/brand
-- TEXT BLOCKS: Include AT MOST 1 text block. Use it for a short bio paragraph only. Never add a second text block.
-- VARIETY IS CRITICAL: Use a MIX of block types. Do NOT make every block a link. Choose the most appropriate type for each piece of content:
-    * Bio/about copy → text block (maximum 1 total)
-    * Contact/enquiry/get in touch → lead-form block
-    * Social profiles (Instagram, LinkedIn, Twitter etc) → social-links block (ONE block, list all platforms)
-    * Booking/scheduling → booking block
-    * Event or countdown → countdown block
-    * Only use a link block when the content is genuinely best served as a clickable link (e.g. portfolio, shop, external resource)
-- LEAD FORMS: ALWAYS include exactly 1 lead-form block. Use the niche/industry to add 1-3 relevant customFields (e.g. for a photographer: [{name:"Event type",type:"dropdown",required:true,options:["Wedding","Portrait","Commercial","Event"]}]; for a fitness coach: [{name:"Your goal",type:"dropdown",required:true,options:["Lose weight","Build muscle","Improve fitness","General health"]}]; for a developer: [{name:"Project type",type:"dropdown",required:true,options:["Web app","Mobile","API","Other"]}]). The formDescription should describe what happens after submission (e.g. "I'll reply within 24 hours.").
-- CRITICAL: For social-links blocks, ONLY include social platform URLs that are EXPLICITLY present in the scraped content (body text, links, meta tags). NEVER invent or guess social profile URLs. If a platform URL was not found in the content, do not include it.
-- A well-structured page should include: exactly 1 text bio block, 1-2 link blocks (primary CTAs), exactly 1 lead-form block with custom fields, 1 social-links block (only if social URLs were found), and optionally a booking block
+
+--- TEXT BLOCK RULE (STRICT) ---
+Include AT MOST 1 text block total. One short bio paragraph only. NEVER output a second text block under any circumstances.
+
+--- LINK BLOCK URL UNIQUENESS (CRITICAL) ---
+Each link block MUST have a unique URL. NEVER create two link blocks pointing to the same domain or the same person's profile. Before adding a link block, ask yourself: does a link block with this domain already exist? If yes, skip it. Consolidate: if you have multiple links from the same person/brand, keep only the most important one.
+
+--- BLOCK VARIETY (CRITICAL) ---
+A page with only link blocks is WRONG. You MUST use a genuine mix. Follow this mapping strictly:
+* Bio/about copy → text block (maximum 1 total)
+* Contact/enquiry/get in touch → lead-form block (ALWAYS include exactly 1)
+* Social profiles (Instagram, LinkedIn, Twitter, TikTok etc) → social-links block (ONE combined block — list all found platforms together, never separate link blocks for social profiles)
+* Booking/scheduling (Calendly, etc) → booking block
+* Event or launch → countdown block
+* Portfolio, shop, external article, external tool → link block (only for content genuinely best served as a standalone CTA)
+Do NOT create a link block for a social profile URL — those go in the social-links block only.
+
+--- LEAD FORM (ALWAYS REQUIRED) ---
+ALWAYS include exactly 1 lead-form block. You MUST add 1-3 relevant customFields based on the person's niche/industry:
+* Photographer/videographer: [{"name":"Event type","type":"dropdown","required":true,"options":["Wedding","Portrait","Commercial","Event"]}]
+* Fitness/health coach: [{"name":"Your goal","type":"dropdown","required":true,"options":["Lose weight","Build muscle","Improve fitness","General health"]}]
+* Developer/agency: [{"name":"Project type","type":"dropdown","required":true,"options":["Web app","Mobile","API","Other"]}]
+* Consultant/coach: [{"name":"Budget range","type":"dropdown","required":false,"options":["Under £500","£500-£2k","£2k-£10k","£10k+"]}]
+* Creative/designer: [{"name":"Project type","type":"dropdown","required":true,"options":["Branding","Web design","Illustration","Other"]}]
+* General business: [{"name":"How can I help?","type":"dropdown","required":true,"options":["General enquiry","Partnership","Collaboration","Other"]}]
+The formDescription must say what happens after submission (e.g. "I'll get back to you within 24 hours.").
+
+- CRITICAL: For social-links blocks, ONLY include social platform URLs that are EXPLICITLY present in the scraped content. NEVER invent or guess social profile URLs.
+- A well-structured page should include: 1 text bio block, 1-2 link blocks (real external CTAs, not social profiles), 1 lead-form block with custom fields, 1 social-links block (only if found), optionally a booking block.
 - Pick an accent colour that matches the brand's visual identity (use brand colours from the page where possible)
 - Choose a background from the list above that fits the brand aesthetic
 - Do NOT default to plain white — choose a background that reflects the brand's personality and colour palette
@@ -3260,6 +3278,29 @@ ${contactNote ? contactNote + "\n" : ""}Body text (truncated): ${bodyText}`;
         parsed.background = JSON.stringify({ bgValue: parsed.background, blockStyle: parsed.blockStyle });
       } else if (!parsed.background) {
         parsed.background = "bg-warm-white";
+      }
+
+      // Server-side block sanitisation: dedup link blocks by URL hostname
+      if (Array.isArray(parsed.blocks)) {
+        // 1. Remove duplicate link blocks pointing to the same hostname
+        const seenLinkDomains = new Set<string>();
+        // 2. Enforce max 1 text block, max 1 lead-form
+        const seenSingletons = new Set<string>();
+        const SINGLETON_TYPES_IMPORT = new Set(["text", "lead-form"]);
+        parsed.blocks = (parsed.blocks as any[]).filter((b: any) => {
+          if (b.type === "link" && b.url) {
+            try {
+              const domain = new URL(b.url).hostname.replace(/^www\./, "");
+              if (seenLinkDomains.has(domain)) return false;
+              seenLinkDomains.add(domain);
+            } catch { /* keep block if URL is unparseable */ }
+          }
+          if (SINGLETON_TYPES_IMPORT.has(b.type)) {
+            if (seenSingletons.has(b.type)) return false;
+            seenSingletons.add(b.type);
+          }
+          return true;
+        });
       }
 
       return res.json(parsed);

@@ -58,7 +58,6 @@ const navItems = [
   { id: "leads",     label: "Leads",            icon: "users"   },
   { id: "contacts",  label: "Contacts",         icon: "contacts" },
   { id: "signature", label: "Email Signature",  icon: "signature" },
-  { id: "settings",  label: "Settings",         icon: "settings" },
   { id: "billing",   label: "Billing",          icon: "billing" },
 ];
 
@@ -7103,7 +7102,7 @@ export default function DashboardPage() {
         )}
 
         {/* Nav */}
-        <div className="sidebar-nav" style={{ flex: 1, padding: "0.75rem 0.5rem", overflow: "auto" }}>
+        <div className="sidebar-nav" style={{ flex: 1, padding: "0.75rem 0.5rem", overflowY: "auto", overflowX: "hidden" }}>
           {navItems.map(item => (
             <button
               key={item.id}
@@ -7185,6 +7184,16 @@ export default function DashboardPage() {
           >
             {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             {!sidebarCollapsed && "Collapse"}
+          </button>
+          <button
+            onClick={() => setActiveNav("settings")}
+            className={`sidebar-nav-item${activeNav === "settings" ? " active" : ""}`}
+            style={{ width: "100%", border: "none", cursor: "pointer", textAlign: "left", justifyContent: sidebarCollapsed ? "center" : undefined }}
+            data-testid="button-settings"
+            title={sidebarCollapsed ? "Settings" : undefined}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            {!sidebarCollapsed && "Settings"}
           </button>
           <button
             onClick={async () => { await logout(); navigate("/"); }}

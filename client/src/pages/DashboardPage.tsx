@@ -6547,12 +6547,26 @@ function AIWizardModal({ onClose, onApply }: { onClose: () => void; onApply: (pa
       const allBlocks = results.flatMap((r: any) => r?.blocks || []);
       // Dedupe blocks by URL for link types
       const seen = new Set<string>();
-      const merged = allBlocks.filter((b: any) => {
+      const deduped = allBlocks.filter((b: any) => {
         const key = b.url || b.content || b.title || Math.random().toString();
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
       });
+      // Post-merge enforcement: keep only first text block, only first lead-form
+      const seenSingletonTypes = new Set<string>();
+      const SINGLETON_TYPES = ["text", "lead-form"];
+      const merged = deduped.filter((b: any) => {
+        if (SINGLETON_TYPES.includes(b.type)) {
+          if (seenSingletonTypes.has(b.type)) return false;
+          seenSingletonTypes.add(b.type);
+        }
+        return true;
+      });
+      // Synthesise a generic lead-form if none came back from the AI
+      if (!merged.some((b: any) => b.type === "lead-form")) {
+        merged.push({ id: "blk-leadform", type: "lead-form", title: "Get in touch", formDescription: "I'll reply within 24 hours.", buttonText: "Send message", customFields: [] });
+      }
       onApply({ ...first, blocks: merged });
     } catch (e: any) {
       setImportError(e.message || "Something went wrong. Please try again.");

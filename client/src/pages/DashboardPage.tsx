@@ -1175,7 +1175,7 @@ interface PageBlock {
   embedHeight?: number;
 }
 
-function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: number; blocks: PageBlock[]; onSave: (blocks: PageBlock[]) => void; saving: boolean; newBlockIds?: Set<string> }) {
+function BlockEditor({ pageId, blocks, archivedBlockIds: propArchivedIds, onSave, saving, newBlockIds }: { pageId: number; blocks: PageBlock[]; archivedBlockIds?: string[]; onSave: (blocks: PageBlock[]) => void; saving: boolean; newBlockIds?: Set<string> }) {
   const [localBlocks, setLocalBlocks] = useState<PageBlock[]>(blocks);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<PageBlock>>({});
@@ -1205,13 +1205,13 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
     setLocalBlocks(arr);
     onSave(arr);
     // Archive the block in page settings AND in Block Analytics
+    // Use propArchivedIds directly — avoids a GET race condition where a parallel
+    // saveBlocksMutation.onSuccess invalidation overwrites our archivedBlockIds PATCH
     try {
-      const pageRes = await apiRequest("GET", `/api/pages/${pageId}`);
-      const pageData = await pageRes.json();
-      const existing: string[] = (() => { try { return JSON.parse(pageData.archivedBlockIds || "[]"); } catch { return []; } })();
+      const existing: string[] = Array.isArray(propArchivedIds) ? propArchivedIds : [];
       if (!existing.includes(id)) {
         await apiRequest("PATCH", `/api/pages/${pageId}`, { archivedBlockIds: JSON.stringify([...existing, id]) });
-        // pages live under /api/auth/me — invalidate that so archivedIds refreshes everywhere
+        // Invalidate AFTER the PATCH resolves so the refetch picks up new archivedBlockIds
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       }
     } catch (e) { console.error("[deleteBlock] archivedBlockIds patch failed:", e); }
@@ -1983,6 +1983,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
             <BlockEditor
               pageId={selectedPageId!}
               blocks={pageBlocks}
+              archivedBlockIds={(() => { try { return JSON.parse(page?.archivedBlockIds || "[]"); } catch { return []; } })()}
               onSave={(blocks) => saveBlocksMutation.mutate(blocks)}
               saving={saveBlocksMutation.isPending}
               newBlockIds={newBlockIds}
@@ -2648,7 +2649,7 @@ function AIBlockRecommender({ onAddAll, onSkip, remainingSlots }: { onAddAll: (b
 function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: PageBlock) => void; onAddAll?: (blocks: PageBlock[]) => void; saving: boolean; remainingSlots?: number }) {
   const [collapsed, setCollapsed] = useState(true); // #10: collapsed by default
   const [blockType, setBlockType] = useState<BlockKind>("text");
-  const [wizardSkipped, setWizardSkipped] = useState(false);
+  // wizardSkipped removed — AIBlockRecommender moved to separate ✨ wizard flow
   // Text
   const [textTitle, setTextTitle] = useState("");
   const [textContent, setTextContent] = useState("");
@@ -2790,18 +2791,6 @@ function AddBlockForm({ onAdd, onAddAll, saving, remainingSlots }: { onAdd: (b: 
         <span style={{ fontSize: 11, color: "var(--color-text-faint)" }}>{collapsed ? "▼" : "▲"}</span>
       </button>
       {!collapsed && <div style={{ padding: "0 1.25rem 1.25rem" }}>
-
-      {!wizardSkipped && (
-        <AIBlockRecommender
-          onAddAll={(blocks) => {
-            if (onAddAll) onAddAll(blocks);
-            else blocks.forEach(b => onAdd(b));
-            setWizardSkipped(true);
-          }}
-          onSkip={() => setWizardSkipped(true)}
-          remainingSlots={remainingSlots ?? 999}
-        />
-      )}
 
       <div style={{ display: "flex", gap: "0.375rem", marginBottom: "0.875rem", flexWrap: "wrap" }}>
         {([
@@ -3643,13 +3632,15 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
   });
 
   // Build a lookup map from blockId → { total (views+interactions), views, interactions }
-  // topInteractions uses id format "block-{blockId}" for blocks
+  // topInteractions uses id format "block-{blockId}" for plain blocks
+  // and "block-{blockId}-{platform}" for social-links per-platform entries
   const topInteractionsMap = new Map<string, { total: number; views: number; interactions: number }>();
   const rawTopInter: any[] = mainAnalytics?.topInteractions ?? [];
   for (const item of rawTopInter) {
     if (item.id && item.id.startsWith("block-")) {
-      const bid = item.id.slice(6); // strip "block-" prefix
-      topInteractionsMap.set(bid, { total: item.total ?? 0, views: item.views ?? 0, interactions: item.interactions ?? 0 });
+      const rest = item.id.slice(6); // strip "block-" prefix
+      // Could be "{blockId}" or "{blockId}-{platform}"
+      topInteractionsMap.set(rest, { total: item.total ?? 0, views: item.views ?? 0, interactions: item.interactions ?? 0 });
     }
   }
   const mainPeriodViews: number = Math.max(mainAnalytics?.periodViews ?? mainAnalytics?.totalViews ?? 0, 1);
@@ -4136,8 +4127,8 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                   const stats = {
                     count: (ti?.total ?? 0),
                     views: ti?.views ?? 0,
-                    // total = views + interactions — exact match with Top Interactions table
-                    interactions: ti?.total ?? 0,
+                    // interactions: explicit clicks/submits/votes — block_view passive impressions excluded
+                    interactions: ti?.interactions ?? 0,
                     eventTypes: {} as Record<string, number>,
                   };
                   const isSocial = block.type === "social-links";
@@ -4146,29 +4137,41 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                   const blockViews = blockStats.get(block.id)?.views ?? 0;
                   const blockViewsDenominator = Math.max(blockViews, 1);
 
-                  // #11: Social links — render one row per platform instead of a single block row
-                  if (isSocial && platformMap && platformMap.size > 0) {
-                    return Array.from(platformMap.entries()).sort((a, b) => b[1] - a[1]).map(([platform, cnt]) => {
-                      const interactionRate = Math.min(Math.round((cnt / blockViewsDenominator) * 1000) / 10, 100);
-                      const platformEmoji: Record<string, string> = { twitter: "🐦", instagram: "📸", facebook: "👍", linkedin: "💼", youtube: "▶️", tiktok: "🎵", github: "🐙", spotify: "🎧", snapchat: "👻", pinterest: "📌", whatsapp: "💬", telegram: "✈️" };
-                      const emoji = platformEmoji[platform] || "🌐";
-                      return (
-                        <div key={`${block.id}-${platform}`} style={{ marginBottom: 0 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
-                            <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{SOCIAL_PLATFORM_LABELS[platform] || platform}</span>
-                            <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Click rate: {interactionRate.toFixed(1)}%</span>
-                          </div>
-                          <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
-                            <div style={{ height: "100%", width: `${Math.min(100 - interactionRate, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
-                            <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
-                          </div>
-                          <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Block views: {blockViews}</span>
-                            <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Clicks: {cnt}</span>
-                          </div>
-                        </div>
-                      );
+                  // #11: Social links — render one row per platform using topInteractionsMap per-platform entries
+                  // key format is "{blockId}-{platform}" (server uses "block-{blockId}-{platform}")
+                  if (isSocial) {
+                    // Collect all per-platform entries for this block
+                    const platformEntries: Array<[string, number]> = [];
+                    Array.from(topInteractionsMap.entries()).forEach(([key, val]) => {
+                      if (key.startsWith(block.id + "-")) {
+                        const platform = key.slice(block.id.length + 1);
+                        if (platform) platformEntries.push([platform, val.interactions]);
+                      }
                     });
+                    if (platformEntries.length > 0) {
+                      return platformEntries.sort((a, b) => b[1] - a[1]).map(([platform, cnt]) => {
+                        const interactionRate = Math.min(Math.round((cnt / blockViewsDenominator) * 1000) / 10, 100);
+                        const platformEmoji: Record<string, string> = { twitter: "🐦", instagram: "📸", facebook: "👍", linkedin: "💼", youtube: "▶️", tiktok: "🎵", github: "🐙", spotify: "🎧", snapchat: "👻", pinterest: "📌", whatsapp: "💬", telegram: "✈️" };
+                        const emoji = platformEmoji[platform] || "🌐";
+                        return (
+                          <div key={`${block.id}-${platform}`} style={{ marginBottom: 0 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
+                              <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{SOCIAL_PLATFORM_LABELS[platform] || platform}</span>
+                              <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Click rate: {interactionRate.toFixed(1)}%</span>
+                            </div>
+                            <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                              <div style={{ height: "100%", width: `${Math.min(100 - interactionRate, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
+                              <div style={{ height: "100%", width: `${interactionRate}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
+                            </div>
+                            <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
+                              <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Block views: {blockViews}</span>
+                              <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Clicks: {cnt}</span>
+                            </div>
+                          </div>
+                        );
+                      });
+                    }
+                    // No per-platform data yet — fall through to standard block row
                   }
 
                   // Standard block row — matches Top Interactions style

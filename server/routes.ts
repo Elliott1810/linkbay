@@ -3113,6 +3113,14 @@ Rules:
 - Extract the person's real name from the title/h1 — use it throughout
 - The link-in-bio page URL being imported is ${url} — add it as the primary featured link block
 - Generate 4-8 relevant blocks that best represent the person/brand
+- VARIETY IS CRITICAL: Use a MIX of block types. Do NOT make every block a link. Choose the most appropriate type for each piece of content:
+    * Bio/about copy → text block
+    * Newsletter or contact signup → lead-form block
+    * Social profiles (Instagram, LinkedIn, Twitter etc) → social-links block (ONE block, list all platforms)
+    * Booking/scheduling → booking block
+    * Event or countdown → countdown block
+    * Only use a link block when the content is genuinely best served as a clickable link (e.g. portfolio, shop, external resource)
+- A well-structured page should typically include: 1 text bio block, 1-2 link blocks (primary CTAs), 1 social-links block, and optionally a lead-form or booking block
 - Pick an accent colour that matches the brand (warm, professional, avoid purple/neon)
 - Background should be white (#ffffff), near-white, or a very light warm tint — not dark
 - Output ONLY the JSON object, no markdown fences`;

@@ -1199,10 +1199,12 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
     // #5: warn before deleting — block will be archived in Blocks panel
     const confirmed = window.confirm("Remove this block from your page? It will be archived in your Blocks dashboard and can be restored later.");
     if (!confirmed) return;
+    // Capture block details before removing from local state
+    const deletedBlock = localBlocks.find(b => b.id === id);
     const arr = localBlocks.filter(b => b.id !== id);
     setLocalBlocks(arr);
     onSave(arr);
-    // Also archive the block so it shows up in Archived section
+    // Also archive the block so it shows up in Archived section of page settings
     try {
       const pageRes = await apiRequest("GET", `/api/pages/${pageId}`);
       const pageData = await pageRes.json();
@@ -1212,6 +1214,16 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
         queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
       }
     } catch { /* non-critical */ }
+    // Record archive event in Block Analytics history so it appears in the Archived section
+    if (deletedBlock) {
+      try {
+        await apiRequest("POST", `/api/pages/${pageId}/blocks/${id}/record-archive`, {
+          blockType: deletedBlock.type,
+          blockTitle: (deletedBlock as any).title || (deletedBlock as any).content?.slice(0, 60) || deletedBlock.type,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+      } catch { /* non-critical */ }
+    }
   };
 
   const startEdit = (block: PageBlock) => {
@@ -1517,7 +1529,7 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
                     {(editValues.socials ?? []).map((p, i) => (
                       <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                         <select className="input" value={p.platform ?? ""} onChange={e => { const arr = [...(editValues.socials ?? [])]; arr[i] = { ...arr[i], platform: e.target.value }; setEditValues(v => ({ ...v, socials: arr })); }} style={{ width: "auto", flexShrink: 0, fontSize: 12 }}>
-                          {["instagram","tiktok","twitter","linkedin","youtube","facebook","github","pinterest","snapchat","website"].map(pl => <option key={pl} value={pl}>{pl.charAt(0).toUpperCase()+pl.slice(1)}</option>)}
+                          {["instagram","tiktok","twitter","linkedin","youtube","facebook","github","pinterest","snapchat","spotify","twitch","behance","dribbble","threads","discord","reddit","substack","medium","whatsapp","telegram","website"].map(pl => <option key={pl} value={pl}>{pl === "twitter" ? "Twitter / X" : pl.charAt(0).toUpperCase()+pl.slice(1)}</option>)}
                         </select>
                         <input className="input" value={p.url ?? ""} onChange={e => { const arr = [...(editValues.socials ?? [])]; arr[i] = { ...arr[i], url: e.target.value }; setEditValues(v => ({ ...v, socials: arr })); }} placeholder="https://... or @handle" style={{ flex: 1, minWidth: 0, fontSize: 12 }} />
                         <button type="button" onClick={() => { const arr = (editValues.socials ?? []).filter((_, j) => j !== i); setEditValues(v => ({ ...v, socials: arr })); }} style={{ background: "none", border: "none", color: "var(--color-error)", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>×</button>
@@ -3276,7 +3288,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
           )}
 
           {/* #10: AI analysis — full width, above detail grid */}
-          <div className="card" style={{ padding: "1.25rem", marginBottom: "1.25rem" }}>
+          <div className="card" style={{ padding: "1.25rem", marginBottom: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: aiResult ? "0.875rem" : 0, flexWrap: "wrap", gap: "0.5rem" }}>
               <div>
                 <div style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>AI page analysis</div>
@@ -3783,6 +3795,9 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
     facebook: "Facebook", twitter: "Twitter / X", instagram: "Instagram", linkedin: "LinkedIn",
     youtube: "YouTube", tiktok: "TikTok", github: "GitHub", pinterest: "Pinterest",
     snapchat: "Snapchat", spotify: "Spotify", whatsapp: "WhatsApp", telegram: "Telegram",
+    twitch: "Twitch", behance: "Behance", dribbble: "Dribbble", threads: "Threads",
+    discord: "Discord", reddit: "Reddit", substack: "Substack", medium: "Medium",
+    website: "Website",
   };
 
   const periodEvents: any[] = analytics?.periodEvents ?? [];
@@ -5780,12 +5795,13 @@ type SigStyle = "slate" | "horizon" | "card";
 function buildSignatureHtml(opts: {
   name: string; title: string; company: string; phone: string;
   email: string; pageUrl: string; pageLabel: string;
-  accent: string; style: SigStyle; showDivider: boolean;
+  font?: string; accent: string; style: SigStyle; showDivider: boolean;
   avatarUrl?: string;
 }): string {
-  const { name, title, company, phone, email, pageUrl, pageLabel, accent, style, showDivider, avatarUrl } = opts;
+  const { name, title, company, phone, email, pageUrl, pageLabel, font, accent, style, showDivider, avatarUrl } = opts;
+  const safeFont = font || "Arial, sans-serif";
   const safeAccent = accent || "#e06b1a";
-  const btnText = pageLabel || "View my profile";
+  const btnText = pageLabel || "View my Linkbay";
   const hasAvatar = !!avatarUrl;
   const initials = name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
 
@@ -5814,27 +5830,27 @@ function buildSignatureHtml(opts: {
   if (style === "slate") {
     const avatarHtml = hasAvatar
       ? `<img src="${avatarUrl}" width="64" height="64" alt="${name}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,0.3);display:block;margin:0 auto 10px" />`
-      : `<table cellpadding="0" cellspacing="0" border="0" align="center" style="margin-bottom:10px"><tr><td width="64" height="64" style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,${safeAccent},${accentDark});text-align:center;vertical-align:middle;font-size:24px;font-weight:800;color:#fff;font-family:Arial,sans-serif">${initials}</td></tr></table>`;
+      : `<table cellpadding="0" cellspacing="0" border="0" align="center" style="margin-bottom:10px"><tr><td width="64" height="64" style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,${safeAccent},${accentDark});text-align:center;vertical-align:middle;font-size:24px;font-weight:800;color:#fff;font-family:${safeFont}">${initials}</td></tr></table>`;
     const metaLine = [title, company].filter(Boolean).join(" · ");
     return `<!-- Linkbay Email Signature: Slate -->
-${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:480px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0">
+${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:${safeFont};max-width:480px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0">
   <tr>
     <!-- Dark sidebar -->
     <td width="120" style="background:linear-gradient(180deg,#1e293b 0%,#0f172a 100%);padding:22px 14px;text-align:center;vertical-align:top">
       ${avatarHtml}
-      <div style="font-size:13px;font-weight:800;color:#fff;font-family:Arial,sans-serif;line-height:1.2;margin-bottom:4px">${name.split(" ")[0]}</div>
-      <div style="font-size:11px;color:${safeAccent};font-family:Arial,sans-serif;font-weight:700;margin-bottom:14px">${name.split(" ").slice(1).join(" ") || ""}</div>
-      ${pageUrl ? `<a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:Arial,sans-serif;font-size:10px;font-weight:700;padding:6px 10px;border-radius:20px;text-decoration:none;letter-spacing:0.04em;line-height:1">${btnText}</a>` : ""}
+      <div style="font-size:13px;font-weight:800;color:#fff;font-family:${safeFont};line-height:1.2;margin-bottom:4px">${name.split(" ")[0]}</div>
+      <div style="font-size:11px;color:${safeAccent};font-family:${safeFont};font-weight:700;margin-bottom:14px">${name.split(" ").slice(1).join(" ") || ""}</div>
+      ${pageUrl ? `<a href="${pageUrl}" style="display:inline-block;background:${safeAccent};color:#fff;font-family:${safeFont};font-size:10px;font-weight:700;padding:6px 10px;border-radius:20px;text-decoration:none;letter-spacing:0.04em;line-height:1">${btnText}</a>` : ""}
     </td>
     <!-- White content panel -->
     <td style="background:#ffffff;padding:20px 20px;vertical-align:middle">
       <table cellpadding="0" cellspacing="0" border="0">
-        ${metaLine ? `<tr><td style="font-size:15px;font-weight:800;color:#0f172a;font-family:Arial,sans-serif;letter-spacing:-0.02em;padding-bottom:2px">${metaLine}</td></tr>` : `<tr><td style="font-size:15px;font-weight:800;color:#0f172a;font-family:Arial,sans-serif;padding-bottom:2px">${name}</td></tr>`}
+        ${metaLine ? `<tr><td style="font-size:15px;font-weight:800;color:#0f172a;font-family:${safeFont};letter-spacing:-0.02em;padding-bottom:2px">${metaLine}</td></tr>` : `<tr><td style="font-size:15px;font-weight:800;color:#0f172a;font-family:${safeFont};padding-bottom:2px">${name}</td></tr>`}
         <tr><td style="height:8px"></td></tr>
         <tr><td><div style="height:2px;width:36px;background:linear-gradient(90deg,${safeAccent},${accentDark});border-radius:2px"></div></td></tr>
         <tr><td style="height:10px"></td></tr>
-        ${phone ? `<tr><td style="font-size:12px;color:#475569;font-family:Arial,sans-serif;padding-bottom:5px"><span style="color:${safeAccent};margin-right:6px;font-weight:700">📞</span><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></td></tr>` : ""}
-        ${email ? `<tr><td style="font-size:12px;font-family:Arial,sans-serif;padding-bottom:5px"><span style="color:${safeAccent};margin-right:6px;font-weight:700">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></td></tr>` : ""}
+        ${phone ? `<tr><td style="font-size:12px;color:#475569;font-family:${safeFont};padding-bottom:5px"><span style="color:${safeAccent};margin-right:6px;font-weight:700">📞</span><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></td></tr>` : ""}
+        ${email ? `<tr><td style="font-size:12px;font-family:${safeFont};padding-bottom:5px"><span style="color:${safeAccent};margin-right:6px;font-weight:700">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></td></tr>` : ""}
       </table>
     </td>
   </tr>
@@ -5849,15 +5865,15 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
   if (style === "horizon") {
     const avatarHtml = hasAvatar
       ? `<img src="${avatarUrl}" width="56" height="56" alt="${name}" style="width:56px;height:56px;border-radius:12px;object-fit:cover;border:3px solid rgba(255,255,255,0.4);display:block" />`
-      : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="56" height="56" style="width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,0.2);text-align:center;vertical-align:middle;font-size:21px;font-weight:800;color:#fff;font-family:Arial,sans-serif;border:2px solid rgba(255,255,255,0.35)">${initials}</td></tr></table>`;
+      : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="56" height="56" style="width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,0.2);text-align:center;vertical-align:middle;font-size:21px;font-weight:800;color:#fff;font-family:${safeFont};border:2px solid rgba(255,255,255,0.35)">${initials}</td></tr></table>`;
     const metaLine = [title, company].filter(Boolean).join(" · ");
     const contactItems = [
-      phone ? `<span style="font-size:12px;color:#475569;font-family:Arial,sans-serif"><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></span>` : "",
-      email ? `<span style="font-size:12px;font-family:Arial,sans-serif"><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></span>` : "",
+      phone ? `<span style="font-size:12px;color:#475569;font-family:${safeFont}"><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></span>` : "",
+      email ? `<span style="font-size:12px;font-family:${safeFont}"><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></span>` : "",
     ].filter(Boolean);
     const dot = `<span style="color:#cbd5e1;margin:0 8px;font-size:10px">&bull;</span>`;
     return `<!-- Linkbay Email Signature: Horizon -->
-${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:480px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0">
+${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:${safeFont};max-width:480px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0">
   <!-- Panoramic header -->
   <tr>
     <td style="background:linear-gradient(120deg,${safeAccent} 0%,${accentDark} 55%,#0f172a 100%);padding:18px 20px">
@@ -5865,8 +5881,8 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
         <tr>
           <td style="padding-right:16px;vertical-align:middle">${avatarHtml}</td>
           <td style="vertical-align:middle">
-            <div style="font-size:20px;font-weight:800;color:#fff;font-family:Arial,sans-serif;letter-spacing:-0.03em;line-height:1.15;text-shadow:0 1px 4px rgba(0,0,0,0.25)">${name}</div>
-            ${metaLine ? `<div style="font-size:11px;color:rgba(255,255,255,0.82);font-family:Arial,sans-serif;margin-top:4px;font-weight:500;letter-spacing:0.02em">${metaLine}</div>` : ""}
+            <div style="font-size:20px;font-weight:800;color:#fff;font-family:${safeFont};letter-spacing:-0.03em;line-height:1.15;text-shadow:0 1px 4px rgba(0,0,0,0.25)">${name}</div>
+            ${metaLine ? `<div style="font-size:11px;color:rgba(255,255,255,0.82);font-family:${safeFont};margin-top:4px;font-weight:500;letter-spacing:0.02em">${metaLine}</div>` : ""}
           </td>
         </tr>
       </table>
@@ -5880,7 +5896,7 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
           <td style="vertical-align:middle">
             ${contactItems.join(dot)}
           </td>
-          ${pageUrl ? `<td style="text-align:right;vertical-align:middle;white-space:nowrap;padding-left:12px"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;padding:7px 14px;border-radius:20px;text-decoration:none;letter-spacing:0.03em">${btnText}</a></td>` : ""}
+          ${pageUrl ? `<td style="text-align:right;vertical-align:middle;white-space:nowrap;padding-left:12px"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:${safeFont};font-size:11px;font-weight:700;padding:7px 14px;border-radius:20px;text-decoration:none;letter-spacing:0.03em">${btnText}</a></td>` : ""}
         </tr>
       </table>
     </td>
@@ -5896,10 +5912,10 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
   // Card style
   const avatarCardHtml = hasAvatar
     ? `<img src="${avatarUrl}" width="60" height="60" alt="${name}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,0.9);display:block" />`
-    : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="60" height="60" style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.25);text-align:center;vertical-align:middle;font-size:22px;font-weight:800;color:#fff;font-family:Arial,sans-serif;border:2px solid rgba(255,255,255,0.5)">${initials}</td></tr></table>`;
+    : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="60" height="60" style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.25);text-align:center;vertical-align:middle;font-size:22px;font-weight:800;color:#fff;font-family:${safeFont};border:2px solid rgba(255,255,255,0.5)">${initials}</td></tr></table>`;
   const metaLineCard = [title, company].filter(Boolean).join("  ·  ");
   return `<!-- Linkbay Email Signature: Card -->
-${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;max-width:440px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,0.08)">
+${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:${safeFont};max-width:440px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,0.08)">
   <!-- Header -->
   <tr>
     <td style="background:linear-gradient(135deg,${safeAccent} 0%,${accentDark} 100%);padding:20px 20px 16px;vertical-align:bottom">
@@ -5907,8 +5923,8 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
         <tr>
           <td style="padding-right:14px;vertical-align:bottom">${avatarCardHtml}</td>
           <td style="vertical-align:bottom;padding-bottom:2px">
-            <div style="font-size:20px;font-weight:800;color:#fff;font-family:Arial,sans-serif;letter-spacing:-0.03em;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.2)">${name}</div>
-            ${metaLineCard ? `<div style="font-size:11px;color:rgba(255,255,255,0.85);font-family:Arial,sans-serif;margin-top:3px;font-weight:500">${metaLineCard}</div>` : ""}
+            <div style="font-size:20px;font-weight:800;color:#fff;font-family:${safeFont};letter-spacing:-0.03em;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.2)">${name}</div>
+            ${metaLineCard ? `<div style="font-size:11px;color:rgba(255,255,255,0.85);font-family:${safeFont};margin-top:3px;font-weight:500">${metaLineCard}</div>` : ""}
           </td>
         </tr>
       </table>
@@ -5920,10 +5936,10 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
       <table cellpadding="0" cellspacing="0" border="0" width="100%">
         <tr>
           <td>
-            ${phone ? `<div style="font-size:12px;color:#475569;font-family:Arial,sans-serif;padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">📞</span><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></div>` : ""}
-            ${email ? `<div style="font-size:12px;font-family:Arial,sans-serif;padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></div>` : ""}
+            ${phone ? `<div style="font-size:12px;color:#475569;font-family:${safeFont};padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">📞</span><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></div>` : ""}
+            ${email ? `<div style="font-size:12px;font-family:${safeFont};padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></div>` : ""}
           </td>
-          ${pageUrl ? `<td style="text-align:right;vertical-align:middle"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;padding:8px 16px;border-radius:20px;text-decoration:none;letter-spacing:0.02em;white-space:nowrap">${btnText}</a></td>` : ""}
+          ${pageUrl ? `<td style="text-align:right;vertical-align:middle"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:${safeFont};font-size:11px;font-weight:700;padding:8px 16px;border-radius:20px;text-decoration:none;letter-spacing:0.02em;white-space:nowrap">${btnText}</a></td>` : ""}
         </tr>
       </table>
     </td>
@@ -5938,7 +5954,7 @@ function buildSignaturePlain(opts: { name: string; title: string; company: strin
     [title, company].filter(Boolean).join(" | "),
     phone ? `☎ ${phone}` : "",
     email ? `✉ ${email}` : "",
-    pageUrl ? `${pageLabel || "Profile"}: ${pageUrl}` : "",
+    pageUrl ? `${pageLabel || "View my Linkbay"}: ${pageUrl}` : "",
   ].filter(Boolean);
   return lines.join("\n");
 }
@@ -5992,7 +6008,8 @@ function EmailSignaturePanel({ user, pages }: { user: any; pages: any[] }) {
   const [company, setCompany] = useState<string>("");
   const [phone, setPhone] = useState<string>(page?.phone || "");
   const [sigEmail, setSigEmail] = useState<string>(page?.contactEmail || user?.email || "");
-  const [pageLabel, setPageLabel] = useState<string>("View my profile");
+  const [pageLabel, setPageLabel] = useState<string>("View my Linkbay");
+  const [sigFont, setSigFont] = useState<string>("Arial, sans-serif");
   const [accent, setAccent] = useState<string>(defaultAccent);
   const [style, setStyle] = useState<SigStyle>("card");
   const [showDivider, setShowDivider] = useState<boolean>(true);
@@ -6002,7 +6019,7 @@ function EmailSignaturePanel({ user, pages }: { user: any; pages: any[] }) {
 
   const sigOpts = {
     name, title: jobTitle, company, phone, email: sigEmail,
-    pageUrl: defaultPageUrl, pageLabel, accent, style, showDivider,
+    pageUrl: defaultPageUrl, pageLabel, font: sigFont, accent, style, showDivider,
     avatarUrl: user?.avatarUrl || undefined,
   };
 
@@ -6095,7 +6112,17 @@ function EmailSignaturePanel({ user, pages }: { user: any; pages: any[] }) {
             <div style={{ background: "var(--color-surface)", border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "1rem 1.125rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
               <div style={{ fontSize: "var(--text-sm)", fontWeight: 700, marginBottom: "0.125rem" }}>Profile link button</div>
               <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>Linking to: <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>{defaultPageUrl ? defaultPageUrl.replace(/^https?:\/\/(www\.)?/, "") : "(no page yet)"}</span></div>
-              <div>{inputLabel("Button label")}<input className="input" value={pageLabel} onChange={e => setPageLabel(e.target.value)} placeholder="View my profile" style={{ width: "100%", boxSizing: "border-box" as const }} /></div>
+              <div>{inputLabel("Button label")}<input className="input" value={pageLabel} onChange={e => setPageLabel(e.target.value)} placeholder="View my Linkbay" style={{ width: "100%", boxSizing: "border-box" as const }} /></div>
+              <div>
+                {inputLabel("Signature font")}
+                <select className="input" value={sigFont} onChange={e => setSigFont(e.target.value)} style={{ width: "100%", boxSizing: "border-box" as const }}>
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="Georgia, serif">Georgia</option>
+                  <option value="Verdana, sans-serif">Verdana</option>
+                  <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                  <option value="'Courier New', monospace">Courier New</option>
+                </select>
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.25rem" }}>
                 {inputLabel("Accent colour")}
                 <input type="color" value={accent} onChange={e => setAccent(e.target.value)} style={{ width: 34, height: 28, borderRadius: 6, border: "1px solid var(--color-border)", cursor: "pointer", padding: 2 }} />

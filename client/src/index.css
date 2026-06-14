@@ -628,6 +628,9 @@ a, button, [role="button"] {
   border-radius: var(--radius-md);
   margin: 0.125rem 0.5rem;
   transition: all var(--transition-interactive);
+  min-width: 0;       /* prevent label text expanding sidebar */
+  white-space: nowrap;
+  overflow: hidden;
 }
 .sidebar-nav-item:hover {
   background: var(--color-surface-offset);

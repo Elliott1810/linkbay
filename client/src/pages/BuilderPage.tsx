@@ -640,8 +640,17 @@ function AISuggestionsStep({
       // Use first result for theme, merge all blocks
       const first = results[0];
       if (first?.error) throw new Error(first.error);
+      // Merge all blocks from all URLs, deduplicating by URL to avoid repeated link blocks
       const allBlocks = results.flatMap((r: any) => r?.blocks || []);
-      const merged = mapAiBlocks(allBlocks);
+      const seenUrls = new Set<string>();
+      const dedupedBlocks = allBlocks.filter((b: any) => {
+        if (b.url) {
+          if (seenUrls.has(b.url)) return false;
+          seenUrls.add(b.url);
+        }
+        return true;
+      });
+      const merged = mapAiBlocks(dedupedBlocks);
       setAiBlocks(merged);
       if (first?.background || first?.blockStyle || first?.fontFamily) {
         setAiTheme({ background: first.background || "", blockStyle: first.blockStyle || "", font: first.fontFamily || "" });
@@ -737,10 +746,22 @@ function AISuggestionsStep({
 
   const applyAndContinue = () => {
     if (!aiBlocks) return;
+    // Builder always creates a new free account — cap total link+block count to FREE_BLOCK_LIMIT (5)
+    const FREE_BLOCK_LIMIT = 5;
+    const links = aiBlocks.links;
+    const blocks = aiBlocks.blocks;
+    const total = links.length + blocks.length;
+    let cappedLinks = links;
+    let cappedBlocks = blocks;
+    if (total > FREE_BLOCK_LIMIT) {
+      // Keep up to FREE_BLOCK_LIMIT items, preferring links first then blocks
+      cappedLinks = links.slice(0, FREE_BLOCK_LIMIT);
+      cappedBlocks = blocks.slice(0, Math.max(0, FREE_BLOCK_LIMIT - cappedLinks.length));
+    }
     update({
       accentColor: answers.accentColor,
-      links: aiBlocks.links,
-      blocks: aiBlocks.blocks,
+      links: cappedLinks,
+      blocks: cappedBlocks,
       ...(aiTheme?.background ? { background: aiTheme.background } : {}),
       ...(aiTheme?.blockStyle ? { blockStyle: aiTheme.blockStyle } : {}),
       ...(aiTheme?.font ? { font: aiTheme.font } : {}),
@@ -1069,20 +1090,32 @@ function AISuggestionsStep({
       </div>
 
       {/* Theme summary strip */}
-      {aiTheme && (
+      {aiTheme && (() => {
+        // aiTheme.background may be a JSON string {bgValue, blockStyle} from import-url — extract the real value
+        let displayBg = aiTheme.background || "";
+        try { const p = JSON.parse(displayBg); if (p?.bgValue) displayBg = p.bgValue; } catch { /* plain string */ }
+        const bgLabel = BG_LABELS[displayBg] || (displayBg.startsWith("#") ? "Custom colour" : displayBg) || "Default";
+        const BLOCK_STYLE_LABELS: Record<string, string> = {
+          default: "Default", elevated: "Elevated", frosted: "Frosted", bordered: "Bordered",
+          outlined: "Outlined", ghost: "Ghost", floating: "Floating", underline: "Underline",
+          neon: "Neon", "shadow-depth": "Shadow depth", "refined-border": "Refined border",
+          "compact-row": "Compact row", stripe: "Stripe", sharp: "Sharp",
+        };
+        return (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-md)", background: "var(--color-surface-offset)", border: "1px solid var(--color-border)", marginBottom: "1rem", marginTop: "0.75rem" }}>
           <div style={{ width: 18, height: 18, borderRadius: "50%", background: answers.accentColor, border: "1.5px solid rgba(0,0,0,0.12)", flexShrink: 0, alignSelf: "center" }} />
           <span style={{ fontSize: 11, fontWeight: 600, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
-            🎨 {BG_LABELS[aiTheme.background] || aiTheme.background}
+            🎨 {bgLabel}
           </span>
           <span style={{ fontSize: 11, fontWeight: 600, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
-            📝 {FONT_LABELS[aiTheme.font] || aiTheme.font}
+            📝 {FONT_LABELS[aiTheme.font] || aiTheme.font || "Default"}
           </span>
           <span style={{ fontSize: 11, fontWeight: 600, padding: "0.2rem 0.5rem", borderRadius: 999, background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}>
-            🧩 {aiTheme.blockStyle}
+            🧩 {BLOCK_STYLE_LABELS[aiTheme.blockStyle] || aiTheme.blockStyle || "Default"}
           </span>
         </div>
-      )}
+        );
+      })()}
 
       {/* Issue 5: Placeholder URL notice */}
       {totalPlaceholders > 0 && (

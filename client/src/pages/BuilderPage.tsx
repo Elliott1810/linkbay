@@ -37,6 +37,7 @@ interface Block {
   title?: string;        // Form heading
   formDescription?: string;  // Form subtitle
   buttonText?: string;   // Submit button label
+  customFields?: Array<{ name: string; type: string; required?: boolean; options?: string[] }>;
   // video block
   videoUrl?: string;
   // countdown block
@@ -510,7 +511,7 @@ function mapAiBlocks(aiBlocks: any[]): { links: PageLink[]; blocks: Block[] } {
         blocks.push({ id: genId(), type: "poll", question: b.question || "Quick question", options: b.options || ["Option A", "Option B"] });
         break;
       case "lead_form":
-        blocks.push({ id: genId(), type: "lead-form", title: b.title || "Get in touch", formDescription: b.description || "", buttonText: b.buttonText || "Send" });
+        blocks.push({ id: genId(), type: "lead-form", title: b.title || "Get in touch", formDescription: b.formDescription || b.description || "Fill in the form and I'll get back to you.", buttonText: b.buttonText || "Send", customFields: Array.isArray(b.customFields) ? b.customFields : [] });
         break;
       case "socials":
         blocks.push({ id: genId(), type: "social-links", socials: (b.links || []).map((l: any) => ({ platform: l.platform || "", url: l.url || "" })) } as any);

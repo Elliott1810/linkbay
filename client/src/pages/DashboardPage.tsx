@@ -1926,6 +1926,28 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
                   } catch {}
                   void newIds;
                 }
+                // Archive pre-existing blocks that are being replaced by the AI
+                // (blocks not in the new AI set should move to archived, not disappear)
+                if (data.blocks && selectedPageId) {
+                  try {
+                    const currentPageBlocks: any[] = pageBlocks ?? [];
+                    const aiBlockIds = new Set((JSON.parse(updateData.blocks || "[]") as any[]).map((b: any) => b.id));
+                    const existingArchived: string[] = (() => { try { return JSON.parse((page as any)?.archivedBlockIds || "[]"); } catch { return []; } })();
+                    const blocksToArchive = currentPageBlocks.filter(b => !aiBlockIds.has(b.id) && !existingArchived.includes(b.id));
+                    if (blocksToArchive.length > 0) {
+                      // Add old block IDs to archivedBlockIds
+                      const newArchivedIds = [...existingArchived, ...blocksToArchive.map(b => b.id)];
+                      updateData.archived_block_ids = JSON.stringify(newArchivedIds);
+                      // Fire record-archive for each replaced block (best-effort)
+                      for (const oldBlock of blocksToArchive) {
+                        apiRequest("POST", `/api/pages/${selectedPageId}/blocks/${oldBlock.id}/record-archive`, {
+                          blockType: oldBlock.type,
+                          blockTitle: (oldBlock as any).title || (oldBlock as any).content?.slice(0, 60) || oldBlock.type,
+                        }).catch(() => {});
+                      }
+                    }
+                  } catch { /* archive is best-effort — don't block the save */ }
+                }
                 await savePageMutation.mutateAsync(updateData);
                 setAiWizardOpen(false);
               } catch {}
@@ -4032,8 +4054,8 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             });
             const barData = sortedDisplayBlocks.map((block: any) => {
               const ti = topInteractionsMap.get(block.id);
-              // interactions: use topInteractionsMap.total (views+interactions) to match Top Interactions exactly
-              const interCnt = ti?.total ?? 0;
+              // interactions: explicit clicks/submits/votes only — NEVER include block_view passive impressions
+              const interCnt = ti?.interactions ?? 0;
               // views: use blockStats from periodEvents (covers ALL blocks, not just top-10)
               const viewCnt = blockStats.get(block.id)?.views ?? 0;
               return {
@@ -4129,7 +4151,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                 }).filter((block: any) => !searchLive || blockLabel(block).toLowerCase().includes(searchLive.toLowerCase())).flatMap((block: any) => {
                   const ti = topInteractionsMap.get(block.id);
                   const stats = {
-                    count: (ti?.total ?? 0),
+                    count: (ti?.interactions ?? 0),
                     views: ti?.views ?? 0,
                     // interactions: explicit clicks/submits/votes — block_view passive impressions excluded
                     interactions: ti?.interactions ?? 0,
@@ -5843,7 +5865,7 @@ function buildSignatureHtml(opts: {
   if (style === "slate") {
     const avatarHtml = hasAvatar
       ? `<img src="${avatarUrl}" width="64" height="64" alt="${name}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,0.3);display:block;margin:0 auto 10px" />`
-      : `<table cellpadding="0" cellspacing="0" border="0" align="center" style="margin-bottom:10px"><tr><td width="64" height="64" style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,${safeAccent},${accentDark});text-align:center;vertical-align:middle;font-size:24px;font-weight:800;color:#fff;font-family:${safeFont}">${initials}</td></tr></table>`;
+      : `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:10px"><tr><td style="text-align:center;padding:0"><table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto"><tr><td width="64" height="64" style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,${safeAccent},${accentDark});text-align:center;vertical-align:middle;font-size:24px;font-weight:800;color:#fff;font-family:${safeFont}">${initials}</td></tr></table></td></tr></table>`;
     const metaLine = [title, company].filter(Boolean).join(" · ");
     return `<!-- Linkbay Email Signature: Slate -->
 ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:${safeFont};max-width:480px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0">

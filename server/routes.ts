@@ -489,15 +489,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Also get all-time block events (no date filter) for historical data
       const allTimeBlockEvents = sqliteLocal.prepare(`
-        SELECT block_id, block_type, type, COUNT(*) as count
+        SELECT block_id, block_type, type, block_sub_id, COUNT(*) as count
         FROM page_events
         WHERE page_id = ? AND block_id IS NOT NULL
-        GROUP BY block_id, block_type, type
+        GROUP BY block_id, block_type, type, block_sub_id
         ORDER BY count DESC
-      `).all(pageId) as Array<{ block_id: string; block_type: string; type: string; count: number }>;
+      `).all(pageId) as Array<{ block_id: string; block_type: string; type: string; block_sub_id: string | null; count: number }>;
 
       // Aggregate by blockId across event types
-      // block_view = per-block IntersectionObserver view (distinct from page-level "view")
+      // block_view = per-block IntersectionObserver view (distinct from page-level "view") — NOT an interaction
       const BLOCK_INTERACTION_EVENTS = new Set(["submit", "click", "vote", "expand", "play", "link_click"]);
       const blockMap = new Map<string, { blockId: string; blockType: string; totalInteractions: number; totalViews: number; byEventType: Record<string, number> }>();
       for (const e of allTimeBlockEvents) {
@@ -505,10 +505,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!blockMap.has(key)) blockMap.set(key, { blockId: e.block_id, blockType: e.block_type, totalInteractions: 0, totalViews: 0, byEventType: {} });
         const b = blockMap.get(key)!;
         b.byEventType[e.type] = (b.byEventType[e.type] || 0) + e.count;
-        if (e.type === "block_view") b.totalViews += e.count;          // per-block view event
-        else if (e.type === "view") { /* legacy page-level view — skip for block stats */ }
+        if (e.type === "block_view") b.totalViews += e.count;          // per-block passive impression — NOT interaction
+        else if (e.type === "view") { /* legacy page-level view — skip */ }
         else if (BLOCK_INTERACTION_EVENTS.has(e.type) || e.type.startsWith("block_interact")) b.totalInteractions += e.count;
-        else b.totalInteractions += e.count;
+        // unknown event types: do NOT add to interactions to avoid inflating counts
       }
 
       sqliteLocal.close();
@@ -1084,6 +1084,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Top interactions: merge link clicks (by linkId→block) with block-level events
         // G3: build a blockTitle lookup from the page's blocks JSON so we show real titles
         topInteractions: (() => {
+          // Platform label map for social-links per-platform breakdown
+          const SOCIAL_PLATFORM_LABEL_MAP: Record<string, string> = {
+            facebook: "Facebook", twitter: "Twitter / X", instagram: "Instagram", linkedin: "LinkedIn",
+            youtube: "YouTube", tiktok: "TikTok", github: "GitHub", pinterest: "Pinterest",
+            snapchat: "Snapchat", spotify: "Spotify", whatsapp: "WhatsApp", telegram: "Telegram",
+            twitch: "Twitch", behance: "Behance", dribbble: "Dribbble", threads: "Threads",
+            discord: "Discord", reddit: "Reddit", substack: "Substack", medium: "Medium",
+          };
           // S7 #9: normalise block titles — preserve original casing for user-entered titles
           // Build blockId → { title, type, platforms? } map from page.blocks JSON
           const blockMeta = new Map<string, { title: string; type: string; platforms?: Array<{ platform: string; url: string }> }>();
@@ -1107,7 +1115,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const interMap = new Map<string, { id: string; label: string; type: string; total: number; isLink: boolean; views?: number; interactions?: number }>();
           // Block events — split into views vs interactions per block
           const INTERACTION_EVENTS = new Set(["submit", "click", "vote", "expand", "play"]);
-          const VIEW_EVENTS = new Set(["view"]);
+          // block_view = IntersectionObserver passive impression — NEVER counts as interaction
+          const VIEW_EVENTS = new Set(["view", "block_view"]);
           // S7 #7: per-social-platform map
           const socialPlatformMap = new Map<string, { label: string; views: number; interactions: number }>();
           const blockEventMap = new Map<string, { label: string; type: string; views: number; interactions: number }>();
@@ -1124,9 +1133,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const isView = VIEW_EVENTS.has(etype);
             // S7 #7: social-links block → expand into per-platform entries
             if ((btype === "social-links" || meta?.type === "Social Links") && bSubId) {
-              const platKey = `social-${bid}-${bSubId}`;
+              // block_view has no bSubId — handled by the general block path below
+              const platKey = `block-${bid}-${bSubId}`; // use block- prefix so client topInteractionsMap finds it
               const platLabel = `${bSubId.charAt(0).toUpperCase()}${bSubId.slice(1)}`;
-              if (!socialPlatformMap.has(platKey)) socialPlatformMap.set(platKey, { label: `Social — ${platLabel}`, views: 0, interactions: 0 });
+              if (!socialPlatformMap.has(platKey)) socialPlatformMap.set(platKey, { label: `${SOCIAL_PLATFORM_LABEL_MAP[bSubId] || platLabel}`, views: 0, interactions: 0 });
               const pe = socialPlatformMap.get(platKey)!;
               if (isView) pe.views++; else pe.interactions++;
               continue; // don't also add to blockEventMap — avoid double counting
@@ -1135,26 +1145,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             const entry = blockEventMap.get(key)!;
             if (isView) entry.views++;
             else if (isInteract) entry.interactions++;
-            else entry.interactions++;
+            // block_view + other unknown events: already handled by VIEW_EVENTS check above — do nothing extra
           }
           blockEventMap.forEach((v, k) => {
             const total = v.views + v.interactions;
             interMap.set(k, { id: k, label: v.label, type: v.type, total, views: v.views, interactions: v.interactions, isLink: false } as any);
           });
-          // S7 #7: merge per-platform social entries
+          // S7 #7: merge per-platform social entries (key is block-{bid}-{platform})
           socialPlatformMap.forEach((v, k) => {
             const total = v.views + v.interactions;
             if (total > 0) interMap.set(k, { id: k, label: v.label, type: "social", total, views: v.views, interactions: v.interactions, isLink: false } as any);
           });
           return Array.from(interMap.values()).sort((a: any, b: any) => b.total - a.total).slice(0, 10);
         })(),
-        // Sum of all block event totals across ALL blocks (not capped at top-10)
+        // Sum of all block interaction events (excludes block_view passive impressions)
         // Used by Overview and Analytics panels for the "Block interactions" stat card
         totalBlockInteractions: (() => {
+          const INTERACTION_EVENTS_BI = new Set(["submit", "click", "vote", "expand", "play", "link_click"]);
           let sum = 0;
           for (const e of events) {
             const bid = (e as any).blockId ?? (e as any).block_id;
             if (!bid) continue;
+            const etype = (e as any).type ?? "";
+            // Exclude passive impressions (block_view) and page-level views
+            if (etype === "block_view" || etype === "view") continue;
             sum++;
           }
           return sum;

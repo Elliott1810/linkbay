@@ -717,6 +717,9 @@ function AISuggestionsStep({
       if (first?.accentColor) update({ accentColor: first.accentColor });
       if (first?.title) update({ title: first.title });
       if (first?.bio) update({ bio: first.bio });
+      if (first?.phone) update({ phone: first.phone });
+      if (first?.contactEmail) update({ contactEmail: first.contactEmail });
+      if (first?.location) update({ location: first.location });
       // Auto-suggest username from imported title/domain if not yet set
       if (!state.username && (first?.title || urls[0])) {
         try {

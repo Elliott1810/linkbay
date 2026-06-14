@@ -3126,7 +3126,8 @@ Rules:
     * Booking/scheduling → booking block
     * Event or countdown → countdown block
     * Only use a link block when the content is genuinely best served as a clickable link (e.g. portfolio, shop, external resource)
-- A well-structured page should typically include: 1 text bio block, 1-2 link blocks (primary CTAs), 1 social-links block, and optionally a lead-form or booking block
+- CRITICAL: For social-links blocks, ONLY include social platform URLs that are EXPLICITLY present in the scraped content (body text, links, meta tags). NEVER invent or guess social profile URLs. If a platform URL was not found in the content, do not include it.
+- A well-structured page should typically include: 1 text bio block, 1-2 link blocks (primary CTAs), 1 social-links block (only if social URLs were found), and optionally a lead-form or booking block
 - Pick an accent colour that matches the brand's visual identity (use brand colours from the page where possible)
 - Choose a background from this list that fits the brand aesthetic: none, bg-aurora, bg-blush, bg-dusk, bg-ember, bg-fog, bg-forest, bg-glacier, bg-haze, bg-ivory, bg-lava, bg-midnight, bg-mint, bg-mocha, bg-ocean, bg-peach, bg-plum, bg-rose, bg-sand, bg-slate, bg-twilight, bg-warm-white, bg-warm-sand
 - Do NOT default to plain white — choose a background that reflects the brand's personality and colour palette
@@ -3138,11 +3139,47 @@ Rules:
 - fontFamily should match brand voice: formal/editorial → cabinet-grotesk or playfair; tech/startup → inter or space-grotesk; friendly → general-sans
 - Output ONLY the JSON object, no markdown fences`;
 
+    // Extract social platform links explicitly from the HTML so we can pass them to the AI
+    const SOCIAL_LINK_PATTERNS: { pattern: RegExp; platform: string }[] = [
+      { pattern: /https?:\/\/(www\.)?instagram\.com\/[^"'\s<>?#]+/g, platform: "instagram" },
+      { pattern: /https?:\/\/(www\.)?(twitter|x)\.com\/[^"'\s<>?#]+/g, platform: "twitter" },
+      { pattern: /https?:\/\/(www\.)?linkedin\.com\/[^"'\s<>?#]+/g, platform: "linkedin" },
+      { pattern: /https?:\/\/(www\.)?tiktok\.com\/@[^"'\s<>?#]+/g, platform: "tiktok" },
+      { pattern: /https?:\/\/(www\.)?youtube\.com\/(c\/|channel\/|@)[^"'\s<>?#]+/g, platform: "youtube" },
+      { pattern: /https?:\/\/(www\.)?facebook\.com\/[^"'\s<>?#]+/g, platform: "facebook" },
+      { pattern: /https?:\/\/(www\.)?github\.com\/[^"'\s<>?#]+/g, platform: "github" },
+      { pattern: /https?:\/\/(www\.)?pinterest\.com\/[^"'\s<>?#]+/g, platform: "pinterest" },
+      { pattern: /https?:\/\/(open\.)?spotify\.com\/[^"'\s<>?#]+/g, platform: "spotify" },
+      { pattern: /https?:\/\/(www\.)?twitch\.tv\/[^"'\s<>?#]+/g, platform: "twitch" },
+      { pattern: /https?:\/\/(www\.)?behance\.net\/[^"'\s<>?#]+/g, platform: "behance" },
+      { pattern: /https?:\/\/(www\.)?dribbble\.com\/[^"'\s<>?#]+/g, platform: "dribbble" },
+      { pattern: /https?:\/\/([a-z0-9-]+\.)?substack\.com\/[^"'\s<>?#]*/g, platform: "substack" },
+      { pattern: /https?:\/\/(www\.)?medium\.com\/[^"'\s<>?#]+/g, platform: "medium" },
+      { pattern: /https?:\/\/(t\.me|telegram\.org)\/[^"'\s<>?#]+/g, platform: "telegram" },
+    ];
+    const foundSocialLinks: { platform: string; url: string }[] = [];
+    const seenPlatforms = new Set<string>();
+    for (const { pattern, platform: plat } of SOCIAL_LINK_PATTERNS) {
+      const matches = rawHtml.match(pattern) || [];
+      for (const m of matches) {
+        // Skip self-referential or obvious tracking links
+        const clean = m.replace(/["'>]+$/, "");
+        if (!seenPlatforms.has(plat) && !clean.includes(hostname)) {
+          foundSocialLinks.push({ platform: plat, url: clean });
+          seenPlatforms.add(plat);
+        }
+      }
+    }
+    const socialLinksNote = foundSocialLinks.length > 0
+      ? `Social links found in page HTML: ${JSON.stringify(foundSocialLinks)}`
+      : "No social media profile links were found in the page HTML. Do NOT add any social-links block.";
+
     const userPrompt = `Platform: ${platform}
 URL: ${url}
 Page title: ${metaTitle || ogTitle}
 Meta description: ${metaDescription || ogDescription}
 H1: ${h1Text}
+${socialLinksNote}
 Body text (truncated): ${bodyText}`;
 
     try {

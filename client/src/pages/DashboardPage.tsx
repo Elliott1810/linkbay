@@ -1902,7 +1902,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
                         }
                         return [{ id: b.id || genId(), type: "social-links", socials: (socialArr2 as any[]).map((l: any) => ({ platform: l.platform || "", url: l.url || "" })) }];
                       }
-                      case "lead_form": return [{ id: b.id || genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || "", buttonText: b.buttonText || "Send" }];
+                      case "lead_form": return [{ id: b.id || genId(), type: "lead-form", title: b.title || "Get in touch", description: b.description || b.formDescription || "", formDescription: b.formDescription || b.description || "Fill in the form and I'll get back to you.", buttonText: b.buttonText || "Send", customFields: Array.isArray(b.customFields) ? b.customFields : [] }];
                       default: return [b];
                     }
                   });
@@ -1937,7 +1937,7 @@ function EditorPanel({ pages, activePageId }: { pages: any[]; activePageId: numb
                     if (blocksToArchive.length > 0) {
                       // Add old block IDs to archivedBlockIds
                       const newArchivedIds = [...existingArchived, ...blocksToArchive.map(b => b.id)];
-                      updateData.archived_block_ids = JSON.stringify(newArchivedIds);
+                      updateData.archivedBlockIds = JSON.stringify(newArchivedIds);
                       // Fire record-archive for each replaced block (best-effort)
                       for (const oldBlock of blocksToArchive) {
                         apiRequest("POST", `/api/pages/${selectedPageId}/blocks/${oldBlock.id}/record-archive`, {
@@ -3358,11 +3358,12 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
               {(() => {
                 const interactions = analytics.topInteractions ?? analytics.topLinks ?? [];
                 if (interactions.length === 0) return <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No interactions yet.</div>;
-                const totalPageViews = Math.max(analytics.periodViews ?? analytics.totalViews ?? 1, 1);
                 return interactions.map((item: any) => {
                   // Only clicks/submits/votes count as interactions — never views
                   const interCount = item.interactions ?? item.clickCount ?? 0;
-                  const interactionPct = Math.min(Math.round((interCount / totalPageViews) * 1000) / 10, 100);
+                  // Use per-block views (not page views) as denominator for interaction rate
+                  const blockViewCount = Math.max(item.views ?? 0, interCount, 1);
+                  const interactionPct = Math.min(Math.round((interCount / blockViewCount) * 1000) / 10, 100);
                   const emoji = blockTypeEmoji(item.type || item.blockType || "link");
                   return (
                     <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
@@ -3376,7 +3377,7 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                         <div style={{ height: "100%", width: `${interactionPct}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                       </div>
                       <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
-                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Page views: {totalPageViews}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Block views: {blockViewCount}</span>
                         <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {interCount}</span>
                       </div>
                     </div>
@@ -3688,10 +3689,10 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
     try { return JSON.parse((page as any).hiddenBlockIds || "[]"); } catch { return []; }
   })();
 
-  // G6c: filter out non-interaction blocks from live view
-  // booking is trackable (embed views/opens count as interactions) so it's excluded here
-  // vcard IS trackable (download = interaction) — only exclude purely passive/decorative blocks
-  const NON_INTERACTION_TYPES = new Set(["text", "image", "divider", "testimonial"]);
+  // G6c: filter out purely decorative blocks from live view — divider has no trackable content
+  // text/image/testimonial blocks track views only (no interactions) and ARE included
+  const NON_INTERACTION_TYPES = new Set(["divider"]);
+  const VIEW_ONLY_TYPES = new Set(["text", "image", "testimonial"]);
 
   const archiveMutation = useMutation({
     mutationFn: async ({ blockId, action }: { blockId: string; action: "archive" | "restore" | "hide" }) => {
@@ -4137,11 +4138,11 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             </h2>
             <div className="blocks-search-row" style={{ marginBottom: "0.75rem" }}><input className="input" placeholder="Search live blocks…" value={searchLive} onChange={e => setSearchLive(e.target.value)} style={{ fontSize: 12, width: "100%" }} /></div>
             {liveBlocks.length > displayLiveBlocks.length && (
-              <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Text, image, divider and testimonial blocks are excluded from interaction tracking.</p>
+              <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Divider blocks are excluded from tracking. Text, image and testimonial blocks show views only.</p>
             )}
             <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>“Block views” counts how many times each block scrolled into view during this period.</p>
             {displayLiveBlocks.length === 0 ? (
-              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No trackable blocks on this page.</p>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No live blocks on this page (divider blocks are not tracked).</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
                 {[...displayLiveBlocks].sort((a: any, b: any) => {
@@ -4163,27 +4164,51 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                   const blockViews = blockStats.get(block.id)?.views ?? 0;
                   const blockViewsDenominator = Math.max(blockViews, 1);
 
-                  // #11: Social links — render one row per platform using topInteractionsMap per-platform entries
-                  // key format is "{blockId}-{platform}" (server uses "block-{blockId}-{platform}")
+                  // #11: Social links — render one row per platform
+                  // Primary source: topInteractionsMap per-platform entries (new events with block_sub_id)
+                  // Fallback: socialPlatformStats (built from periodEvents, covers historical data)
                   if (isSocial) {
-                    // Collect all per-platform entries for this block
-                    const platformEntries: Array<[string, number]> = [];
+                    const platformEmoji: Record<string, string> = { twitter: "🐦", instagram: "📸", facebook: "👍", linkedin: "💼", youtube: "▶️", tiktok: "🎵", github: "🐙", spotify: "🎧", snapchat: "👻", pinterest: "📌", whatsapp: "💬", telegram: "✈️", twitch: "🎮", behance: "🎨", dribbble: "🏀", threads: "🧵", discord: "💬", reddit: "🤖", substack: "📰", medium: "✍️" };
+                    // Build merged platform map: topInteractionsMap has priority; supplement with socialPlatformStats
+                    const mergedPlatforms = new Map<string, number>();
+                    // From topInteractionsMap (new events)
                     Array.from(topInteractionsMap.entries()).forEach(([key, val]) => {
                       if (key.startsWith(block.id + "-")) {
                         const platform = key.slice(block.id.length + 1);
-                        if (platform) platformEntries.push([platform, val.interactions]);
+                        if (platform) mergedPlatforms.set(platform, (mergedPlatforms.get(platform) ?? 0) + val.interactions);
                       }
                     });
+                    // From socialPlatformStats (historical events without block_sub_id tracked via periodEvents)
+                    if (platformMap) {
+                      platformMap.forEach((cnt, platform) => {
+                        if (!mergedPlatforms.has(platform)) {
+                          mergedPlatforms.set(platform, cnt);
+                        }
+                      });
+                    }
+                    const platformEntries: Array<[string, number]> = Array.from(mergedPlatforms.entries());
                     if (platformEntries.length > 0) {
                       return platformEntries.sort((a, b) => b[1] - a[1]).map(([platform, cnt]) => {
                         const interactionRate = Math.min(Math.round((cnt / blockViewsDenominator) * 1000) / 10, 100);
-                        const platformEmoji: Record<string, string> = { twitter: "🐦", instagram: "📸", facebook: "👍", linkedin: "💼", youtube: "▶️", tiktok: "🎵", github: "🐙", spotify: "🎧", snapchat: "👻", pinterest: "📌", whatsapp: "💬", telegram: "✈️" };
                         const emoji = platformEmoji[platform] || "🌐";
                         return (
                           <div key={`${block.id}-${platform}`} style={{ marginBottom: 0 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
                               <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{SOCIAL_PLATFORM_LABELS[platform] || platform}</span>
-                              <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Click rate: {interactionRate.toFixed(1)}%</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                                <span style={{ fontWeight: 700, color: "var(--color-primary)" }}>Interaction rate: {interactionRate.toFixed(1)}%</span>
+                                <button onClick={async () => {
+                                  setHistoryBlockId(block.id);
+                                  setHistoryLoading(true);
+                                  setHistoryData(null);
+                                  try {
+                                    const r = await apiRequest("GET", `/api/pages/${selectedPageId}/blocks/${block.id}/history`);
+                                    const d = await r.json();
+                                    setHistoryData(d);
+                                  } catch { setHistoryData(null); } finally { setHistoryLoading(false); }
+                                }} className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "0.15rem 0.5rem" }} title="Block history">History</button>
+                                <button onClick={() => archiveMutation.mutate({ blockId: block.id, action: "archive" })} disabled={archiveMutation.isPending} className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "0.15rem 0.5rem" }} title="Archive block">Archive</button>
+                              </div>
                             </div>
                             <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
                               <div style={{ height: "100%", width: `${Math.min(100 - interactionRate, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
@@ -4191,13 +4216,32 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
                             </div>
                             <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
                               <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Block views: {blockViews}</span>
-                              <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Clicks: {cnt}</span>
+                              <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {cnt}</span>
                             </div>
                           </div>
                         );
                       });
                     }
                     // No per-platform data yet — fall through to standard block row
+                  }
+
+                  // View-only block row (text, image, testimonial — no interactions, views only)
+                  if (VIEW_ONLY_TYPES.has(block.type)) {
+                    const emoji = blockTypeEmoji(block.type);
+                    return [(
+                      <div key={block.id} style={{ marginBottom: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-xs)", marginBottom: 4, gap: "0.5rem" }}>
+                          <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{blockLabel(block)}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                            <span style={{ fontWeight: 600, color: "var(--color-text-faint)", fontSize: 11 }}>Views only</span>
+                            <button onClick={() => archiveMutation.mutate({ blockId: block.id, action: "archive" })} disabled={archiveMutation.isPending} className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "0.15rem 0.5rem" }} title="Archive block">Archive</button>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
+                          <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Block views: {blockViews}</span>
+                        </div>
+                      </div>
+                    )];
                   }
 
                   // Standard block row — matches Top Interactions style

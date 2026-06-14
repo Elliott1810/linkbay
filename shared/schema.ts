@@ -146,6 +146,7 @@ export const pageEvents = sqliteTable("page_events", {
   country: text("country"),         // ISO country code (e.g. 'US', 'GB')
   blockId: text("block_id"),        // block.id (string) for block-level tracking
   blockType: text("block_type"),    // block.type for block-level tracking
+  blockSubId: text("block_sub_id"), // sub-identifier e.g. social platform name for social-links clicks
   createdAt: text("created_at").notNull().default(""),
 });
 export const insertPageEventSchema = createInsertSchema(pageEvents).omit({ id: true, createdAt: true });

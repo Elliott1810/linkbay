@@ -1221,8 +1221,12 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
           blockType: deletedBlock.type,
           blockTitle: (deletedBlock as any).title || (deletedBlock as any).content?.slice(0, 60) || deletedBlock.type,
         });
+        // Invalidate both pages list and block-analytics so the archived block appears immediately
         queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
-      } catch { /* non-critical */ }
+        queryClient.invalidateQueries({ queryKey: ["/api/pages", pageId, "block-analytics"] });
+      } catch (archiveErr) {
+        console.error("[deleteBlock] record-archive failed:", archiveErr);
+      }
     }
   };
 
@@ -5932,15 +5936,15 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
   </tr>
   <!-- Info row -->
   <tr>
-    <td style="background:#ffffff;padding:14px 20px">
+    <td style="background:#ffffff;padding:14px 20px 16px">
       <table cellpadding="0" cellspacing="0" border="0" width="100%">
         <tr>
-          <td>
+          <td style="padding-bottom:10px">
             ${phone ? `<div style="font-size:12px;color:#475569;font-family:${safeFont};padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">📞</span><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></div>` : ""}
             ${email ? `<div style="font-size:12px;font-family:${safeFont};padding:2px 0"><span style="color:${safeAccent};font-weight:700;margin-right:5px">✉</span><a href="mailto:${email}" style="color:${safeAccent};text-decoration:none;font-weight:600">${email}</a></div>` : ""}
           </td>
-          ${pageUrl ? `<td style="text-align:right;vertical-align:middle"><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:${safeFont};font-size:11px;font-weight:700;padding:8px 16px;border-radius:20px;text-decoration:none;letter-spacing:0.02em;white-space:nowrap">${btnText}</a></td>` : ""}
         </tr>
+        ${pageUrl ? `<tr><td><a href="${pageUrl}" style="display:inline-block;background:linear-gradient(135deg,${safeAccent},${accentDark});color:#fff;font-family:${safeFont};font-size:11px;font-weight:700;padding:7px 16px;border-radius:20px;text-decoration:none;letter-spacing:0.02em;white-space:nowrap">${btnText}</a></td></tr>` : ""}
       </table>
     </td>
   </tr>

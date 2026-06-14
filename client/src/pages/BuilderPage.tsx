@@ -1490,7 +1490,7 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
     if (block.type === "lead-form") return block.title || "Lead form";
     if (block.type === "video") return block.videoUrl || block.title || "Video embed";
     if (block.type === "countdown") return `${block.title || "Countdown"} · ${block.targetDate || ""}`;
-    if (block.type === "social-links") return (block.links || []).map(l => l.platform).join(", ") || "Social links";
+    if (block.type === "social-links") { const sl = (block as any).socials || (block as any).links || []; return sl.map((l: any) => l.platform).join(", ") || "Social links"; }
     if (block.type === "vcard") return [block.vcName, block.vcJobTitle, block.vcCompany].filter(Boolean).join(" · ") || "vCard";
     if (block.type === "image") return block.caption || block.alt || "Image";
     if (block.type === "divider") return block.dividerStyle || "Divider";
@@ -1564,9 +1564,7 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
                     {block.type === "lead-form" && (
                       <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 1 }}>{block.buttonText || "Send message"}</div>
                     )}
-                    {block.type === "social-links" && (
-                      <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 1 }}>{(block.links || []).length} network{(block.links || []).length !== 1 ? "s" : ""}</div>
-                    )}
+                    {block.type === "social-links" && (() => { const sl = (block as any).socials || (block as any).links || []; return <div style={{ fontSize: 11, color: "var(--color-text-faint)", marginTop: 1 }}>{sl.length} network{sl.length !== 1 ? "s" : ""}</div>; })()}
                   </div>
                   <span style={{ fontSize: 10, padding: "0.15rem 0.5rem", borderRadius: 999, background: tagColors.bg, color: tagColors.color, fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" as const }}>{block.type}</span>
                   <button onClick={e => { e.stopPropagation(); removeBlock(block.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16, padding: "0.25rem", flexShrink: 0 }} aria-label="Remove">×</button>
@@ -1622,25 +1620,29 @@ function Step3({ state, update }: { state: BuilderState; update: (v: Partial<Bui
                       </>
                     )}
 
-                    {block.type === "social-links" && (
-                      <>
-                        {(block.links || []).map((s, i) => (
-                          <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                            <select
-                              className="input"
-                              style={{ fontSize: 13, flex: "0 0 120px" }}
-                              value={s.platform}
-                              onChange={e => { const ls = [...(block.links||[])]; ls[i] = { ...ls[i], platform: e.target.value }; updateBlock(block.id, { links: ls }); }}
-                            >
-                              {SOCIAL_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
-                            <input className="input" style={{ fontSize: 13, flex: 1 }} placeholder="Profile URL" value={s.url} onChange={e => { const ls = [...(block.links||[])]; ls[i] = { ...ls[i], url: e.target.value }; updateBlock(block.id, { links: ls }); }} />
-                            <button type="button" onClick={() => updateBlock(block.id, { links: (block.links||[]).filter((_,j) => j !== i) })} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16 }}>×</button>
-                          </div>
-                        ))}
-                        <button type="button" onClick={() => updateBlock(block.id, { links: [...(block.links||[]), { platform: "instagram", url: "" }] })} className="btn btn-secondary" style={{ fontSize: 12, justifyContent: "center" }}>+ Add network</button>
-                      </>
-                    )}
+                    {block.type === "social-links" && (() => {
+                      const sl: { platform: string; url: string }[] = (block as any).socials || (block as any).links || [];
+                      const updateSocials = (newSl: { platform: string; url: string }[]) => updateBlock(block.id, { socials: newSl } as any);
+                      return (
+                        <>
+                          {sl.map((s, i) => (
+                            <div key={i} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                              <select
+                                className="input"
+                                style={{ fontSize: 13, flex: "0 0 120px" }}
+                                value={s.platform}
+                                onChange={e => { const ls = [...sl]; ls[i] = { ...ls[i], platform: e.target.value }; updateSocials(ls); }}
+                              >
+                                {SOCIAL_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                              </select>
+                              <input className="input" style={{ fontSize: 13, flex: 1 }} placeholder="Profile URL" value={s.url} onChange={e => { const ls = [...sl]; ls[i] = { ...ls[i], url: e.target.value }; updateSocials(ls); }} />
+                              <button type="button" onClick={() => updateSocials(sl.filter((_,j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-faint)", fontSize: 16 }}>×</button>
+                            </div>
+                          ))}
+                          <button type="button" onClick={() => updateSocials([...sl, { platform: "instagram", url: "" }])} className="btn btn-secondary" style={{ fontSize: 12, justifyContent: "center" }}>+ Add network</button>
+                        </>
+                      );
+                    })()}
 
                     {block.type === "vcard" && (
                       <>

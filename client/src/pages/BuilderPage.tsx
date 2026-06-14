@@ -513,8 +513,17 @@ function mapAiBlocks(aiBlocks: any[]): { links: PageLink[]; blocks: Block[] } {
         blocks.push({ id: genId(), type: "lead-form", title: b.title || "Get in touch", formDescription: b.description || "", buttonText: b.buttonText || "Send" });
         break;
       case "socials":
-        blocks.push({ id: genId(), type: "social-links", links: (b.links || []).map((l: any) => ({ platform: l.platform || "", url: l.url || "" })) });
+        blocks.push({ id: genId(), type: "social-links", socials: (b.links || []).map((l: any) => ({ platform: l.platform || "", url: l.url || "" })) } as any);
         break;
+      case "social-links": {
+        // Handle pre-merged social-links blocks (from URL import grouping)
+        let socials: { platform: string; url: string }[] = [];
+        if (Array.isArray(b.socials)) socials = b.socials;
+        else if (Array.isArray(b.platforms)) socials = b.platforms;
+        else if (typeof b.platforms === "string") { try { socials = JSON.parse(b.platforms); } catch { socials = []; } }
+        blocks.push({ id: genId(), type: "social-links", socials } as any);
+        break;
+      }
       case "video":
         blocks.push({ id: genId(), type: "video", videoUrl: b.url || "", title: b.title || "" });
         break;
@@ -650,7 +659,57 @@ function AISuggestionsStep({
         }
         return true;
       });
-      const merged = mapAiBlocks(dedupedBlocks);
+
+      // Detect link blocks whose URL matches a known social platform hostname
+      // and group them all into a single social-links block
+      const SOCIAL_DOMAINS: Record<string, string> = {
+        "instagram.com": "instagram", "twitter.com": "twitter", "x.com": "twitter",
+        "linkedin.com": "linkedin", "tiktok.com": "tiktok", "youtube.com": "youtube",
+        "facebook.com": "facebook", "github.com": "github", "pinterest.com": "pinterest",
+        "snapchat.com": "snapchat", "spotify.com": "spotify", "open.spotify.com": "spotify",
+        "whatsapp.com": "whatsapp", "telegram.org": "telegram", "t.me": "telegram",
+        "behance.net": "behance", "dribbble.com": "dribbble", "twitch.tv": "twitch",
+        "threads.net": "threads", "discord.gg": "discord", "reddit.com": "reddit",
+        "substack.com": "substack", "medium.com": "medium",
+      };
+      const getPlatform = (url: string): string | null => {
+        try {
+          const host = new URL(url).hostname.replace(/^www\./, "");
+          for (const [domain, platform] of Object.entries(SOCIAL_DOMAINS)) {
+            if (host === domain || host.endsWith("." + domain)) return platform;
+          }
+        } catch { /* ignore */ }
+        return null;
+      };
+      const socialPlatforms: { platform: string; url: string }[] = [];
+      const nonSocialBlocks: any[] = [];
+      for (const b of dedupedBlocks) {
+        if (b.type === "link" || b.type === "social-links") {
+          // Already a social-links block from AI — extract its platforms
+          if (b.type === "social-links") {
+            const plats = Array.isArray(b.platforms) ? b.platforms :
+              (typeof b.platforms === "string" ? (() => { try { return JSON.parse(b.platforms); } catch { return []; } })() : []);
+            for (const p of plats) { if (p.platform && p.url) socialPlatforms.push(p); }
+            continue;
+          }
+          // link block — check if it's a social URL
+          const pl = getPlatform(b.url || "");
+          if (pl) { socialPlatforms.push({ platform: pl, url: b.url }); continue; }
+        }
+        nonSocialBlocks.push(b);
+      }
+      // Deduplicate social platforms by platform name (keep first)
+      const seenPlatforms = new Set<string>();
+      const uniqueSocials = socialPlatforms.filter(p => {
+        if (seenPlatforms.has(p.platform)) return false;
+        seenPlatforms.add(p.platform); return true;
+      });
+      // Rebuild block list: non-social blocks + one merged social-links block
+      const finalBlocks = [...nonSocialBlocks];
+      if (uniqueSocials.length > 0) {
+        finalBlocks.push({ id: "blk-socials", type: "social-links", platforms: JSON.stringify(uniqueSocials) });
+      }
+      const merged = mapAiBlocks(finalBlocks);
       setAiBlocks(merged);
       if (first?.background || first?.blockStyle || first?.fontFamily) {
         setAiTheme({ background: first.background || "", blockStyle: first.blockStyle || "", font: first.fontFamily || "" });

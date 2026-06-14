@@ -128,7 +128,7 @@ export default function App() {
               <Route path="/waitlist" component={WaitlistPage} />
               <Route path="/builder" component={BuilderPage} />
               <Route path="/login" component={() => <AuthPage mode="login" />} />
-              <Route path="/signup" component={() => <AuthPage mode="signup" />} />
+              <Route path="/signup" component={() => { window.location.replace("/builder"); return null; }} />
               <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/reset-password" component={ResetPasswordPage} />
               <Route path="/account" component={AccountSettingsPage} />

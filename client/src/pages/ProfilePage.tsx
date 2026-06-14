@@ -1021,6 +1021,12 @@ export default function ProfilePage() {
   // Parse blocks JSON
   let blocks: Block[] = [];
   try { blocks = JSON.parse(page.blocks || "[]"); } catch {}
+  // Filter out archived and hidden blocks so they don't render on the live page
+  try {
+    const archivedIds: string[] = JSON.parse((page as any).archivedBlockIds || "[]");
+    const hiddenIds: string[] = JSON.parse((page as any).hiddenBlockIds || "[]");
+    blocks = blocks.filter(b => !archivedIds.includes(b.id) && !hiddenIds.includes(b.id));
+  } catch { /* ignore parse errors — render all blocks */ }
 
   const bgStyle = backgroundToCss(page.background || "none");
   const bgClass = backgroundToClass(page.background || "none");

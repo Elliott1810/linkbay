@@ -2174,6 +2174,51 @@ function escHtml(str: string) {
 // LICENCE, STRIPE & AI ROUTES — appended to registerRoutes via module-level patch
 // Call patchRoutes(app) from registerRoutes or after it.
 // ──────────────────────────────────────────────────────────────────────
+// ── AI block sanitisation: ensure no block has empty/missing required fields ───
+function sanitiseAiBlocks(blocks: unknown[]): unknown[] {
+  if (!Array.isArray(blocks)) return [];
+  let gIdx = 0;
+  const genId = () => `blk-${++gIdx}`;
+  return blocks.map((b: any) => {
+    if (!b || typeof b !== "object") return null;
+    const id = b.id || genId();
+    switch (b.type) {
+      case "link":
+        return {
+          ...b, id,
+          title: (b.title || b.label || "").trim() || "Link",
+          url:   (b.url || "").trim() || "https://[your-link].com",
+          icon:  b.icon || "🔗",
+        };
+      case "text":
+        return { ...b, id, content: (b.content || "").trim() || "Add your bio here." };
+      case "lead-form":
+        return {
+          ...b, id,
+          title:           (b.title || "").trim() || "Get in touch",
+          formDescription: (b.formDescription || "").trim() || "Fill in the form below and I'll get back to you.",
+          buttonText:      (b.buttonText || "").trim() || "Send",
+          customFields:    Array.isArray(b.customFields) ? b.customFields : [],
+        };
+      case "social-links":
+      case "socials": {
+        let socialArr = b.socials || b.links || b.platforms || [];
+        if (typeof socialArr === "string") { try { socialArr = JSON.parse(socialArr); } catch { socialArr = []; } }
+        const filtered = (Array.isArray(socialArr) ? socialArr : []).filter((s: any) => s && s.platform && s.url);
+        return { ...b, id, type: "social-links", socials: filtered };
+      }
+      case "video":
+        return { ...b, id, url: (b.url || "").trim() || "", title: (b.title || "").trim() || "Video" };
+      case "countdown":
+        return { ...b, id, title: (b.title || "").trim() || "Countdown", targetDate: b.targetDate || "2026-12-31" };
+      case "poll":
+        return { ...b, id, question: (b.question || "").trim() || "What do you think?", options: Array.isArray(b.options) && b.options.length >= 2 ? b.options : ["Option A", "Option B"] };
+      default:
+        return { ...b, id };
+    }
+  }).filter(Boolean);
+}
+
 export function registerLicenceRoutes(app: Express) {
   // ── GET /api/me/licence ──────────────────────────────────────────────────────
   app.get("/api/me/licence", async (req: Request, res: Response) => {
@@ -2630,6 +2675,8 @@ ${ fontHint   ? `- Font: ${fontHint} (use exactly this)` : `- Font style: ${font
       const raw = completion.choices[0]?.message?.content || "{}";
       const parsed = JSON.parse(raw);
       if (parsed.error) return res.status(400).json({ error: "AI could not generate page", detail: parsed.error });
+      // Sanitise: ensure no block has empty/missing required fields
+      if (Array.isArray(parsed.blocks)) parsed.blocks = sanitiseAiBlocks(parsed.blocks);
       return res.json(parsed);
     } catch (e: any) {
       console.error("AI generation error:", e.message);
@@ -2977,6 +3024,8 @@ ${ themeHint ? `- Theme accent: ${themeHint.accentColor} (use exactly this)\n- B
         return res.status(500).json({ error: "AI response missing required fields" });
       }
 
+      // Sanitise: ensure no block has empty/missing required fields
+      parsed.blocks = sanitiseAiBlocks(parsed.blocks as unknown[]);
       return res.json(parsed);
     } catch (e: any) {
       console.error("AI onboarding-suggest error:", e.message);
@@ -3301,6 +3350,8 @@ ${contactNote ? contactNote + "\n" : ""}Body text (truncated): ${bodyText}`;
           }
           return true;
         });
+        // Sanitise: ensure no block has empty/missing required fields
+        parsed.blocks = sanitiseAiBlocks(parsed.blocks as unknown[]);
       }
 
       return res.json(parsed);

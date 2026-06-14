@@ -1199,12 +1199,13 @@ function BlockEditor({ pageId, blocks, archivedBlockIds: propArchivedIds, onSave
     // #5: warn before deleting — block will be archived in Blocks panel
     const confirmed = window.confirm("Remove this block from your page? It will be archived in your Blocks dashboard and can be restored later.");
     if (!confirmed) return;
-    // Capture block details before removing from local state
+    // Capture block details before changing state
     const deletedBlock = localBlocks.find(b => b.id === id);
-    const arr = localBlocks.filter(b => b.id !== id);
-    setLocalBlocks(arr);
-    onSave(arr);
-    // Archive the block in page settings AND in Block Analytics
+    // Remove from local editor UI immediately
+    setLocalBlocks(prev => prev.filter(b => b.id !== id));
+    // IMPORTANT: Do NOT call onSave(filtered) here — that would remove the block from page.blocks
+    // entirely, making it invisible to the Block Analytics archived section.
+    // Instead only add to archivedBlockIds so the block stays in page.blocks but is hidden from live page.
     // Use propArchivedIds directly — avoids a GET race condition where a parallel
     // saveBlocksMutation.onSuccess invalidation overwrites our archivedBlockIds PATCH
     try {
@@ -1213,6 +1214,7 @@ function BlockEditor({ pageId, blocks, archivedBlockIds: propArchivedIds, onSave
         await apiRequest("PATCH", `/api/pages/${pageId}`, { archivedBlockIds: JSON.stringify([...existing, id]) });
         // Invalidate AFTER the PATCH resolves so the refetch picks up new archivedBlockIds
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
       }
     } catch (e) { console.error("[deleteBlock] archivedBlockIds patch failed:", e); }
     // Record archive event in Block Analytics history so it appears in the Archived section
@@ -1225,6 +1227,7 @@ function BlockEditor({ pageId, blocks, archivedBlockIds: propArchivedIds, onSave
         // Invalidate block-analytics so the archived block appears immediately in Block Analytics panel
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         queryClient.invalidateQueries({ queryKey: ["/api/pages", pageId, "block-analytics"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/pages", pageId, "analytics"] });
       } catch (archiveErr) {
         console.error("[deleteBlock] record-archive failed:", archiveErr);
       }
@@ -3335,8 +3338,9 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                 if (interactions.length === 0) return <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-faint)", fontSize: "var(--text-sm)" }}>No interactions yet.</div>;
                 const totalPageViews = Math.max(analytics.periodViews ?? analytics.totalViews ?? 1, 1);
                 return interactions.map((item: any) => {
-                  const total = item.total ?? item.clickCount ?? 0;
-                  const interactionPct = Math.min(Math.round((total / totalPageViews) * 1000) / 10, 100);
+                  // Only clicks/submits/votes count as interactions — never views
+                  const interCount = item.interactions ?? item.clickCount ?? 0;
+                  const interactionPct = Math.min(Math.round((interCount / totalPageViews) * 1000) / 10, 100);
                   const emoji = blockTypeEmoji(item.type || item.blockType || "link");
                   return (
                     <div key={item.id || item.blockId || item.label} style={{ marginBottom: "0.875rem" }}>
@@ -3344,14 +3348,14 @@ function AnalyticsPanel({ pages, activePageId, setActivePageId }: { pages: any[]
                         <span style={{ color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}><span style={{ marginRight: "0.25rem" }}>{emoji}</span>{item.label || item.blockType || "Interaction"}</span>
                         <span style={{ fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>Interaction rate: {interactionPct.toFixed(1)}%</span>
                       </div>
-                      {/* Stacked bar: views (amber) + interactions (primary) */}
+                      {/* Stacked bar: page views (amber) + interactions (primary) */}
                       <div style={{ height: 7, background: "var(--color-divider)", borderRadius: 999, overflow: "hidden", display: "flex" }}>
                         <div style={{ height: "100%", width: `${Math.min(100 - interactionPct, 100)}%`, background: "#f59e0b", opacity: 0.35, transition: "width 0.4s" }} />
                         <div style={{ height: "100%", width: `${interactionPct}%`, background: "var(--color-primary)", borderRadius: "0 999px 999px 0", transition: "width 0.4s" }} />
                       </div>
                       <div style={{ display: "flex", gap: "0.75rem", fontSize: 11, color: "var(--color-text-faint)", marginTop: 3 }}>
                         <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "#f59e0b", opacity: 0.6, marginRight: 3, verticalAlign: "middle" }} />Page views: {totalPageViews}</span>
-                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {total}</span>
+                        <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: "var(--color-primary)", marginRight: 3, verticalAlign: "middle" }} />Interactions: {interCount}</span>
                       </div>
                     </div>
                   );
@@ -5874,7 +5878,7 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
   if (style === "horizon") {
     const avatarHtml = hasAvatar
       ? `<img src="${avatarUrl}" width="56" height="56" alt="${name}" style="width:56px;height:56px;border-radius:12px;object-fit:cover;border:3px solid rgba(255,255,255,0.4);display:block" />`
-      : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="56" height="56" style="width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,0.2);text-align:center;vertical-align:middle;font-size:21px;font-weight:800;color:#fff;font-family:${safeFont};border:2px solid rgba(255,255,255,0.35)">${initials}</td></tr></table>`;
+      : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="56" height="56" style="width:56px;height:56px;border-radius:12px;background:rgba(255,255,255,0.2);text-align:center;vertical-align:middle;font-size:21px;font-weight:800;color:#fff;font-family:${safeFont}">${initials}</td></tr></table>`;
     const metaLine = [title, company].filter(Boolean).join(" · ");
     const contactItems = [
       phone ? `<span style="font-size:12px;color:#475569;font-family:${safeFont}"><a href="tel:${phone}" style="color:#475569;text-decoration:none">${phone}</a></span>` : "",
@@ -5921,7 +5925,7 @@ ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-fami
   // Card style
   const avatarCardHtml = hasAvatar
     ? `<img src="${avatarUrl}" width="60" height="60" alt="${name}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,0.9);display:block" />`
-    : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="60" height="60" style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.25);text-align:center;vertical-align:middle;font-size:22px;font-weight:800;color:#fff;font-family:${safeFont};border:2px solid rgba(255,255,255,0.5)">${initials}</td></tr></table>`;
+    : `<table cellpadding="0" cellspacing="0" border="0"><tr><td width="60" height="60" style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.25);text-align:center;vertical-align:middle;font-size:22px;font-weight:800;color:#fff;font-family:${safeFont}">${initials}</td></tr></table>`;
   const metaLineCard = [title, company].filter(Boolean).join("  ·  ");
   return `<!-- Linkbay Email Signature: Card -->
 ${dividerHtml}<table cellpadding="0" cellspacing="0" border="0" style="font-family:${safeFont};max-width:440px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,0.08)">

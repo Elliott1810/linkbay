@@ -1204,16 +1204,17 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
     const arr = localBlocks.filter(b => b.id !== id);
     setLocalBlocks(arr);
     onSave(arr);
-    // Also archive the block so it shows up in Archived section of page settings
+    // Archive the block in page settings AND in Block Analytics
     try {
       const pageRes = await apiRequest("GET", `/api/pages/${pageId}`);
       const pageData = await pageRes.json();
       const existing: string[] = (() => { try { return JSON.parse(pageData.archivedBlockIds || "[]"); } catch { return []; } })();
       if (!existing.includes(id)) {
         await apiRequest("PATCH", `/api/pages/${pageId}`, { archivedBlockIds: JSON.stringify([...existing, id]) });
-        queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+        // pages live under /api/auth/me — invalidate that so archivedIds refreshes everywhere
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       }
-    } catch { /* non-critical */ }
+    } catch (e) { console.error("[deleteBlock] archivedBlockIds patch failed:", e); }
     // Record archive event in Block Analytics history so it appears in the Archived section
     if (deletedBlock) {
       try {
@@ -1221,8 +1222,8 @@ function BlockEditor({ pageId, blocks, onSave, saving, newBlockIds }: { pageId: 
           blockType: deletedBlock.type,
           blockTitle: (deletedBlock as any).title || (deletedBlock as any).content?.slice(0, 60) || deletedBlock.type,
         });
-        // Invalidate both pages list and block-analytics so the archived block appears immediately
-        queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+        // Invalidate block-analytics so the archived block appears immediately in Block Analytics panel
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         queryClient.invalidateQueries({ queryKey: ["/api/pages", pageId, "block-analytics"] });
       } catch (archiveErr) {
         console.error("[deleteBlock] record-archive failed:", archiveErr);
@@ -3672,7 +3673,8 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
 
   // G6c: filter out non-interaction blocks from live view
   // booking is trackable (embed views/opens count as interactions) so it's excluded here
-  const NON_INTERACTION_TYPES = new Set(["text", "image", "divider", "testimonial", "vcard"]);
+  // vcard IS trackable (download = interaction) — only exclude purely passive/decorative blocks
+  const NON_INTERACTION_TYPES = new Set(["text", "image", "divider", "testimonial"]);
 
   const archiveMutation = useMutation({
     mutationFn: async ({ blockId, action }: { blockId: string; action: "archive" | "restore" | "hide" }) => {
@@ -3845,10 +3847,10 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
   // G6c: for display, filter out non-interaction types from live list
   const displayLiveBlocks = liveBlocks.filter((b: any) => !NON_INTERACTION_TYPES.has(b.type));
 
-  // #24: sum aggregated counts, not row count — exclude view events
+  // #24: sum aggregated counts — exclude page-level view AND block_view (passive impressions, not interactions)
   const totalInteractions = periodEvents.filter((e: any) => {
     const et: string = e.eventType || e.type || "";
-    return et !== "view";
+    return et !== "view" && et !== "block_view";
   }).reduce((sum: number, e: any) => sum + (e.count ?? 1), 0);
 
   // G5: unified pill style — matches Overview and Analytics panels exactly
@@ -4118,7 +4120,7 @@ function BlockAnalysisPanel({ pages, activePageId, licenceTier }: { pages: any[]
             </h2>
             <div className="blocks-search-row" style={{ marginBottom: "0.75rem" }}><input className="input" placeholder="Search live blocks…" value={searchLive} onChange={e => setSearchLive(e.target.value)} style={{ fontSize: 12, width: "100%" }} /></div>
             {liveBlocks.length > displayLiveBlocks.length && (
-              <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Text, image, divider, vCard and testimonial blocks are excluded from interaction tracking.</p>
+              <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "0.5rem" }}>Text, image, divider and testimonial blocks are excluded from interaction tracking.</p>
             )}
             <p style={{ fontSize: 11, color: "var(--color-text-faint)", marginBottom: "1rem" }}>“Block views” counts how many times each block scrolled into view during this period.</p>
             {displayLiveBlocks.length === 0 ? (

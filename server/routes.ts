@@ -2570,7 +2570,7 @@ Block types and their field shapes:
 - text:      { id, type:"text",      content:"markdown text" }
 - link:      { id, type:"link", title:"label", url:"https://...", description:"optional", icon:"single emoji that fits the link purpose — e.g. 📅 booking, 📧 email, 🎥 video, 💼 work, 📄 doc, ⬇️ download, 🛒 shop, 🎓 course, 🎤 podcast, 🌐 website" }
 - socials:   { id, type:"socials",   links:[{platform:"instagram",url:"https://..."}, ...] }
-- lead_form: { id, type:"lead_form", title:"...", description:"...", buttonText:"..." }
+- lead-form: { id, type:"lead-form", title:"...", formDescription:"...", buttonText:"...", customFields:[{"name":"...","type":"text"|"dropdown"|"number"|"checkbox","required":true,"options":["..."]}] }
 - video:     { id, type:"video",     url:"https://youtube.com/...", title:"..." }
 - countdown: { id, type:"countdown", title:"...", targetDate:"2026-12-31" }
 - poll:      { id, type:"poll",      question:"...", options:["Option A","Option B"] }
@@ -2580,15 +2580,16 @@ Rules:
 - ALWAYS respect the background and accentColor hints if provided — only override if no hint given
 - ALWAYS respect the fontFamily hint if provided — only choose yourself if no hint given
 - Pre-fill ALL content with realistic, specific text based on the user's name, tagline, industry, and goal — never use placeholder text like "Your Name" or "your link here"
-- Include at minimum: one text block (bio/tagline with their actual name/brand), 2-3 link blocks, one socials block
-- If goal includes lead generation or getting clients, include a lead_form block with their specific service in the title
+- TEXT BLOCKS: Include AT MOST 1 text block. Use it for a short bio paragraph only. NEVER add a second text block.
+- LEAD FORMS: ALWAYS include exactly 1 lead-form block. Use the niche/industry to add 1-3 relevant customFields (e.g. for a photographer: [{name:"Event type",type:"dropdown",required:true,options:["Wedding","Portrait","Commercial","Event"]}]; for a fitness coach: [{name:"Your goal",type:"dropdown",required:true,options:["Lose weight","Build muscle","Improve fitness"]}]; for a developer: [{name:"Project type",type:"dropdown",required:true,options:["Web app","Mobile","API","Other"]}]). The formDescription should describe what happens after submission.
+- Include at minimum: one text block (bio/tagline with their actual name/brand), 2-3 link blocks, one socials block, one lead-form block
 - If goal includes content, community or audience, include a poll block
-- If goal mentions an event or launch, include a countdown block AND a lead_form block (e.g. waitlist or notify-me signup) — both are required for launch pages (Issue 4)
-- If the specific block goal mentions beta, pre-launch, or MVP, include BOTH a countdown AND a lead_form with a waitlist-focused title
+- If goal mentions an event or launch, include a countdown block AND a lead-form block (e.g. waitlist or notify-me signup) — both are required for launch pages
+- If the specific block goal mentions beta, pre-launch, or MVP, include BOTH a countdown AND a lead-form with a waitlist-focused title
 - If recommending a single block (blockGoal provided), return exactly 1 block that best achieves that goal, plus a socials block if not already on page
-- BLOCK ORDERING (Issue 8): If goal includes getting clients or capturing leads, place the lead_form or primary CTA link FIRST in the blocks array, then text bio, then secondary links, then socials last
-- URL placeholders (Issue 5): When a real URL is not known, use a clearly annotated placeholder like https://[your-calendly-link].com or https://[your-website].com/services — NEVER use example.com, placeholder.com, or generic filler domains
-- TEXT OPENERS (Issue 9): NEVER begin a text block content with "Welcome to my page", "Hello!", "Welcome!", or any generic greeting. Always open with the person's name and a specific, confident claim about what they do or what they offer
+- BLOCK ORDERING: If goal includes getting clients or capturing leads, place the lead-form or primary CTA link FIRST in the blocks array, then text bio, then secondary links, then socials last
+- URL placeholders: When a real URL is not known, use a clearly annotated placeholder like https://[your-calendly-link].com or https://[your-website].com/services — NEVER use example.com, placeholder.com, or generic filler domains
+- TEXT OPENERS: NEVER begin a text block content with "Welcome to my page", "Hello!", "Welcome!", or any generic greeting. Always open with the person's name and a specific, confident claim about what they do or what they offer
 - Output ONLY the JSON object, nothing else`;
 
       const userPrompt = `Build a Linkbay page for:
@@ -2906,7 +2907,7 @@ Output schema:
 Block types:
 { id:"blk-1", type:"link", title:"...", url:"https://...", description:"...", icon:"single emoji matching link purpose: 📅 booking 📧 email 🎥 video 💼 work 📄 doc ⬇️ download 🛒 shop 🎓 course 🎤 podcast 🌐 website 🚀 launch", style:"featured"|"default"|"outline" }
 { id:"blk-2", type:"text",        content:"markdown bio text" }
-{ id:"blk-3", type:"lead-form",   title:"...", formDescription:"...", buttonText:"..." }
+{ id:"blk-3", type:"lead-form",   title:"...", formDescription:"...", buttonText:"...", customFields:[{"name":"...","type":"text"|"dropdown"|"number"|"checkbox","required":true,"options":["..."]}] }
 { id:"blk-4", type:"social-links", platforms:"[{\\"platform\\":\\"linkedin\\",\\"url\\":\\"https://linkedin.com/in/...\\"}]" }
 { id:"blk-5", type:"booking",     title:"...", platform:"calendly", embedUrl:"", embedHeight:650 }
 { id:"blk-6", type:"countdown",   title:"...", targetDate:"2026-12-31" }
@@ -2915,6 +2916,8 @@ Block variety and ordering rules:
 - NEVER generate only link blocks — always use a MIX: at least one text block (bio) + at least one non-link block (social-links, lead-form, booking, or countdown)
 - Always start with one featured link block as the primary CTA
 - ALWAYS include a text block with the person's bio (2-3 sentences, specific to their niche)
+- TEXT BLOCKS: Include AT MOST 1 text block. NEVER add a second text block.
+- LEAD FORMS: ALWAYS include exactly 1 lead-form block with 1-3 niche-relevant customFields (e.g. for a photographer: [{name:"Event type",type:"dropdown",required:true,options:["Wedding","Portrait","Commercial","Event"]}]; for a fitness coach: [{name:"Your goal",type:"dropdown",required:true,options:["Lose weight","Build muscle","Improve fitness"]}]; for a consultant: [{name:"Budget",type:"dropdown",required:true,options:["<£1k","£1k-£5k","£5k-£20k","£20k+"]}]). The formDescription should describe what happens after submission.
 - If goals include "Get new clients" or "Capture leads": add a lead-form block with service-specific title
 - If goals include "Drive bookings": add a booking block
 - If goals include "Promote a launch": add a countdown block dated 90 days from now AND a lead-form waitlist block
@@ -3099,37 +3102,42 @@ ${ themeHint ? `- Theme accent: ${themeHint.accentColor} (use exactly this)\n- B
 
 Return ONLY valid JSON with these fields:
 {
-  "background": "#hex or rgba(...) or 'gradient:...' ",
+  "background": "bg-* class name — one of: none,bg-aurora,bg-blush,bg-dusk,bg-ember,bg-fog,bg-forest,bg-glacier,bg-haze,bg-ivory,bg-lava,bg-midnight,bg-mint,bg-mocha,bg-ocean,bg-peach,bg-plum,bg-rose,bg-sand,bg-slate,bg-twilight,bg-warm-white,bg-warm-sand",
   "accentColor": "#hex",
-  "fontFamily": "Cabinet Grotesk",
+  "fontFamily": "inter|cabinet-grotesk|general-sans|playfair|space-grotesk",
   "blockStyle": "default|elevated|frosted|bordered|outlined|ghost|floating|shadow-depth",
   "title": "Person or brand headline (under 80 chars)",
   "bio": "2-sentence bio (under 280 chars)",
+  "phone": "phone number found on the page, or empty string if none found",
+  "contactEmail": "contact/business email found on page — NOT a social login email, NOT noreply. Empty string if not found.",
+  "location": "city, region or country found on the page, or empty string if none found",
   "blocks": [...]
 }
 
 Block types:
 { id:"blk-1", type:"link", title:"...", url:"https://...", description:"...", icon:"single emoji matching link purpose: 📅 booking 📧 email 🎥 video 💼 work 📄 doc ⬇️ download 🛒 shop 🎓 course 🎤 podcast 🌐 website", style:"featured" }
-{ id:"blk-2", type:"text",        content:"markdown bio text" }
-{ id:"blk-3", type:"lead-form",   title:"...", formDescription:"...", buttonText:"..." }
-{ id:"blk-4", type:"social-links", platforms:"[{\\"platform\\":\\"linkedin\\",\\"url\\":\\"https://...\\"}]" }
-{ id:"blk-5", type:"booking",     title:"...", platform:"calendly", embedUrl:"", embedHeight:650 }
+{ id:"blk-2", type:"text", content:"markdown bio text" }
+{ id:"blk-3", type:"lead-form", title:"...", formDescription:"...", buttonText:"...", customFields:[{"name":"...","type":"text"|"dropdown"|"number"|"checkbox","required":true,"options":["...",""]}] }
+{ id:"blk-4", type:"social-links", platforms:"[{\"platform\":\"linkedin\",\"url\":\"https://...\"}]" }
+{ id:"blk-5", type:"booking", title:"...", platform:"calendly", embedUrl:"", embedHeight:650 }
 
 Rules:
 - Extract the person's real name from the title/h1 — use it throughout
 - The link-in-bio page URL being imported is ${url} — add it as the primary featured link block
 - Generate 4-8 relevant blocks that best represent the person/brand
+- TEXT BLOCKS: Include AT MOST 1 text block. Use it for a short bio paragraph only. Never add a second text block.
 - VARIETY IS CRITICAL: Use a MIX of block types. Do NOT make every block a link. Choose the most appropriate type for each piece of content:
-    * Bio/about copy → text block
-    * Newsletter or contact signup → lead-form block
+    * Bio/about copy → text block (maximum 1 total)
+    * Contact/enquiry/get in touch → lead-form block
     * Social profiles (Instagram, LinkedIn, Twitter etc) → social-links block (ONE block, list all platforms)
     * Booking/scheduling → booking block
     * Event or countdown → countdown block
     * Only use a link block when the content is genuinely best served as a clickable link (e.g. portfolio, shop, external resource)
+- LEAD FORMS: ALWAYS include exactly 1 lead-form block. Use the niche/industry to add 1-3 relevant customFields (e.g. for a photographer: [{name:"Event type",type:"dropdown",required:true,options:["Wedding","Portrait","Commercial","Event"]}]; for a fitness coach: [{name:"Your goal",type:"dropdown",required:true,options:["Lose weight","Build muscle","Improve fitness","General health"]}]; for a developer: [{name:"Project type",type:"dropdown",required:true,options:["Web app","Mobile","API","Other"]}]). The formDescription should describe what happens after submission (e.g. "I'll reply within 24 hours.").
 - CRITICAL: For social-links blocks, ONLY include social platform URLs that are EXPLICITLY present in the scraped content (body text, links, meta tags). NEVER invent or guess social profile URLs. If a platform URL was not found in the content, do not include it.
-- A well-structured page should typically include: 1 text bio block, 1-2 link blocks (primary CTAs), 1 social-links block (only if social URLs were found), and optionally a lead-form or booking block
+- A well-structured page should include: exactly 1 text bio block, 1-2 link blocks (primary CTAs), exactly 1 lead-form block with custom fields, 1 social-links block (only if social URLs were found), and optionally a booking block
 - Pick an accent colour that matches the brand's visual identity (use brand colours from the page where possible)
-- Choose a background from this list that fits the brand aesthetic: none, bg-aurora, bg-blush, bg-dusk, bg-ember, bg-fog, bg-forest, bg-glacier, bg-haze, bg-ivory, bg-lava, bg-midnight, bg-mint, bg-mocha, bg-ocean, bg-peach, bg-plum, bg-rose, bg-sand, bg-slate, bg-twilight, bg-warm-white, bg-warm-sand
+- Choose a background from the list above that fits the brand aesthetic
 - Do NOT default to plain white — choose a background that reflects the brand's personality and colour palette
 - Dark brands (dark website, dark brand colours) → use dark backgrounds (bg-midnight, bg-slate, bg-mocha, bg-aurora)
 - Light professional brands → use bg-ivory, bg-glacier, bg-sand, bg-warm-sand
@@ -3174,13 +3182,26 @@ Rules:
       ? `Social links found in page HTML: ${JSON.stringify(foundSocialLinks)}`
       : "No social media profile links were found in the page HTML. Do NOT add any social-links block.";
 
+    // Extract phone / email / location from raw HTML using regex
+    const phoneMatch = rawHtml.match(/(?:tel:|phone|ph|call us|mobile|mob)[:\s"'>]*([+\d][\d\s().-]{6,18}\d)/i);
+    const foundPhone = phoneMatch ? phoneMatch[1].trim() : "";
+    const emailMatch = rawHtml.match(/([a-zA-Z0-9._%+\-]+@(?!noreply|no-reply|example|sentry|wix|wordpress)[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
+    const foundEmail = emailMatch ? emailMatch[1].trim() : "";
+    const locationMatch = rawHtml.match(/(?:based in|located in|location|city|address)[:\s"'>]*([A-Z][a-z]+(?:[,\s]+[A-Z][a-zA-Z]+){0,3})/i);
+    const foundLocation = locationMatch ? locationMatch[1].replace(/[<>"]/g, "").trim() : "";
+    const contactNote = [
+      foundPhone    ? `Phone found: ${foundPhone}`    : "",
+      foundEmail    ? `Email found: ${foundEmail}`    : "",
+      foundLocation ? `Location found: ${foundLocation}` : "",
+    ].filter(Boolean).join("\n");
+
     const userPrompt = `Platform: ${platform}
 URL: ${url}
 Page title: ${metaTitle || ogTitle}
 Meta description: ${metaDescription || ogDescription}
 H1: ${h1Text}
 ${socialLinksNote}
-Body text (truncated): ${bodyText}`;
+${contactNote ? contactNote + "\n" : ""}Body text (truncated): ${bodyText}`;
 
     try {
       const completion = await openai.chat.completions.create({

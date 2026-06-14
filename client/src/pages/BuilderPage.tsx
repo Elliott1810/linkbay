@@ -709,7 +709,21 @@ function AISuggestionsStep({
       if (uniqueSocials.length > 0) {
         finalBlocks.push({ id: "blk-socials", type: "social-links", platforms: JSON.stringify(uniqueSocials) });
       }
-      const merged = mapAiBlocks(finalBlocks);
+      // Post-merge enforcement: keep only first text block, only first lead-form
+      const seenSingletonTypes = new Set<string>();
+      const SINGLETON_TYPES = ["text", "lead-form"];
+      const dedupedFinalBlocks = finalBlocks.filter((b: any) => {
+        if (SINGLETON_TYPES.includes(b.type)) {
+          if (seenSingletonTypes.has(b.type)) return false;
+          seenSingletonTypes.add(b.type);
+        }
+        return true;
+      });
+      // Synthesise a generic lead-form if none came back from the AI
+      if (!dedupedFinalBlocks.some((b: any) => b.type === "lead-form")) {
+        dedupedFinalBlocks.push({ id: "blk-leadform", type: "lead-form", title: "Get in touch", formDescription: "I'll reply within 24 hours.", buttonText: "Send message", customFields: [] });
+      }
+      const merged = mapAiBlocks(dedupedFinalBlocks);
       setAiBlocks(merged);
       if (first?.background || first?.blockStyle || first?.fontFamily) {
         setAiTheme({ background: first.background || "", blockStyle: first.blockStyle || "", font: first.fontFamily || "" });
